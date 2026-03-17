@@ -35,7 +35,6 @@ const Index = () => {
     },
   ];
 
-  // Auto-switch tab if current is disabled
   const effectiveTab =
     activeTab === "performance" && !selectedBrand.hasGA4 && !selectedBrand.hasGSC
       ? "hubspot"
@@ -59,8 +58,12 @@ const Index = () => {
           </h1>
         </div>
 
-        {effectiveTab === "performance" && <PerformanceTab brand={selectedBrand} />}
-        {effectiveTab === "hubspot" && <HubSpotTab brand={selectedBrand} />}
+        {effectiveTab === "performance" && (
+          <PerformanceTab brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />
+        )}
+        {effectiveTab === "hubspot" && (
+          <HubSpotTab brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />
+        )}
       </main>
     </div>
   );
