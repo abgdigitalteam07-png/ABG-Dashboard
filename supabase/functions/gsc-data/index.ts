@@ -90,7 +90,16 @@ Deno.serve(async (req) => {
       headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
       body: JSON.stringify({ startDate, endDate, dimensions: [], rowLimit: 1 }),
     });
-    if (!summaryRes.ok) throw new Error(`GSC API error: ${await summaryRes.text()}`);
+    if (!summaryRes.ok) {
+      const errText = await summaryRes.text();
+      if (summaryRes.status === 403) {
+        return new Response(JSON.stringify({ error: "no_permission", message: `Service account lacks access to ${siteUrl}` }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      throw new Error(`GSC API error: ${errText}`);
+    }
     const summaryData = await summaryRes.json();
 
     let totalClicks = 0, totalImpressions = 0, averageCTR = 0, averagePosition = 0;
