@@ -1,15 +1,16 @@
-import { useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart, Bar, Cell,
 } from "recharts";
 import { ScoreCard } from "./ScoreCard";
-import { generateHubSpotData } from "@/lib/mock-data";
+import { fetchHubSpotData } from "@/lib/api-client";
 import { Brand } from "@/lib/brands";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { Loader2 } from "lucide-react";
 
 interface HubSpotTabProps {
   brand: Brand;
@@ -57,7 +58,7 @@ function HealthGauge({ score }: { score: number }) {
   );
 }
 
-function EmailCard({ email, rank }: { email: any; rank: "high" | "low" }) {
+function EmailCard({ email }: { email: any }) {
   return (
     <div className="rounded-lg border border-border bg-card p-4 shadow-card">
       <a href="#" className="text-sm font-semibold text-brand-blue hover:underline">{email.name}</a>
@@ -85,7 +86,102 @@ function EmailCard({ email, rank }: { email: any; rank: "high" | "low" }) {
 }
 
 export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
-  const data = useMemo(() => generateHubSpotData(brand.id, dateFrom, dateTo), [brand.id, dateFrom, dateTo]);
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+
+    fetchHubSpotData(brand, dateFrom, dateTo).then((result) => {
+      if (!cancelled) {
+        setData(result);
+        setLoading(false);
+      }
+    });
+
+    return () => { cancelled = true; };
+  }, [brand.id, dateFrom.getTime(), dateTo.getTime()]);
+
+  // Filter emails by date range (mock data generates dates that may fall outside)
+  const filteredData = useMemo(() => {
+    if (!data) return null;
+
+    const fromStr = dateFrom.toISOString().split("T")[0];
+    const toStr = dateTo.toISOString().split("T")[0];
+
+    const filteredEmails = (data.emails || []).filter((e: any) => {
+      return e.publishDate >= fromStr && e.publishDate <= toStr;
+    });
+
+    // Recalculate aggregates from filtered emails
+    let totalSent = 0, totalDelivered = 0, totalOpens = 0, totalClicks = 0;
+    let totalBounce = 0, totalUnsub = 0, totalSpam = 0;
+    for (const e of filteredEmails) {
+      totalSent += e.sent;
+      totalDelivered += e.delivered;
+      totalOpens += e.opens;
+      totalClicks += e.clicks;
+      totalBounce += e.bounce;
+      totalUnsub += e.unsubscribe;
+      totalSpam += e.spam;
+    }
+
+    const openRate = totalDelivered > 0 ? parseFloat((totalOpens / totalDelivered * 100).toFixed(1)) : 0;
+    const clickRate = totalDelivered > 0 ? parseFloat((totalClicks / totalDelivered * 100).toFixed(1)) : 0;
+    const bounceRate = totalSent > 0 ? parseFloat((totalBounce / totalSent * 100).toFixed(2)) : 0;
+    const unsubscribeRate = totalSent > 0 ? parseFloat((totalUnsub / totalSent * 100).toFixed(2)) : 0;
+    const deliveredRate = totalSent > 0 ? parseFloat((totalDelivered / totalSent * 100).toFixed(1)) : 0;
+
+    const healthScore = Math.min(10, Math.max(1, parseFloat(
+      (openRate / 5 + clickRate / 2 - bounceRate * 2 - unsubscribeRate * 5 + 2).toFixed(1)
+    )));
+
+    function getBenchmarkLabel(metric: string, value: number): string {
+      if (metric === "openRate") return value >= 25 ? "Excellent" : value >= 18 ? "Good" : "Needs work";
+      if (metric === "clickRate") return value >= 4 ? "Excellent" : value >= 2.5 ? "Good" : "Needs work";
+      if (metric === "bounceRate") return value <= 0.5 ? "Excellent" : value <= 1.5 ? "Good" : "Needs work";
+      if (metric === "unsubscribeRate") return value <= 0.2 ? "Excellent" : value <= 0.5 ? "Good" : "Needs work";
+      return "Good";
+    }
+
+    const sorted = [...filteredEmails].sort((a: any, b: any) => (b.openRate + b.clickRate) - (a.openRate + a.clickRate));
+
+    return {
+      ...data,
+      emails: filteredEmails,
+      healthScore,
+      openRate,
+      openRateLabel: getBenchmarkLabel("openRate", openRate),
+      clickRate,
+      clickRateLabel: getBenchmarkLabel("clickRate", clickRate),
+      bounceRate,
+      bounceRateLabel: getBenchmarkLabel("bounceRate", bounceRate),
+      unsubscribeRate,
+      unsubscribeRateLabel: getBenchmarkLabel("unsubscribeRate", unsubscribeRate),
+      spamReports: totalSpam,
+      totalEmailsSent: totalSent,
+      deliveredRate,
+      highPerforming: sorted.slice(0, 3),
+      lowPerforming: sorted.slice(-3).reverse(),
+      openRateOverTime: filteredEmails
+        .sort((a: any, b: any) => a.publishDate.localeCompare(b.publishDate))
+        .map((e: any) => ({ date: e.publishDate, value: e.openRate })),
+      unsubscribeRateOverTime: filteredEmails
+        .sort((a: any, b: any) => a.publishDate.localeCompare(b.publishDate))
+        .map((e: any) => ({ date: e.publishDate, value: e.unsubscribeRate })),
+    };
+  }, [data, dateFrom, dateTo]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-24">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!filteredData) return null;
 
   return (
     <div className="space-y-6 p-6">
@@ -96,36 +192,36 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
         </h2>
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[auto_1fr]">
           <div className="flex items-center justify-center rounded-lg border border-border bg-card p-6 shadow-card">
-            <HealthGauge score={data.healthScore} />
+            <HealthGauge score={filteredData.healthScore} />
           </div>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-3">
             <div className="rounded-lg border border-border bg-card p-4 shadow-card">
               <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Open Rate</p>
-              <p className="mt-1 text-xl font-semibold tabular-nums">{data.openRate}%</p>
-              <BenchmarkBadge label={data.openRateLabel} />
+              <p className="mt-1 text-xl font-semibold tabular-nums">{filteredData.openRate}%</p>
+              <BenchmarkBadge label={filteredData.openRateLabel} />
             </div>
             <div className="rounded-lg border border-border bg-card p-4 shadow-card">
               <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Click-Through Rate</p>
-              <p className="mt-1 text-xl font-semibold tabular-nums">{data.clickRate}%</p>
-              <BenchmarkBadge label={data.clickRateLabel} />
+              <p className="mt-1 text-xl font-semibold tabular-nums">{filteredData.clickRate}%</p>
+              <BenchmarkBadge label={filteredData.clickRateLabel} />
             </div>
             <div className="rounded-lg border border-border bg-card p-4 shadow-card">
               <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Hard Bounces</p>
-              <p className="mt-1 text-xl font-semibold tabular-nums">{data.bounceRate}%</p>
-              <BenchmarkBadge label={data.bounceRateLabel} />
+              <p className="mt-1 text-xl font-semibold tabular-nums">{filteredData.bounceRate}%</p>
+              <BenchmarkBadge label={filteredData.bounceRateLabel} />
             </div>
             <div className="rounded-lg border border-border bg-card p-4 shadow-card">
               <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Unsubscribes</p>
-              <p className="mt-1 text-xl font-semibold tabular-nums">{data.unsubscribeRate}%</p>
-              <BenchmarkBadge label={data.unsubscribeRateLabel} />
+              <p className="mt-1 text-xl font-semibold tabular-nums">{filteredData.unsubscribeRate}%</p>
+              <BenchmarkBadge label={filteredData.unsubscribeRateLabel} />
             </div>
             <div className="rounded-lg border border-border bg-card p-4 shadow-card">
               <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Spam Reports</p>
-              <p className="mt-1 text-xl font-semibold tabular-nums">{data.spamReports}</p>
+              <p className="mt-1 text-xl font-semibold tabular-nums">{filteredData.spamReports}</p>
             </div>
             <div className="rounded-lg border border-border bg-card p-4 shadow-card">
               <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Total Sent</p>
-              <p className="mt-1 text-xl font-semibold tabular-nums">{formatNumber(data.totalEmailsSent)}</p>
+              <p className="mt-1 text-xl font-semibold tabular-nums">{formatNumber(filteredData.totalEmailsSent)}</p>
             </div>
           </div>
         </div>
@@ -135,9 +231,9 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
       <div>
         <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">CRM Overview</h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <ScoreCard title="Total Contacts" value={formatNumber(data.totalContacts)} delta={data.totalContactsDelta} />
-          <ScoreCard title="Delivered Rate" value={`${data.deliveredRate}%`} delta={data.deliveredRateDelta} />
-          <ScoreCard title="Total Emails Sent" value={formatNumber(data.totalEmailsSent)} />
+          <ScoreCard title="Total Contacts" value={formatNumber(filteredData.totalContacts)} delta={filteredData.totalContactsDelta} />
+          <ScoreCard title="Delivered Rate" value={`${filteredData.deliveredRate}%`} delta={filteredData.deliveredRateDelta} />
+          <ScoreCard title="Total Emails Sent" value={formatNumber(filteredData.totalEmailsSent)} />
         </div>
       </div>
 
@@ -145,13 +241,13 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
       <div className="rounded-lg border border-border bg-card p-6 shadow-card">
         <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Lifecycle Stage Breakdown</h3>
         <ResponsiveContainer width="100%" height={280}>
-          <BarChart data={data.lifecycleStages} layout="vertical">
+          <BarChart data={filteredData.lifecycleStages} layout="vertical">
             <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" />
             <XAxis type="number" tick={{ fontSize: 11 }} />
             <YAxis type="category" dataKey="stage" tick={{ fontSize: 12 }} width={100} />
             <Tooltip contentStyle={{ fontSize: 12 }} />
             <Bar dataKey="count" radius={[0, 4, 4, 0]}>
-              {data.lifecycleStages.map((_, i) => (
+              {filteredData.lifecycleStages.map((_: any, i: number) => (
                 <Cell key={i} fill={LIFECYCLE_COLORS[i]} />
               ))}
             </Bar>
@@ -160,32 +256,34 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
       </div>
 
       {/* SECTION B - High & Low Performing Emails */}
-      <div>
-        <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          High & Low Performing Emails
-        </h2>
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <div>
-            <h3 className="mb-3 text-sm font-semibold text-brand-green">🔥 High Performing</h3>
-            <div className="space-y-3">
-              {data.highPerforming.map((e) => <EmailCard key={e.name} email={e} rank="high" />)}
+      {filteredData.emails.length > 0 && (
+        <div>
+          <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            High & Low Performing Emails
+          </h2>
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <div>
+              <h3 className="mb-3 text-sm font-semibold text-brand-green">🔥 High Performing</h3>
+              <div className="space-y-3">
+                {filteredData.highPerforming.map((e: any) => <EmailCard key={e.name} email={e} />)}
+              </div>
             </div>
-          </div>
-          <div>
-            <h3 className="mb-3 text-sm font-semibold text-brand-red">⚠️ Low Performing</h3>
-            <div className="space-y-3">
-              {data.lowPerforming.map((e) => <EmailCard key={e.name} email={e} rank="low" />)}
+            <div>
+              <h3 className="mb-3 text-sm font-semibold text-brand-red">⚠️ Low Performing</h3>
+              <div className="space-y-3">
+                {filteredData.lowPerforming.map((e: any) => <EmailCard key={e.name} email={e} />)}
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Charts Row */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <div className="rounded-lg border border-border bg-card p-6 shadow-card">
           <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Email Open Rate Over Time</h3>
           <ResponsiveContainer width="100%" height={260}>
-            <LineChart data={data.openRateOverTime}>
+            <LineChart data={filteredData.openRateOverTime}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
               <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={(v) => v.slice(5)} />
               <YAxis tick={{ fontSize: 11 }} unit="%" />
@@ -197,7 +295,7 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
         <div className="rounded-lg border border-border bg-card p-6 shadow-card">
           <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Unsubscribe Rate Over Time</h3>
           <ResponsiveContainer width="100%" height={260}>
-            <LineChart data={data.unsubscribeRateOverTime}>
+            <LineChart data={filteredData.unsubscribeRateOverTime}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
               <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={(v) => v.slice(5)} />
               <YAxis tick={{ fontSize: 11 }} unit="%" />
@@ -230,20 +328,28 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {data.emails.map((row) => (
-                <TableRow key={row.name}>
-                  <TableCell className="text-sm font-medium">{row.name}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{row.sender}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{row.publishDate}</TableCell>
-                  <TableCell className="text-right tabular-nums text-sm">{row.sent.toLocaleString()}</TableCell>
-                  <TableCell className="text-right tabular-nums text-sm">{row.clickRate}%</TableCell>
-                  <TableCell className="text-right tabular-nums text-sm">{row.deliveredRate}%</TableCell>
-                  <TableCell className="text-right tabular-nums text-sm">{row.unsubscribeRate}%</TableCell>
-                  <TableCell className="text-right tabular-nums text-sm">{row.spamRate}%</TableCell>
-                  <TableCell className="text-right tabular-nums text-sm">{row.openRate}%</TableCell>
-                  <TableCell className="text-right tabular-nums text-sm">{row.bounceRate}%</TableCell>
+              {filteredData.emails.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={10} className="text-center text-sm text-muted-foreground py-8">
+                    No emails found in this date range.
+                  </TableCell>
                 </TableRow>
-              ))}
+              ) : (
+                filteredData.emails.map((row: any) => (
+                  <TableRow key={row.name}>
+                    <TableCell className="text-sm font-medium">{row.name}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{row.sender}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{row.publishDate}</TableCell>
+                    <TableCell className="text-right tabular-nums text-sm">{row.sent.toLocaleString()}</TableCell>
+                    <TableCell className="text-right tabular-nums text-sm">{row.clickRate}%</TableCell>
+                    <TableCell className="text-right tabular-nums text-sm">{row.deliveredRate}%</TableCell>
+                    <TableCell className="text-right tabular-nums text-sm">{row.unsubscribeRate}%</TableCell>
+                    <TableCell className="text-right tabular-nums text-sm">{row.spamRate}%</TableCell>
+                    <TableCell className="text-right tabular-nums text-sm">{row.openRate}%</TableCell>
+                    <TableCell className="text-right tabular-nums text-sm">{row.bounceRate}%</TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
         </div>
