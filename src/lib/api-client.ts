@@ -38,6 +38,10 @@ export async function fetchGSCData(brand: Brand, dateFrom: Date, dateTo: Date) {
       },
     });
     if (error) throw error;
+    if (data?.error === "no_permission") {
+      console.warn(`GSC: No permission for ${brand.gscSiteUrl}`);
+      return null;
+    }
     if (data?.error) throw new Error(data.error);
     return data;
   } catch (err) {
