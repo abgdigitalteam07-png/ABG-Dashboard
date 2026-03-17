@@ -1,0 +1,10 @@
+project_id = "cwjgytvcqnabhcolzidh"
+
+[functions.ga4-data]
+verify_jwt = false
+
+[functions.gsc-data]
+verify_jwt = false
+
+[functions.hubspot-data]
+verify_jwt = false

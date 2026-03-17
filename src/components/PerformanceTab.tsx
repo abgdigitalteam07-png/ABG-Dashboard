@@ -1,13 +1,14 @@
-import { useMemo } from "react";
+import { useState, useEffect } from "react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 import { ScoreCard } from "./ScoreCard";
-import { generateGA4Data, generateGSCData } from "@/lib/mock-data";
+import { fetchGA4Data, fetchGSCData } from "@/lib/api-client";
 import { Brand } from "@/lib/brands";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
+import { Loader2 } from "lucide-react";
 
 interface PerformanceTabProps {
   brand: Brand;
@@ -22,8 +23,27 @@ function formatNumber(n: number): string {
 }
 
 export function PerformanceTab({ brand, dateFrom, dateTo }: PerformanceTabProps) {
-  const ga4 = useMemo(() => generateGA4Data(brand.id, dateFrom, dateTo), [brand.id, dateFrom, dateTo]);
-  const gsc = useMemo(() => generateGSCData(brand.id, dateFrom, dateTo), [brand.id, dateFrom, dateTo]);
+  const [ga4, setGa4] = useState<any>(null);
+  const [gsc, setGsc] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+
+    Promise.all([
+      brand.hasGA4 ? fetchGA4Data(brand, dateFrom, dateTo) : Promise.resolve(null),
+      brand.hasGSC ? fetchGSCData(brand, dateFrom, dateTo) : Promise.resolve(null),
+    ]).then(([ga4Data, gscData]) => {
+      if (!cancelled) {
+        setGa4(ga4Data);
+        setGsc(gscData);
+        setLoading(false);
+      }
+    });
+
+    return () => { cancelled = true; };
+  }, [brand.id, dateFrom.getTime(), dateTo.getTime()]);
 
   if (!brand.hasGA4 && !brand.hasGSC) {
     return (
@@ -34,9 +54,17 @@ export function PerformanceTab({ brand, dateFrom, dateTo }: PerformanceTabProps)
     );
   }
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-24">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 p-6">
-      {brand.hasGA4 && (
+      {brand.hasGA4 && ga4 && (
         <>
           <div>
             <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Google Analytics</h2>
@@ -89,7 +117,7 @@ export function PerformanceTab({ brand, dateFrom, dateTo }: PerformanceTabProps)
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {ga4.topPages.map((row) => (
+                {ga4.topPages.map((row: any) => (
                   <TableRow key={row.page}>
                     <TableCell className="font-mono text-xs">{row.page}</TableCell>
                     <TableCell className="text-right tabular-nums text-sm">{row.sessions.toLocaleString()}</TableCell>
@@ -103,7 +131,7 @@ export function PerformanceTab({ brand, dateFrom, dateTo }: PerformanceTabProps)
         </>
       )}
 
-      {brand.hasGSC && (
+      {brand.hasGSC && gsc && (
         <>
           <div className="mt-8">
             <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Search Console</h2>
@@ -144,7 +172,7 @@ export function PerformanceTab({ brand, dateFrom, dateTo }: PerformanceTabProps)
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {gsc.topQueries.map((row) => (
+                {gsc.topQueries.map((row: any) => (
                   <TableRow key={row.query}>
                     <TableCell className="text-sm">{row.query}</TableCell>
                     <TableCell className="text-right tabular-nums text-sm">{row.clicks.toLocaleString()}</TableCell>
