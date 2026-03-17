@@ -1,16 +1,69 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+import { useState, useCallback } from "react";
+import { brands } from "@/lib/brands";
+import { DashboardHeader } from "@/components/DashboardHeader";
+import { TabNav } from "@/components/TabNav";
+import { PerformanceTab } from "@/components/PerformanceTab";
+import { HubSpotTab } from "@/components/HubSpotTab";
 
-// IMPORTANT: Fully REPLACE this with your own code
-const PlaceholderIndex = () => {
-  // PLACEHOLDER: Replace this entire return statement with the user's app.
-  // The inline background color is intentionally not part of the design system.
+const Index = () => {
+  const [selectedBrand, setSelectedBrand] = useState(brands[0]);
+  const [activeTab, setActiveTab] = useState("performance");
+
+  const now = new Date();
+  const thirtyDaysAgo = new Date(now);
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  const [dateFrom, setDateFrom] = useState(thirtyDaysAgo);
+  const [dateTo, setDateTo] = useState(now);
+
+  const handleDateChange = useCallback((from: Date, to: Date) => {
+    setDateFrom(from);
+    setDateTo(to);
+  }, []);
+
+  const tabs = [
+    {
+      id: "performance",
+      label: "Google Analytics & Search Console",
+      disabled: !selectedBrand.hasGA4 && !selectedBrand.hasGSC,
+      tooltip: "No GA4/GSC property linked for this brand.",
+    },
+    {
+      id: "hubspot",
+      label: "CRM & Email",
+      disabled: !selectedBrand.hasHubSpot,
+      tooltip: "No HubSpot data for this brand.",
+    },
+  ];
+
+  // Auto-switch tab if current is disabled
+  const effectiveTab =
+    activeTab === "performance" && !selectedBrand.hasGA4 && !selectedBrand.hasGSC
+      ? "hubspot"
+      : activeTab;
+
   return (
-    <div className="flex min-h-screen items-center justify-center" style={{ backgroundColor: '#fcfbf8' }}>
-      <img data-lovable-blank-page-placeholder="REMOVE_THIS" src="/placeholder.svg" alt="Your app will live here!" />
+    <div className="min-h-screen bg-background">
+      <DashboardHeader
+        selectedBrand={selectedBrand}
+        onBrandChange={setSelectedBrand}
+        dateFrom={dateFrom}
+        dateTo={dateTo}
+        onDateChange={handleDateChange}
+      />
+      <TabNav tabs={tabs} activeTab={effectiveTab} onTabChange={setActiveTab} />
+
+      <main className="mx-auto max-w-[1400px]">
+        <div className="px-2 pt-2">
+          <h1 className="px-4 pt-4 text-lg font-semibold text-foreground">
+            {selectedBrand.name} Performance Overview
+          </h1>
+        </div>
+
+        {effectiveTab === "performance" && <PerformanceTab brand={selectedBrand} />}
+        {effectiveTab === "hubspot" && <HubSpotTab brand={selectedBrand} />}
+      </main>
     </div>
   );
 };
-
-const Index = PlaceholderIndex;
 
 export default Index;
