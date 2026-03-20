@@ -108,6 +108,12 @@ async function fetchAllEmails(token: string, accountLabel: string): Promise<any[
   }
 
   console.log(`[${accountLabel}] Fetched ${allEmails.length} total emails`);
+  if (allEmails.length > 0) {
+    const s = allEmails[0];
+    console.log(`[${accountLabel}] Email keys: ${Object.keys(s).join(",")}`);
+    console.log(`[${accountLabel}] Email[0] stats: ${JSON.stringify(s.stats || s.statistics || "none")}`);
+    console.log(`[${accountLabel}] Email[0] counters: ${JSON.stringify(s.counters || "none")}`);
+  }
   return allEmails;
 }
 
