@@ -66,14 +66,19 @@ function getBenchmarkLabel(metric: string, value: number): string {
   return "Good";
 }
 
-// ─── date extraction ───
+// ─── date extraction using hs_publish_date ───
 
-function extractDateStr(email: any): string | null {
+function extractPublishDate(email: any): string | null {
+  // Primary: hs_publish_date from v3 API
+  const hsPublishDate = email?.hs_publish_date;
+  if (hsPublishDate) {
+    const d = new Date(hsPublishDate);
+    if (!isNaN(d.getTime())) return d.toISOString().split("T")[0];
+  }
+  // Fallback candidates
   const candidates = [
     email?.publishDate,
     email?.publishedAt,
-    email?.sendDate,
-    email?.scheduledAt,
     email?.updatedAt,
   ];
   for (const c of candidates) {
