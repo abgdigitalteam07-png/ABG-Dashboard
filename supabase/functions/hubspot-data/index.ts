@@ -193,7 +193,7 @@ async function fetchAccountData(
   await Promise.all(stagePromises);
 
   // Fetch all marketing emails
-  const allRawEmails = await fetchAllMarketingEmails(token);
+  const allRawEmails = await fetchAllMarketingEmails(token, accountLabel);
   console.log(`[${accountLabel}] Fetched ${allRawEmails.length} total raw emails`);
 
   // Filter by brand name: check name, fromName, campaign name
