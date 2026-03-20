@@ -67,27 +67,44 @@ function brandMatches(text: string | undefined | null, brandName: string): boole
   return text.toLowerCase().includes(brandName.toLowerCase());
 }
 
-async function fetchAllEmailsWithStats(token: string): Promise<any[]> {
+// Fetch all marketing emails via v3 API (paginated)
+async function fetchAllEmails(token: string): Promise<any[]> {
   const allEmails: any[] = [];
-  let offset = 0;
-  let hasMore = true;
+  let after: string | undefined = undefined;
+  let page = 0;
 
-  while (hasMore) {
+  while (page < 50) { // safety limit
+    let url = `/marketing/v3/emails?limit=100&orderBy=-publishDate&isPublished=true`;
+    if (after) url += `&after=${after}`;
+
     try {
-      const url = `/marketing-emails/v1/emails/with-statistics?limit=100&offset=${offset}&excludeDeletedObjects=true`;
       const res = await hubspotFetch(url, token);
-      const objects = res.objects || [];
-      allEmails.push(...objects);
-      offset += objects.length;
-      hasMore = objects.length === 100 && allEmails.length < 5000;
+      const items = res.results || [];
+      allEmails.push(...items);
+
+      if (res.paging?.next?.after) {
+        after = res.paging.next.after;
+        page++;
+      } else {
+        break;
+      }
     } catch (err) {
-      console.error("Error fetching v1 emails with stats:", err);
+      console.error("Error fetching v3 emails:", err);
       break;
     }
   }
 
-  console.log(`Fetched ${allEmails.length} total emails with statistics`);
+  console.log(`Fetched ${allEmails.length} published emails via v3 API`);
   return allEmails;
+}
+
+// Fetch campaign stats via v1 campaigns endpoint
+async function fetchCampaignStats(token: string, campaignId: string): Promise<any | null> {
+  try {
+    return await hubspotFetch(`/email/public/v1/campaigns/${campaignId}`, token);
+  } catch {
+    return null;
+  }
 }
 
 Deno.serve(async (req) => {
@@ -103,49 +120,36 @@ Deno.serve(async (req) => {
 
     // Diagnostic mode
     if (body.debug === true) {
-      const results: any[] = [];
       try {
-        // Try aggregate stats endpoint
-        const statsEndpoints = [
-          "/marketing/v3/emails/statistics/list?limit=3",
-          "/marketing/v3/emails/statistics?startTimestamp=2026-03-01T00:00:00Z&endTimestamp=2026-03-20T00:00:00Z",
-          "/email/public/v1/campaigns?limit=3",
-        ];
-        for (const ep of statsEndpoints) {
-          try {
-            const res = await fetch(`https://api.hubapi.com${ep}`, {
-              headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-            });
-            const text = await res.text();
-            console.log(`[DEBUG] ${ep}: status=${res.status}, body=${text.slice(0, 500)}`);
-            results.push({ endpoint: ep, status: res.status, body: text.slice(0, 500) });
-          } catch (e: any) {
-            results.push({ endpoint: ep, error: e.message });
-          }
-        }
+        const raw = await hubspotFetch("/marketing/v3/emails?limit=3&orderBy=-publishDate&isPublished=true", token);
+        const items = raw.results || [];
+        const results: any[] = [];
 
-        // Also try v1 campaign endpoint for stats
-        const emailRes = await hubspotFetch("/marketing/v3/emails?limit=1&orderBy=-publishDate&isPublished=true", token);
-        const email = emailRes.results?.[0];
-        if (email?.primaryEmailCampaignId) {
-          const campId = email.primaryEmailCampaignId;
-          try {
-            const campRes = await fetch(`https://api.hubapi.com/email/public/v1/campaigns/${campId}`, {
-              headers: { Authorization: `Bearer ${token}` },
-            });
-            const campText = await campRes.text();
-            console.log(`[DEBUG] Campaign ${campId}: status=${campRes.status}, body=${campText.slice(0, 1000)}`);
-            results.push({ endpoint: `campaign/${campId}`, status: campRes.status, body: campText.slice(0, 1000) });
-          } catch (e: any) {
-            results.push({ endpoint: `campaign/${campId}`, error: e.message });
+        for (const email of items) {
+          let stats: any = null;
+          if (email.primaryEmailCampaignId) {
+            stats = await fetchCampaignStats(token, email.primaryEmailCampaignId);
           }
+          results.push({
+            id: email.id,
+            name: email.name,
+            subject: email.subject,
+            from: email.from,
+            publishDate: email.publishDate,
+            businessUnitId: email.businessUnitId,
+            campaignName: email.campaignName,
+            primaryEmailCampaignId: email.primaryEmailCampaignId,
+            counters: stats?.counters || null,
+          });
         }
+        return new Response(JSON.stringify({ debug: true, total: raw.total, results }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       } catch (e: any) {
-        results.push({ error: e.message });
+        return new Response(JSON.stringify({ debug: true, error: e.message }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       }
-      return new Response(JSON.stringify({ debug: true, results }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
     }
 
     const { brandName, startDate, endDate } = body as HubSpotRequest;
@@ -180,16 +184,20 @@ Deno.serve(async (req) => {
       } catch { /* skip */ }
     }));
 
-    // Emails
-    const allRawEmails = await fetchAllEmailsWithStats(token);
+    // Fetch all published emails
+    const allRawEmails = await fetchAllEmails(token);
 
+    // Filter by brand: match name, subject, fromName, campaignName
     const brandFiltered = allRawEmails.filter((e: any) => {
-      if (e.brand && e.brand === brandName) return true;
-      const fromName = e.fromName || e.from?.name || "";
-      return brandMatches(e.name, brandName) || brandMatches(fromName, brandName) || brandMatches(e.subject, brandName);
+      const fromName = e.from?.fromName || "";
+      return brandMatches(e.name, brandName) ||
+        brandMatches(fromName, brandName) ||
+        brandMatches(e.subject, brandName) ||
+        brandMatches(e.campaignName, brandName);
     });
     console.log(`Found ${brandFiltered.length} emails matching brand="${brandName}"`);
 
+    // Filter by date range
     const dateFiltered = brandFiltered.filter((e: any) => {
       const timestamp = e.publishDate || e.publishedAt || e.updatedAt;
       if (!timestamp) return false;
@@ -198,34 +206,43 @@ Deno.serve(async (req) => {
     });
     console.log(`After date filter (${startDate} to ${endDate}): ${dateFiltered.length} emails`);
 
+    // Fetch stats for each email via campaign endpoint (batch with concurrency limit)
     let totalSent = 0, totalDelivered = 0, totalOpens = 0, totalClicks = 0, totalBounce = 0, totalUnsub = 0, totalSpam = 0;
 
-    const emails: EmailRecord[] = dateFiltered.map((e: any) => {
-      const pubTimestamp = e.publishDate || e.publishedAt || e.updatedAt;
-      const publishDate = pubTimestamp ? new Date(pubTimestamp).toISOString().split("T")[0] : "";
-      const fromName = e.fromName || e.from?.name || "Unknown";
-      const counters = e.stats?.counters || {};
+    // Process in batches of 10 to avoid rate limits
+    const emails: EmailRecord[] = [];
+    for (let i = 0; i < dateFiltered.length; i += 10) {
+      const batch = dateFiltered.slice(i, i + 10);
+      const statsPromises = batch.map(async (e: any) => {
+        const campaignId = e.primaryEmailCampaignId;
+        const counters = campaignId ? (await fetchCampaignStats(token, campaignId))?.counters : null;
 
-      const sent = counters.sent || 0;
-      const delivered = counters.delivered || 0;
-      const opens = counters.open || 0;
-      const clicks = counters.click || 0;
-      const bounces = counters.bounce || 0;
-      const unsubs = counters.unsubscribed || 0;
-      const spam = counters.spamreport || 0;
+        const pubTimestamp = e.publishDate || e.publishedAt || e.updatedAt;
+        const publishDate = pubTimestamp ? new Date(pubTimestamp).toISOString().split("T")[0] : "";
+        const fromName = e.from?.fromName || "Unknown";
 
-      totalSent += sent; totalDelivered += delivered; totalOpens += opens;
-      totalClicks += clicks; totalBounce += bounces; totalUnsub += unsubs; totalSpam += spam;
+        const sent = counters?.sent || 0;
+        const delivered = counters?.delivered || 0;
+        const opens = counters?.open || 0;
+        const clicks = counters?.click || 0;
+        const bounces = counters?.bounce || 0;
+        const unsubs = counters?.unsubscribed || 0;
+        const spam = counters?.spamreport || 0;
 
-      const openRate = delivered > 0 ? parseFloat((opens / delivered * 100).toFixed(1)) : 0;
-      const clickRate = delivered > 0 ? parseFloat((clicks / delivered * 100).toFixed(1)) : 0;
-      const deliveredRate = sent > 0 ? parseFloat((delivered / sent * 100).toFixed(1)) : 0;
-      const unsubscribeRate = sent > 0 ? parseFloat((unsubs / sent * 100).toFixed(2)) : 0;
-      const bounceRate = sent > 0 ? parseFloat((bounces / sent * 100).toFixed(2)) : 0;
-      const spamRate = sent > 0 ? parseFloat((spam / sent * 100).toFixed(2)) : 0;
+        totalSent += sent; totalDelivered += delivered; totalOpens += opens;
+        totalClicks += clicks; totalBounce += bounces; totalUnsub += unsubs; totalSpam += spam;
 
-      return { name: e.name || "Untitled", subject: e.subject || "", sender: fromName, publishDate, sent, delivered, opens, clicks, bounce: bounces, unsubscribe: unsubs, spam, openRate, clickRate, deliveredRate, unsubscribeRate, bounceRate, spamRate };
-    });
+        const openRate = delivered > 0 ? parseFloat((opens / delivered * 100).toFixed(1)) : 0;
+        const clickRate = delivered > 0 ? parseFloat((clicks / delivered * 100).toFixed(1)) : 0;
+        const deliveredRate = sent > 0 ? parseFloat((delivered / sent * 100).toFixed(1)) : 0;
+        const unsubscribeRate = sent > 0 ? parseFloat((unsubs / sent * 100).toFixed(2)) : 0;
+        const bounceRate = sent > 0 ? parseFloat((bounces / sent * 100).toFixed(2)) : 0;
+        const spamRate = sent > 0 ? parseFloat((spam / sent * 100).toFixed(2)) : 0;
+
+        return { name: e.name || "Untitled", subject: e.subject || "", sender: fromName, publishDate, sent, delivered, opens, clicks, bounce: bounces, unsubscribe: unsubs, spam, openRate, clickRate, deliveredRate, unsubscribeRate, bounceRate, spamRate } as EmailRecord;
+      });
+      emails.push(...await Promise.all(statsPromises));
+    }
 
     const openRate = totalDelivered > 0 ? parseFloat((totalOpens / totalDelivered * 100).toFixed(1)) : 0;
     const clickRate = totalDelivered > 0 ? parseFloat((totalClicks / totalDelivered * 100).toFixed(1)) : 0;
