@@ -185,15 +185,9 @@ async function fetchAllEmails(token: string): Promise<any[]> {
 async function fetchCampaignStats(
   token: string,
   campaignId: string,
-  startTimestamp: number,
-  endTimestamp: number,
 ): Promise<any | null> {
   try {
-    const params = new URLSearchParams({
-      startTimestamp: String(startTimestamp),
-      endTimestamp: String(endTimestamp),
-    });
-    return await hubspotFetch(`/email/public/v1/campaigns/${campaignId}?${params.toString()}`, token);
+    return await hubspotFetch(`/email/public/v1/campaigns/${campaignId}`, token);
   } catch {
     return null;
   }
@@ -254,15 +248,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    const startTimestamp = Math.floor(Date.parse(`${startDate}T00:00:00.000Z`) / 1000);
-    const endTimestamp = Math.floor(Date.parse(`${endDate}T23:59:59.999Z`) / 1000);
-    if (Number.isNaN(startTimestamp) || Number.isNaN(endTimestamp)) {
-      return new Response(JSON.stringify({ error: "Invalid date range" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     console.log(`Fetching HubSpot data for brand="${brandName}", ${startDate} to ${endDate}`);
 
     // ── Contacts / lifecycle ──
@@ -314,22 +299,28 @@ Deno.serve(async (req) => {
     console.log(`Total emails after brand filter: ${brandFiltered.length}`);
     console.log(`Matched emails: ${JSON.stringify(matchReasons.map(m => `${m.name} [${m.reason}] (from: ${m.fromName})`))}`);
 
-    console.log(
-      `Date filtering mode: stats-window only (publishDate ignored), startTimestamp=${startTimestamp}, endTimestamp=${endTimestamp}`,
-    );
+    // ── Date filter by publishDate strictly ──
+    const dateFiltered = brandFiltered.filter((email) => {
+      const dateStr = extractDateStr(email);
+      if (!dateStr) return false;
+      return dateStr >= startDate && dateStr <= endDate;
+    });
+
+    console.log(`Date filtering: publishDate must be between ${startDate} and ${endDate}`);
+    console.log(`Total emails after date filter: ${dateFiltered.length}`);
 
     // ── Stats via campaigns API ──
     let totalSent = 0, totalDelivered = 0, totalOpens = 0, totalClicks = 0;
     let totalBounce = 0, totalUnsub = 0, totalSpam = 0;
     const emails: EmailRecord[] = [];
 
-    for (let i = 0; i < brandFiltered.length; i += 10) {
-      const batch = brandFiltered.slice(i, i + 10);
+    for (let i = 0; i < dateFiltered.length; i += 10) {
+      const batch = dateFiltered.slice(i, i + 10);
       const results = await Promise.all(
         batch.map(async (email: any) => {
           const campaignId = email?.primaryEmailCampaignId;
           const counters = campaignId
-            ? (await fetchCampaignStats(token, campaignId, startTimestamp, endTimestamp))?.counters
+            ? (await fetchCampaignStats(token, campaignId))?.counters
             : null;
 
           const publishDate = extractDateStr(email) ?? "";
@@ -342,9 +333,6 @@ Deno.serve(async (req) => {
           const bounce = counters?.bounce || 0;
           const unsubscribe = counters?.unsubscribed || 0;
           const spam = counters?.spamreport || 0;
-
-          // Include email only if it was actually sent in the selected stats window.
-          if (sent <= 0) return null;
 
           const openRate = delivered > 0 ? parseFloat(((opens / delivered) * 100).toFixed(1)) : 0;
           const clickRate = delivered > 0 ? parseFloat(((clicks / delivered) * 100).toFixed(1)) : 0;
