@@ -299,9 +299,15 @@ Deno.serve(async (req) => {
     console.log(`Total emails after brand filter: ${brandFiltered.length}`);
     console.log(`Matched emails: ${JSON.stringify(matchReasons.map(m => `${m.name} [${m.reason}] (from: ${m.fromName})`))}`);
 
-    console.log(
-      `Date filtering mode: stats-window only (publishDate ignored), startTimestamp=${startTimestamp}, endTimestamp=${endTimestamp}`,
-    );
+    // ── Date filter by publishDate strictly ──
+    const dateFiltered = brandFiltered.filter((email) => {
+      const dateStr = extractDateStr(email);
+      if (!dateStr) return false;
+      return dateStr >= startDate && dateStr <= endDate;
+    });
+
+    console.log(`Date filtering: publishDate must be between ${startDate} and ${endDate}`);
+    console.log(`Total emails after date filter: ${dateFiltered.length}`);
 
     // ── Stats via campaigns API ──
     let totalSent = 0, totalDelivered = 0, totalOpens = 0, totalClicks = 0;
