@@ -250,8 +250,8 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
 
       {/* Debug info */}
       <p className="text-xs text-muted-foreground px-1">
-        Fetched {filteredData.account1Emails ?? "?"} emails from Account 1, {filteredData.account2Emails ?? "?"} emails from Account 2 for "{filteredData.brandName ?? ""}"
-        {filteredData.account1Fetched != null && ` (${filteredData.account1Fetched} total in Acct1, ${filteredData.account2Fetched} total in Acct2)`}
+        Fetched {filteredData.emails?.length ?? 0} emails for "{filteredData.brandName ?? ""}"
+        {filteredData.totalFetched != null && ` (${filteredData.totalFetched} total in account)`}
       </p>
 
       {/* SECTION C - Email Performance Table */}
