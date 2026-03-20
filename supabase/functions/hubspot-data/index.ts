@@ -280,7 +280,7 @@ async function fetchAccountData(
   let v3StatsMap = new Map<string, any>();
   if (apiVersion === "v3" && dateFiltered.length > 0) {
     const emailIds = dateFiltered.map((e: any) => e.id).filter(Boolean);
-    v3StatsMap = await fetchV3EmailStats(token, emailIds, accountLabel);
+    v3StatsMap = await fetchV3EmailStats(token, emailIds, accountLabel, startDate, endDate);
   }
 
   // Map to EmailRecord with proper stats
