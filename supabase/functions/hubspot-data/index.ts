@@ -117,55 +117,31 @@ async function fetchEmailStats(token: string, accountLabel: string, emailIds: st
   const statsMap = new Map<string, any>();
   if (emailIds.length === 0) return statsMap;
 
-  // Try the list endpoint first with startTimestamp
-  try {
-    const url = `/marketing/v3/emails/statistics/list?startTimestamp=2020-01-01T00%3A00%3A00Z&endTimestamp=2030-01-01T00%3A00%3A00Z`;
-    const res = await hubspotFetch(url, token);
-    const results = res.results || [];
-    console.log(`[${accountLabel}] Stats list returned ${results.length} entries`);
-    if (results.length > 0) {
-      console.log(`[${accountLabel}] Stats list sample keys: ${JSON.stringify(Object.keys(results[0]))}`);
-      console.log(`[${accountLabel}] Stats list sample: ${JSON.stringify(results[0]).substring(0, 500)}`);
-    }
-    const idSet = new Set(emailIds);
-    for (const item of results) {
-      const id = String(item.emailId || item.id || "");
-      if (id && idSet.has(id)) {
-        statsMap.set(id, item.counters || item.aggregate?.counters || {});
-      }
-    }
-    // Paginate
-    let after = res.paging?.next?.after;
-    while (after && statsMap.size < emailIds.length) {
-      const pageUrl = `/marketing/v3/emails/statistics/list?startTimestamp=2020-01-01T00%3A00%3A00Z&endTimestamp=2030-01-01T00%3A00%3A00Z&after=${after}`;
-      const pageRes = await hubspotFetch(pageUrl, token);
-      for (const item of (pageRes.results || [])) {
-        const id = String(item.emailId || item.id || "");
-        if (id && idSet.has(id)) {
-          statsMap.set(id, item.counters || item.aggregate?.counters || {});
+  // Fetch individual email stats in parallel batches of 10
+  const batchSize = 10;
+  for (let i = 0; i < emailIds.length; i += batchSize) {
+    const batch = emailIds.slice(i, i + batchSize);
+    const results = await Promise.allSettled(
+      batch.map(async (id) => {
+        const res = await hubspotFetch(`/marketing/v3/emails/${id}/statistics`, token);
+        return { id, res };
+      })
+    );
+    for (const r of results) {
+      if (r.status === "fulfilled") {
+        const { id, res } = r.value;
+        const counters = res.counters || res.aggregate?.counters || {};
+        statsMap.set(id, counters);
+        // Log first successful response structure
+        if (statsMap.size === 1) {
+          console.log(`[${accountLabel}] Stats response keys: ${JSON.stringify(Object.keys(res))}`);
+          console.log(`[${accountLabel}] Stats counters: ${JSON.stringify(counters)}`);
         }
       }
-      after = pageRes.paging?.next?.after;
-    }
-  } catch (err) {
-    console.error(`[${accountLabel}] Stats list endpoint failed:`, err);
-    // Fallback: fetch individual email stats for a subset
-    const subset = emailIds.slice(0, 20);
-    for (const id of subset) {
-      try {
-        const res = await hubspotFetch(`/marketing/v3/emails/${id}/statistics`, token);
-        if (res.counters) statsMap.set(id, res.counters);
-        else if (res.aggregate?.counters) statsMap.set(id, res.aggregate.counters);
-      } catch { /* skip */ }
     }
   }
 
   console.log(`[${accountLabel}] Fetched stats for ${statsMap.size}/${emailIds.length} emails`);
-  const firstKey = statsMap.keys().next().value;
-  if (firstKey) {
-    console.log(`[${accountLabel}] Sample stat: ${JSON.stringify(statsMap.get(firstKey))}`);
-  }
-
   return statsMap;
 }
 
