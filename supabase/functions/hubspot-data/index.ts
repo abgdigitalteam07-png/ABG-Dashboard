@@ -8,6 +8,7 @@ interface HubSpotRequest {
   brandName: string;
   startDate: string;
   endDate: string;
+  debug?: boolean;
 }
 
 interface EmailRecord {
@@ -62,18 +63,28 @@ function getBenchmarkLabel(metric: string, value: number): string {
   return "Good";
 }
 
-function brandMatches(text: string | undefined | null, brandName: string): boolean {
-  if (!text) return false;
-  return text.toLowerCase().includes(brandName.toLowerCase());
+// ---------- STEP 2: Fetch business units ----------
+interface BusinessUnit { id: string; name: string; }
+
+async function fetchBusinessUnits(token: string): Promise<BusinessUnit[]> {
+  try {
+    const res = await hubspotFetch("/business-units/v3/business-units/user/me", token);
+    const units: BusinessUnit[] = (res.results || []).map((u: any) => ({ id: String(u.id), name: u.name }));
+    console.log(`Business units found: ${JSON.stringify(units.map(u => ({ id: u.id, name: u.name })))}`);
+    return units;
+  } catch (err) {
+    console.error("Failed to fetch business units:", err);
+    return [];
+  }
 }
 
-// Fetch all marketing emails via v3 API (paginated)
+// ---------- Fetch all published emails (paginated) ----------
 async function fetchAllEmails(token: string): Promise<any[]> {
   const allEmails: any[] = [];
   let after: string | undefined = undefined;
   let page = 0;
 
-  while (page < 50) { // safety limit
+  while (page < 50) {
     let url = `/marketing/v3/emails?limit=100&orderBy=-publishDate&isPublished=true`;
     if (after) url += `&after=${after}`;
 
@@ -98,7 +109,7 @@ async function fetchAllEmails(token: string): Promise<any[]> {
   return allEmails;
 }
 
-// Fetch campaign stats via v1 campaigns endpoint
+// ---------- Fetch campaign stats ----------
 async function fetchCampaignStats(token: string, campaignId: string): Promise<any | null> {
   try {
     return await hubspotFetch(`/email/public/v1/campaigns/${campaignId}`, token);
@@ -116,33 +127,29 @@ Deno.serve(async (req) => {
     const token = Deno.env.get("HUBSPOT_ACCESS_TOKEN");
     if (!token) throw new Error("HUBSPOT_ACCESS_TOKEN not configured");
 
-    const body = await req.json();
+    const body: HubSpotRequest = await req.json();
 
-    // Diagnostic mode
+    // ---------- STEP 1: Debug mode — log raw email properties ----------
     if (body.debug === true) {
       try {
-        const raw = await hubspotFetch("/marketing/v3/emails?limit=3&orderBy=-publishDate&isPublished=true", token);
-        const items = raw.results || [];
-        const results: any[] = [];
+        // STEP 1: Fetch 1 raw email to inspect all properties
+        const raw = await hubspotFetch("/marketing/v3/emails?limit=1", token);
+        const firstEmail = raw.results?.[0] || null;
+        console.log("STEP 1 — Raw email properties:", JSON.stringify(firstEmail, null, 2));
 
-        for (const email of items) {
-          let stats: any = null;
-          if (email.primaryEmailCampaignId) {
-            stats = await fetchCampaignStats(token, email.primaryEmailCampaignId);
-          }
-          results.push({
-            id: email.id,
-            name: email.name,
-            subject: email.subject,
-            from: email.from,
-            publishDate: email.publishDate,
-            businessUnitId: email.businessUnitId,
-            campaignName: email.campaignName,
-            primaryEmailCampaignId: email.primaryEmailCampaignId,
-            counters: stats?.counters || null,
-          });
-        }
-        return new Response(JSON.stringify({ debug: true, total: raw.total, results }), {
+        // STEP 2: Fetch business units
+        const units = await fetchBusinessUnits(token);
+
+        return new Response(JSON.stringify({
+          debug: true,
+          rawEmailProperties: firstEmail ? Object.keys(firstEmail) : [],
+          businessUnitId_value: firstEmail?.businessUnitId ?? "NOT FOUND",
+          hs_all_assigned_business_unit_ids: firstEmail?.hs_all_assigned_business_unit_ids ?? "NOT FOUND",
+          subscriptionName: firstEmail?.subscriptionDetails?.subscriptionName ?? "NOT FOUND",
+          activeDomain: firstEmail?.activeDomain ?? "NOT FOUND",
+          businessUnits: units,
+          note: "businessUnitId exists but business units API may be empty if the Business Units add-on is not enabled. Filtering uses subscriptionDetails.subscriptionName and activeDomain as fallback.",
+        }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       } catch (e: any) {
@@ -152,17 +159,24 @@ Deno.serve(async (req) => {
       }
     }
 
-    const { brandName, startDate, endDate } = body as HubSpotRequest;
+    const { brandName, startDate, endDate } = body;
     if (!brandName || !startDate || !endDate) {
       return new Response(JSON.stringify({ error: "Missing required params" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     console.log(`Fetching HubSpot data for brand="${brandName}", ${startDate} to ${endDate}`);
 
-    // Contacts
+    // ---------- STEP 2: Get business units & resolve brand ID ----------
+    const businessUnits = await fetchBusinessUnits(token);
+    const matchedUnit = businessUnits.find(
+      (u) => u.name.toLowerCase() === brandName.toLowerCase()
+    );
+    const businessUnitId = matchedUnit?.id;
+    console.log(`Business unit ID for "${brandName}": ${businessUnitId ?? "NOT FOUND (will use text/domain matching)"}`);
+
+    // ---------- Contacts ----------
     let totalContacts = 0;
     try {
       const res = await hubspotPost("/crm/v3/objects/contacts/search", token, { limit: 0 });
@@ -184,18 +198,29 @@ Deno.serve(async (req) => {
       } catch { /* skip */ }
     }));
 
-    // Fetch all published emails
+    // ---------- STEP 3: Fetch emails & filter by brand ----------
     const allRawEmails = await fetchAllEmails(token);
 
-    // Filter by brand: match name, subject, fromName, campaignName
-    const brandFiltered = allRawEmails.filter((e: any) => {
-      const fromName = e.from?.fromName || "";
-      return brandMatches(e.name, brandName) ||
-        brandMatches(fromName, brandName) ||
-        brandMatches(e.subject, brandName) ||
-        brandMatches(e.campaignName, brandName);
-    });
-    console.log(`Found ${brandFiltered.length} emails matching brand="${brandName}"`);
+    // Strategy: try businessUnitId mapping first, then fall back to multi-signal text matching
+    let brandFiltered: any[];
+    if (businessUnitId) {
+      brandFiltered = allRawEmails.filter((e: any) => String(e.businessUnitId) === businessUnitId);
+      console.log(`Found ${brandFiltered.length} emails for "${brandName}" (business unit ID: ${businessUnitId})`);
+    } else {
+      // Fall back: match against subscriptionName, activeDomain, from name, email name, subject
+      const bn = brandName.toLowerCase();
+      brandFiltered = allRawEmails.filter((e: any) => {
+        const fromName = (e.from?.fromName || "").toLowerCase();
+        const subName = (e.subscriptionDetails?.subscriptionName || "").toLowerCase();
+        const domain = (e.activeDomain || "").toLowerCase();
+        const name = (e.name || "").toLowerCase();
+        const subject = (e.subject || "").toLowerCase();
+        const campaignName = (e.campaignName || "").toLowerCase();
+        return subName.includes(bn) || domain.includes(bn) || name.includes(bn) ||
+          fromName.includes(bn) || subject.includes(bn) || campaignName.includes(bn);
+      });
+      console.log(`Found ${brandFiltered.length} emails for "${brandName}" via text/domain matching`);
+    }
 
     // Filter by date range
     const dateFiltered = brandFiltered.filter((e: any) => {
@@ -206,10 +231,9 @@ Deno.serve(async (req) => {
     });
     console.log(`After date filter (${startDate} to ${endDate}): ${dateFiltered.length} emails`);
 
-    // Fetch stats for each email via campaign endpoint (batch with concurrency limit)
+    // ---------- STEP 4: Fetch stats via campaigns API ----------
     let totalSent = 0, totalDelivered = 0, totalOpens = 0, totalClicks = 0, totalBounce = 0, totalUnsub = 0, totalSpam = 0;
 
-    // Process in batches of 10 to avoid rate limits
     const emails: EmailRecord[] = [];
     for (let i = 0; i < dateFiltered.length; i += 10) {
       const batch = dateFiltered.slice(i, i + 10);
@@ -231,6 +255,8 @@ Deno.serve(async (req) => {
 
         totalSent += sent; totalDelivered += delivered; totalOpens += opens;
         totalClicks += clicks; totalBounce += bounces; totalUnsub += unsubs; totalSpam += spam;
+
+        console.log(`Email stats: sent=${sent} opens=${opens} clicks=${clicks} — "${e.name}"`);
 
         const openRate = delivered > 0 ? parseFloat((opens / delivered * 100).toFixed(1)) : 0;
         const clickRate = delivered > 0 ? parseFloat((clicks / delivered * 100).toFixed(1)) : 0;
@@ -278,6 +304,7 @@ Deno.serve(async (req) => {
       return { date, value: d.sent > 0 ? parseFloat((d.unsub / d.sent * 100).toFixed(2)) : 0 };
     });
 
+    // ---------- STEP 5: New scorecards ----------
     const result = {
       totalContacts,
       totalContactsDelta: 0,
@@ -292,6 +319,8 @@ Deno.serve(async (req) => {
       unsubscribeRateLabel: getBenchmarkLabel("unsubscribeRate", unsubscribeRate),
       spamReports: totalSpam,
       totalEmailsSent: totalSent,
+      totalEmails: emails.length,       // STEP 5: count of emails in date range
+      contactsReached: totalSent,        // STEP 5: sum of sent
       deliveredRate,
       deliveredRateDelta: 0,
       lifecycleStages,
@@ -299,6 +328,8 @@ Deno.serve(async (req) => {
       highPerforming,
       lowPerforming,
       totalFetched: allRawEmails.length,
+      brandFilteredCount: brandFiltered.length,
+      businessUnitId: businessUnitId ?? null,
       openRateOverTime,
       unsubscribeRateOverTime,
     };

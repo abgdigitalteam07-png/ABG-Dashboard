@@ -172,10 +172,12 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
       {/* CRM Overview */}
       <div>
         <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">CRM Overview</h2>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
           <ScoreCard title="Total Contacts" value={formatNumber(filteredData.totalContacts)} delta={filteredData.totalContactsDelta} />
           <ScoreCard title="Delivered Rate" value={`${filteredData.deliveredRate}%`} delta={filteredData.deliveredRateDelta} />
           <ScoreCard title="Total Emails Sent" value={formatNumber(filteredData.totalEmailsSent)} />
+          <ScoreCard title="Total Emails" value={formatNumber(filteredData.totalEmails ?? 0)} />
+          <ScoreCard title="Contacts Reached" value={formatNumber(filteredData.contactsReached ?? 0)} />
         </div>
       </div>
 
@@ -252,6 +254,8 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
       <p className="text-xs text-muted-foreground px-1">
         Fetched {filteredData.emails?.length ?? 0} emails for "{filteredData.brandName ?? ""}"
         {filteredData.totalFetched != null && ` (${filteredData.totalFetched} total in account)`}
+        {filteredData.businessUnitId && ` · BU ID: ${filteredData.businessUnitId}`}
+        {filteredData.brandFilteredCount != null && ` · ${filteredData.brandFilteredCount} matched brand`}
       </p>
 
       {/* SECTION C - Email Performance Table */}
@@ -266,7 +270,6 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
                 <TableHead className="text-xs">Email Name</TableHead>
                 <TableHead className="text-xs">Sender</TableHead>
                 <TableHead className="text-xs">Published</TableHead>
-                <TableHead className="text-xs">Account</TableHead>
                 <TableHead className="text-right text-xs">Sent</TableHead>
                 <TableHead className="text-right text-xs">Click %</TableHead>
                 <TableHead className="text-right text-xs">Delivered %</TableHead>
@@ -279,7 +282,7 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
             <TableBody>
               {filteredData.emails.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={11} className="text-center text-sm text-muted-foreground py-8">
+                  <TableCell colSpan={10} className="text-center text-sm text-muted-foreground py-8">
                     No emails found in this date range.
                   </TableCell>
                 </TableRow>
@@ -289,7 +292,6 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
                     <TableCell className="text-sm font-medium">{row.name}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{row.sender}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{row.publishDate}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{row.account}</TableCell>
                     <TableCell className="text-right tabular-nums text-sm">{row.sent.toLocaleString()}</TableCell>
                     <TableCell className="text-right tabular-nums text-sm">{row.clickRate}%</TableCell>
                     <TableCell className="text-right tabular-nums text-sm">{row.deliveredRate}%</TableCell>
