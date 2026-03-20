@@ -184,6 +184,7 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
             <TableHeader>
               <TableRow>
                 <TableHead className="text-xs">Email Name</TableHead>
+                <TableHead className="text-xs">Brand</TableHead>
                 <TableHead className="text-xs">Sender</TableHead>
                 <TableHead className="text-xs">Publish Date</TableHead>
                 <TableHead className="text-right text-xs">Sent</TableHead>
@@ -198,15 +199,16 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
             <TableBody>
               {d.emails.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="py-8 text-center text-sm text-muted-foreground">
-                    No emails found in this date range.
+                  <TableCell colSpan={11} className="py-8 text-center text-sm text-muted-foreground">
+                    No emails found for "{d.brandName}" in selected date range.
                   </TableCell>
                 </TableRow>
               ) : (
                 d.emails.map((row: any, idx: number) => (
                   <TableRow key={`${row.name}-${idx}`}>
                     <TableCell className="max-w-[260px] truncate text-sm font-medium">{row.name}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{row.sender}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{row.brandName || d.brandName}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{row.sender || "Unknown"}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{row.publishDate}</TableCell>
                     <TableCell className="text-right tabular-nums text-sm">{row.sent.toLocaleString()}</TableCell>
                     <TableCell className="text-right tabular-nums text-sm">{row.delivered.toLocaleString()}</TableCell>
