@@ -31,11 +31,6 @@ interface EmailRecord {
   spamRate: number;
 }
 
-interface BusinessUnit {
-  id: string;
-  name: string;
-}
-
 // ─── helpers ───
 
 async function hubspotFetch(path: string, token: string) {
@@ -70,21 +65,89 @@ function getBenchmarkLabel(metric: string, value: number): string {
   return "Good";
 }
 
-// ─── business units ───
+// ─── date extraction ───
 
-async function fetchBusinessUnits(token: string): Promise<BusinessUnit[]> {
-  try {
-    const res = await hubspotFetch("/business-units/v3/business-units/user/me", token);
-    const units: BusinessUnit[] = (res.results || []).map((u: any) => ({
-      id: String(u.id),
-      name: u.name,
-    }));
-    console.log(`Business units found: ${JSON.stringify(units)}`);
-    return units;
-  } catch (err) {
-    console.error("Failed to fetch business units:", err);
-    return [];
+function extractDateStr(email: any): string | null {
+  const candidates = [
+    email?.publishDate,
+    email?.publishedAt,
+    email?.sendDate,
+    email?.scheduledAt,
+    email?.updatedAt,
+  ];
+  for (const c of candidates) {
+    if (!c) continue;
+    const d = new Date(typeof c === "number" ? (c < 1e12 ? c * 1000 : c) : c);
+    if (!isNaN(d.getTime())) return d.toISOString().split("T")[0];
   }
+  return null;
+}
+
+// ─── STRICT brand matching ───
+// Since businessUnitId is "0" for all emails and business units API is 403,
+// we match ONLY on:
+//   1. fromName exactly equals brandName (case-insensitive)
+//   2. email name starts with brandName followed by separator or end
+
+/**
+ * Check if fromName exactly equals the brand name (case-insensitive, trimmed).
+ */
+function fromNameExactMatch(email: any, brandName: string): boolean {
+  const fromName = (email?.from?.fromName || "").trim().toLowerCase();
+  return fromName === brandName.toLowerCase();
+}
+
+/**
+ * Check if the email name starts with the brand name, followed by a word boundary.
+ * "Swan Xpress" → matches "Swan"
+ * "Swanstone" → does NOT match "Swan"
+ * "Swan" → matches "Swan"
+ */
+function nameStartsWithBrand(emailName: string, brandName: string): boolean {
+  if (!emailName) return false;
+  const lower = emailName.trim().toLowerCase();
+  const bn = brandName.toLowerCase();
+  if (!lower.startsWith(bn)) return false;
+  if (lower.length === bn.length) return true;
+  // Next char must be a non-alphanumeric (word boundary)
+  const nextChar = lower[bn.length];
+  return /[^a-z0-9]/.test(nextChar);
+}
+
+/**
+ * Check if the email name contains the brand name as a standalone word.
+ * "Optima/CleanUp with Swan" → matches "Swan"
+ * "Let It Snow with Swanstone" → does NOT match "Swan" (Swanstone ≠ Swan)
+ */
+function nameContainsBrandWord(emailName: string, brandName: string): boolean {
+  if (!emailName) return false;
+  const escaped = brandName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // Match brand name surrounded by word boundaries (non-alphanumeric or start/end)
+  const regex = new RegExp(`(?:^|[^a-zA-Z0-9])${escaped}(?:[^a-zA-Z0-9]|$)`, "i");
+  return regex.test(emailName);
+}
+
+function matchEmailToBrand(
+  email: any,
+  brandName: string,
+): { matched: boolean; reason: string } {
+  // Rule 1: fromName exactly equals brandName
+  if (fromNameExactMatch(email, brandName)) {
+    return { matched: true, reason: "fromName-exact" };
+  }
+
+  // Rule 2: email name starts with brandName + word boundary
+  const emailName = (email?.name || "").trim();
+  if (nameStartsWithBrand(emailName, brandName)) {
+    return { matched: true, reason: "name-startsWith" };
+  }
+
+  // Rule 3: email name contains brandName as standalone word (not part of another word)
+  if (nameContainsBrandWord(emailName, brandName)) {
+    return { matched: true, reason: "name-containsWord" };
+  }
+
+  return { matched: false, reason: "" };
 }
 
 // ─── fetch all published emails ───
@@ -127,118 +190,6 @@ async function fetchCampaignStats(token: string, campaignId: string): Promise<an
   }
 }
 
-// ─── date extraction ───
-
-function extractDateStr(email: any): string | null {
-  const candidates = [
-    email?.publishDate,
-    email?.publishedAt,
-    email?.sendDate,
-    email?.scheduledAt,
-    email?.updatedAt,
-  ];
-  for (const c of candidates) {
-    if (!c) continue;
-    const d = new Date(typeof c === "number" ? (c < 1e12 ? c * 1000 : c) : c);
-    if (!isNaN(d.getTime())) return d.toISOString().split("T")[0];
-  }
-  return null;
-}
-
-// ─── STRICT brand matching ───
-
-/**
- * Tokenize a string into lowercase words (split on spaces, hyphens, underscores, dots).
- */
-function tokenize(s: string): string[] {
-  return s.toLowerCase().split(/[\s\-_\.]+/).filter(Boolean);
-}
-
-/**
- * Check if `text` contains the brand name as a **whole word / token boundary** match.
- * e.g. brand="Swan" matches "Swan Xpress" but NOT "Swanstone Newsletter".
- *      brand="MAAX" matches "MAAX Spring" but NOT "MAAXIMA".
- */
-function exactWordMatch(text: string, brandName: string): boolean {
-  if (!text) return false;
-  // Build a regex that matches the brand name surrounded by word boundaries.
-  // We escape special regex chars in the brand name.
-  const escaped = brandName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const regex = new RegExp(`(?:^|[\\s\\-_.,;:!?\\/|()\\[\\]])${escaped}(?:[\\s\\-_.,;:!?\\/|()\\[\\]]|$)`, "i");
-  return regex.test(text);
-}
-
-/**
- * Check if the email name starts with the brand name (case-insensitive),
- * followed by a separator or end-of-string.
- */
-function nameStartsWith(emailName: string, brandName: string): boolean {
-  if (!emailName) return false;
-  const lower = emailName.toLowerCase();
-  const bn = brandName.toLowerCase();
-  if (!lower.startsWith(bn)) return false;
-  // Must be followed by separator or end
-  if (lower.length === bn.length) return true;
-  const next = lower[bn.length];
-  return /[\s\-_.,;:!?\\/|()[\]]/.test(next);
-}
-
-function matchEmailToBrand(
-  email: any,
-  brandName: string,
-  businessUnitId: string | undefined,
-): { matched: boolean; reason: string } {
-  // ── Priority 1: businessUnitId ──
-  if (businessUnitId) {
-    const emailBuId = String(email?.businessUnitId ?? "");
-    const hsIds = email?.hs_all_assigned_business_unit_ids;
-    const idSet = new Set<string>();
-    if (emailBuId) idSet.add(emailBuId);
-    if (hsIds != null) {
-      const raw = Array.isArray(hsIds) ? hsIds : String(hsIds).replace(/[\[\]\s]/g, "").split(",");
-      raw.forEach((v: any) => { if (v) idSet.add(String(v)); });
-    }
-    if (idSet.has(businessUnitId)) {
-      return { matched: true, reason: "businessUnitId" };
-    }
-    // businessUnitId is available for this brand but this email doesn't belong → reject
-    return { matched: false, reason: "" };
-  }
-
-  // ── Priority 2: Strict text matching (only when BU unavailable) ──
-
-  // 2a. fromName EXACTLY equals brandName (case insensitive)
-  const fromName = (email?.from?.fromName || "").trim();
-  if (fromName.toLowerCase() === brandName.toLowerCase()) {
-    return { matched: true, reason: "fromName-exact" };
-  }
-
-  // 2b. fromName contains brand as exact word boundary
-  if (exactWordMatch(fromName, brandName)) {
-    return { matched: true, reason: "fromName-word" };
-  }
-
-  // 2c. email name STARTS WITH brandName (with word boundary after)
-  const emailName = (email?.name || "").trim();
-  if (nameStartsWith(emailName, brandName)) {
-    return { matched: true, reason: "name-startsWith" };
-  }
-
-  // 2d. subscriptionDetails.subscriptionName exact word match
-  const subName = (email?.subscriptionDetails?.subscriptionName || "").trim();
-  if (exactWordMatch(subName, brandName)) {
-    return { matched: true, reason: "subscriptionName-word" };
-  }
-
-  // 2e. activeDomain contains brand as word
-  const activeDomain = (email?.activeDomain || "").trim();
-  if (exactWordMatch(activeDomain, brandName)) {
-    return { matched: true, reason: "activeDomain-word" };
-  }
-
-  return { matched: false, reason: "" };
-}
-
 // ─── main handler ───
 
 Deno.serve(async (req) => {
@@ -257,9 +208,8 @@ Deno.serve(async (req) => {
       const raw = await hubspotFetch("/marketing/v3/emails?limit=1", token);
       const firstEmail = raw.results?.[0] || null;
       console.log("Debug — raw email:", JSON.stringify(firstEmail, null, 2));
-      const units = await fetchBusinessUnits(token);
       return new Response(
-        JSON.stringify({ debug: true, firstEmail, businessUnits: units }),
+        JSON.stringify({ debug: true, firstEmail }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
@@ -273,14 +223,6 @@ Deno.serve(async (req) => {
     }
 
     console.log(`Fetching HubSpot data for brand="${brandName}", ${startDate} to ${endDate}`);
-
-    // ── Business units ──
-    const businessUnits = await fetchBusinessUnits(token);
-    const matchedUnit = businessUnits.find(
-      (u) => u.name.toLowerCase() === brandName.toLowerCase(),
-    );
-    const businessUnitId = matchedUnit?.id;
-    console.log(`Business unit found for "${brandName}": ${businessUnitId ?? "NOT FOUND"}`);
 
     // ── Contacts / lifecycle ──
     let totalContacts = 0;
@@ -314,21 +256,22 @@ Deno.serve(async (req) => {
     console.log(`Total emails before filter: ${allRawEmails.length}`);
 
     const brandFiltered: any[] = [];
-    const matchReasons: { name: string; reason: string }[] = [];
+    const matchReasons: { name: string; reason: string; fromName: string }[] = [];
 
     for (const email of allRawEmails) {
-      const result = matchEmailToBrand(email, brandName, businessUnitId);
+      const result = matchEmailToBrand(email, brandName);
       if (result.matched) {
         brandFiltered.push(email);
-        matchReasons.push({ name: email?.name || "Untitled", reason: result.reason });
+        matchReasons.push({
+          name: email?.name || "Untitled",
+          reason: result.reason,
+          fromName: email?.from?.fromName || "Unknown",
+        });
       }
     }
 
     console.log(`Total emails after brand filter: ${brandFiltered.length}`);
-    console.log(`Matched emails: ${JSON.stringify(matchReasons.map(m => m.name))}`);
-    if (matchReasons.length <= 30) {
-      console.log(`Match details: ${JSON.stringify(matchReasons)}`);
-    }
+    console.log(`Matched emails: ${JSON.stringify(matchReasons.map(m => `${m.name} [${m.reason}] (from: ${m.fromName})`))}`);
 
     // Date filter
     const dateFiltered = brandFiltered.filter((email) => {
@@ -370,6 +313,8 @@ Deno.serve(async (req) => {
           totalBounce += bounce;
           totalUnsub += unsubscribe;
           totalSpam += spam;
+
+          console.log(`Email stats: sent=${sent} opens=${opens} clicks=${clicks} delivered=${delivered} — "${email?.name || "Untitled"}"`);
 
           const openRate = delivered > 0 ? parseFloat(((opens / delivered) * 100).toFixed(1)) : 0;
           const clickRate = delivered > 0 ? parseFloat(((clicks / delivered) * 100).toFixed(1)) : 0;
@@ -436,7 +381,7 @@ Deno.serve(async (req) => {
       emails,
       totalFetched: allRawEmails.length,
       brandFilteredCount: brandFiltered.length,
-      businessUnitId: businessUnitId ?? null,
+      businessUnitId: null,
     };
 
     console.log(`Result: ${emails.length} emails, openRate=${openRate}, clickRate=${clickRate}, totalSent=${totalSent}`);
