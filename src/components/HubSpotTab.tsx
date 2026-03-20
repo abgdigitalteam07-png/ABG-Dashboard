@@ -290,7 +290,6 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
                     <TableCell className="text-sm font-medium">{row.name}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{row.sender}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{row.publishDate}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{row.account}</TableCell>
                     <TableCell className="text-right tabular-nums text-sm">{row.sent.toLocaleString()}</TableCell>
                     <TableCell className="text-right tabular-nums text-sm">{row.clickRate}%</TableCell>
                     <TableCell className="text-right tabular-nums text-sm">{row.deliveredRate}%</TableCell>
