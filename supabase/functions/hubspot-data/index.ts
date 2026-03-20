@@ -117,33 +117,56 @@ async function fetchAllEmails(token: string, accountLabel: string): Promise<any[
   return allEmails;
 }
 
-// Fetch per-email statistics keyed by email ID
-// Fetch per-email statistics using individual endpoint
+// Fetch per-email statistics - try v1 individual email endpoint which includes stats.counters
 async function fetchEmailStats(token: string, accountLabel: string, emailIds: string[]): Promise<Map<string, any>> {
   const statsMap = new Map<string, any>();
   if (emailIds.length === 0) return statsMap;
 
-  // Fetch individual email stats in parallel batches of 10
-  const batchSize = 10;
-  for (let i = 0; i < emailIds.length; i += batchSize) {
-    const batch = emailIds.slice(i, i + batchSize);
-    const results = await Promise.allSettled(
-      batch.map(async (id) => {
-        const res = await hubspotFetch(`/marketing/v3/emails/${id}/statistics`, token);
-        return { id, res };
-      })
-    );
-    for (const r of results) {
-      if (r.status === "fulfilled") {
-        const { id, res } = r.value;
-        const counters = res.counters || res.aggregate?.counters || {};
-        statsMap.set(id, counters);
-        if (statsMap.size === 1) {
-          console.log(`[${accountLabel}] Stats response keys: ${JSON.stringify(Object.keys(res))}`);
-          console.log(`[${accountLabel}] Stats counters: ${JSON.stringify(counters)}`);
-        }
+  // Try v1 single email endpoint for first email to check if it works
+  const testId = emailIds[0];
+  let useV1 = false;
+  try {
+    const res = await fetch(`https://api.hubapi.com/marketing-emails/v1/emails/${testId}`, {
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.stats?.counters) {
+        useV1 = true;
+        statsMap.set(testId, data.stats.counters);
+        console.log(`[${accountLabel}] v1 stats available! Sample: ${JSON.stringify(data.stats.counters)}`);
       } else {
-        console.error(`[${accountLabel}] Stats fetch failed: ${r.reason?.message?.substring(0, 200)}`);
+        console.log(`[${accountLabel}] v1 email returned but no stats. Keys: ${Object.keys(data).join(",")}`);
+        if (data.stats) console.log(`[${accountLabel}] stats obj: ${JSON.stringify(data.stats).substring(0, 300)}`);
+      }
+    } else {
+      const errText = await res.text();
+      console.log(`[${accountLabel}] v1 single email ${res.status}: ${errText.substring(0, 200)}`);
+    }
+  } catch (err: any) {
+    console.log(`[${accountLabel}] v1 single email error: ${err.message?.substring(0, 100)}`);
+  }
+
+  if (useV1) {
+    // Fetch remaining emails via v1 in batches of 10
+    const remaining = emailIds.slice(1);
+    const batchSize = 10;
+    for (let i = 0; i < remaining.length; i += batchSize) {
+      const batch = remaining.slice(i, i + batchSize);
+      const results = await Promise.allSettled(
+        batch.map(async (id) => {
+          const res = await fetch(`https://api.hubapi.com/marketing-emails/v1/emails/${id}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (!res.ok) throw new Error(`${res.status}`);
+          const data = await res.json();
+          return { id, counters: data.stats?.counters || {} };
+        })
+      );
+      for (const r of results) {
+        if (r.status === "fulfilled") {
+          statsMap.set(r.value.id, r.value.counters);
+        }
       }
     }
   }
