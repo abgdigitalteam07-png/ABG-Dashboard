@@ -283,6 +283,19 @@ async function fetchAccountData(
     };
   });
 
+  // If per-email stats yielded 0, use aggregate counters for scorecards
+  const usedAgg = totalSent === 0 && (aggCounters.sent || 0) > 0;
+  if (usedAgg) {
+    totalSent = aggCounters.sent || 0;
+    totalDelivered = aggCounters.delivered || 0;
+    totalOpens = aggCounters.open || 0;
+    totalClicks = aggCounters.click || 0;
+    totalBounce = aggCounters.bounce || 0;
+    totalUnsub = aggCounters.unsubscribed || 0;
+    totalSpam = aggCounters.spamreport || 0;
+    console.log(`[${accountLabel}] Using aggregate stats for scorecards (no per-email stats)`);
+  }
+
   return {
     totalContacts,
     lifecycleStages,
