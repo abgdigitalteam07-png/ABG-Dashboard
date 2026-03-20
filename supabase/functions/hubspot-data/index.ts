@@ -314,13 +314,13 @@ Deno.serve(async (req) => {
     let totalBounce = 0, totalUnsub = 0, totalSpam = 0;
     const emails: EmailRecord[] = [];
 
-    for (let i = 0; i < brandFiltered.length; i += 10) {
-      const batch = brandFiltered.slice(i, i + 10);
+    for (let i = 0; i < dateFiltered.length; i += 10) {
+      const batch = dateFiltered.slice(i, i + 10);
       const results = await Promise.all(
         batch.map(async (email: any) => {
           const campaignId = email?.primaryEmailCampaignId;
           const counters = campaignId
-            ? (await fetchCampaignStats(token, campaignId, startTimestamp, endTimestamp))?.counters
+            ? (await fetchCampaignStats(token, campaignId))?.counters
             : null;
 
           const publishDate = extractDateStr(email) ?? "";
@@ -333,9 +333,6 @@ Deno.serve(async (req) => {
           const bounce = counters?.bounce || 0;
           const unsubscribe = counters?.unsubscribed || 0;
           const spam = counters?.spamreport || 0;
-
-          // Include email only if it was actually sent in the selected stats window.
-          if (sent <= 0) return null;
 
           const openRate = delivered > 0 ? parseFloat(((opens / delivered) * 100).toFixed(1)) : 0;
           const clickRate = delivered > 0 ? parseFloat(((clicks / delivered) * 100).toFixed(1)) : 0;
