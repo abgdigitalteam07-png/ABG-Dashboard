@@ -181,14 +181,21 @@ async function fetchAllEmails(token: string): Promise<any[]> {
   return all;
 }
 
-// ─── campaign stats ───
+// ─── campaign stats with optional date range ───
 
 async function fetchCampaignStats(
   token: string,
   campaignId: string,
+  startTimestamp?: number,
+  endTimestamp?: number,
 ): Promise<any | null> {
   try {
-    return await hubspotFetch(`/email/public/v1/campaigns/${campaignId}`, token);
+    let url = `/email/public/v1/campaigns/${campaignId}`;
+    const params: string[] = [];
+    if (startTimestamp) params.push(`startTimestamp=${startTimestamp}`);
+    if (endTimestamp) params.push(`endTimestamp=${endTimestamp}`);
+    if (params.length) url += `?${params.join("&")}`;
+    return await hubspotFetch(url, token);
   } catch {
     return null;
   }
