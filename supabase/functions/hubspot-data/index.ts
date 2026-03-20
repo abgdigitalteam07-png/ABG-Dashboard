@@ -247,79 +247,34 @@ async function fetchAccountData(
 
   console.log(`[${accountLabel}] After date filter (${startDate} to ${endDate}): ${dateFiltered.length} emails`);
 
-  // For v3, fetch statistics for filtered emails
-  let v3StatsMap = new Map<string, any>();
-  if (apiVersion === "v3" && dateFiltered.length > 0) {
-    const emailIds = dateFiltered.map((e: any) => e.id).filter(Boolean);
-    v3StatsMap = await fetchV3EmailStats(token, emailIds, accountLabel, startDate, endDate);
-  }
+  // Fetch aggregate stats for the account (covers ALL emails, not per-brand)
+  const aggStats = await fetchAggregateEmailStats(token, accountLabel, startDate, endDate);
 
-  // Map to EmailRecord with proper stats
+  // Map emails to EmailRecord (per-email stats not available via v3, so show listing only)
   const emails: EmailRecord[] = dateFiltered.map((e: any) => {
-    let sent = 0, delivered = 0, opens = 0, clicks = 0, bounce = 0, unsubscribe = 0, spam = 0;
-
-    if (apiVersion === "v1") {
-      const stats = e.stats?.counters || {};
-      sent = stats.sent || stats.processed || 0;
-      delivered = stats.delivered || (sent - (stats.bounce || 0));
-      opens = stats.open || stats.uniqueopens || 0;
-      clicks = stats.click || stats.uniqueclicks || 0;
-      bounce = stats.bounce || stats.hardbounced || 0;
-      unsubscribe = stats.unsubscribed || 0;
-      spam = stats.spamreport || 0;
-    } else {
-      // v3 stats from separate endpoint
-      const s = v3StatsMap.get(e.id) || {};
-      // v3 statistics response: { counters: { sent, delivered, open, click, ... } } or flat
-      const counters = s.counters || s.ratios || s;
-      sent = counters.sent || s.sent || 0;
-      delivered = counters.delivered || s.delivered || 0;
-      opens = counters.open || counters.uniqueopen || s.open || s.opens || 0;
-      clicks = counters.click || counters.uniqueclick || s.click || s.clicks || 0;
-      bounce = counters.bounce || s.bounce || 0;
-      unsubscribe = counters.unsubscribed || s.unsubscribed || 0;
-      spam = counters.spamreport || s.spamreport || 0;
-      if (!delivered && sent) delivered = sent - bounce;
-    }
-
-    // v1: publishDate (ms), v3: publishedAt (ISO)
     const pubTimestamp = e.publishDate || e.publishedAt || e.updatedAt || e.updated || e.created;
     const publishDate = pubTimestamp ? new Date(pubTimestamp).toISOString().split("T")[0] : "";
-    const fromName = e.fromName || e.from?.name || "Unknown";
+    const fromName = e.fromName || e.from?.name || e.from?.fromName || "Unknown";
 
     return {
       name: e.name || "Untitled",
       subject: e.subject || "",
       sender: fromName,
       publishDate,
-      sent,
-      delivered: delivered > 0 ? delivered : 0,
-      opens,
-      clicks,
-      bounce,
-      unsubscribe,
-      spam,
-      openRate: delivered > 0 ? parseFloat((opens / delivered * 100).toFixed(1)) : 0,
-      clickRate: delivered > 0 ? parseFloat((clicks / delivered * 100).toFixed(1)) : 0,
-      deliveredRate: sent > 0 ? parseFloat((delivered / sent * 100).toFixed(1)) : 0,
-      unsubscribeRate: sent > 0 ? parseFloat((unsubscribe / sent * 100).toFixed(2)) : 0,
-      bounceRate: sent > 0 ? parseFloat((bounce / sent * 100).toFixed(2)) : 0,
-      spamRate: sent > 0 ? parseFloat((spam / sent * 100).toFixed(3)) : 0,
+      sent: 0, delivered: 0, opens: 0, clicks: 0, bounce: 0, unsubscribe: 0, spam: 0,
+      openRate: 0, clickRate: 0, deliveredRate: 0, unsubscribeRate: 0, bounceRate: 0, spamRate: 0,
       account: accountLabel,
     };
   });
 
-  let totalSent = 0, totalDelivered = 0, totalOpens = 0, totalClicks = 0;
-  let totalBounce = 0, totalUnsub = 0, totalSpam = 0;
-  for (const e of emails) {
-    totalSent += e.sent;
-    totalDelivered += e.delivered;
-    totalOpens += e.opens;
-    totalClicks += e.clicks;
-    totalBounce += e.bounce;
-    totalUnsub += e.unsubscribe;
-    totalSpam += e.spam;
-  }
+  // Use aggregate stats for totals
+  const totalSent = aggStats.sent || 0;
+  const totalDelivered = aggStats.delivered || 0;
+  const totalOpens = aggStats.open || 0;
+  const totalClicks = aggStats.click || 0;
+  const totalBounce = aggStats.bounce || 0;
+  const totalUnsub = aggStats.unsubscribed || 0;
+  const totalSpam = aggStats.spamreport || 0;
 
   return {
     totalContacts,
