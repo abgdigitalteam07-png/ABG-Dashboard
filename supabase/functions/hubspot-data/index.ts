@@ -185,11 +185,8 @@ async function fetchAccountData(
   });
   await Promise.all(stagePromises);
 
-  // Fetch all emails and stats in parallel
-  const [allRawEmails, statsMap] = await Promise.all([
-    fetchAllEmails(token, accountLabel),
-    fetchEmailStats(token, accountLabel),
-  ]);
+  // Fetch all emails first
+  const allRawEmails = await fetchAllEmails(token, accountLabel);
 
   // Filter by brand: check name, fromName, campaign, subject
   const brandFiltered = allRawEmails.filter((e: any) => {
