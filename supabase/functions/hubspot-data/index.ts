@@ -82,7 +82,12 @@ function getBenchmarkLabel(metric: string, value: number): string {
   return "Good";
 }
 
-// Fetch all marketing emails from v3 API, requesting the "brand" property
+function brandMatches(text: string | undefined | null, brandName: string): boolean {
+  if (!text) return false;
+  return text.toLowerCase().includes(brandName.toLowerCase());
+}
+
+// Fetch all marketing emails from v3 API
 async function fetchAllEmails(token: string, accountLabel: string): Promise<any[]> {
   const allEmails: any[] = [];
   let after: string | undefined;
@@ -90,7 +95,7 @@ async function fetchAllEmails(token: string, accountLabel: string): Promise<any[
 
   while (hasMore) {
     try {
-      const url = `/marketing/v3/emails?limit=100&property=brand${after ? `&after=${after}` : ""}`;
+      const url = `/marketing/v3/emails?limit=100${after ? `&after=${after}` : ""}`;
       const res = await hubspotFetch(url, token);
       const results = res.results || [];
       allEmails.push(...results);
@@ -103,17 +108,6 @@ async function fetchAllEmails(token: string, accountLabel: string): Promise<any[
   }
 
   console.log(`[${accountLabel}] Fetched ${allEmails.length} total emails`);
-
-  // Log sample for debugging
-  if (allEmails.length > 0) {
-    const s = allEmails[0];
-    console.log(`[${accountLabel}] Sample keys: ${Object.keys(s).join(",")}`);
-    console.log(`[${accountLabel}] Sample: name="${s.name}", brand="${s.brand ?? "undefined"}", publishDate=${s.publishDate}`);
-    // Log a few brand values
-    const brandSamples = allEmails.slice(0, 10).map((e: any) => `${(e.name || "?").substring(0, 30)}: brand=${e.brand ?? "undefined"}`);
-    console.log(`[${accountLabel}] Brand samples: ${JSON.stringify(brandSamples)}`);
-  }
-
   return allEmails;
 }
 
