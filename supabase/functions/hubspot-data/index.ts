@@ -319,8 +319,9 @@ Deno.serve(async (req) => {
       unsubscribeRateLabel: getBenchmarkLabel("unsubscribeRate", unsubscribeRate),
       spamReports: totalSpam,
       totalEmailsSent: totalSent,
-      totalEmails: emails.length,       // STEP 5: count of emails in date range
-      contactsReached: totalSent,        // STEP 5: sum of sent
+      totalEmails: emails.length,
+      totalOpens,
+      totalClicks,
       deliveredRate,
       deliveredRateDelta: 0,
       lifecycleStages,
