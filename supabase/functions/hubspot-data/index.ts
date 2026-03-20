@@ -158,44 +158,43 @@ async function fetchAllMarketingEmails(token: string, accountLabel: string): Pro
   return { emails: allEmails, apiVersion };
 }
 
-// For v3 emails, fetch statistics using the aggregated statistics endpoint
+// For v3 emails, fetch statistics
 async function fetchV3EmailStats(token: string, emailIds: string[], accountLabel: string, startDate: string, endDate: string): Promise<Map<string, any>> {
   const statsMap = new Map<string, any>();
 
+  // Approach 1: Try /marketing/v3/emails/statistics/list without filters first
   try {
-    // Use the batch statistics list endpoint
-    const idParams = emailIds.map(id => `emailIds=${id}`).join("&");
-    const url = `/marketing/v3/emails/statistics/list?startTimestamp=${startDate}T00:00:00Z&endTimestamp=${endDate}T23:59:59Z&${idParams}`;
+    const url = `/marketing/v3/emails/statistics/list?startTimestamp=${startDate}T00:00:00Z&endTimestamp=${endDate}T23:59:59Z`;
+    console.log(`[${accountLabel}] Stats URL: ${url}`);
     const res = await hubspotFetch(url, token);
     const results = res.results || [];
-    console.log(`[${accountLabel}] Stats list returned ${results.length} entries`);
+    console.log(`[${accountLabel}] Stats list (no filter) returned ${results.length} entries`);
     if (results.length > 0) {
-      console.log(`[${accountLabel}] Sample stats entry keys: ${JSON.stringify(Object.keys(results[0]))}`);
-      console.log(`[${accountLabel}] Sample stats counters: ${JSON.stringify(results[0].aggregatedStatistics?.counters || results[0].counters || "none")}`);
+      const sample = results[0];
+      console.log(`[${accountLabel}] Stats entry keys: ${JSON.stringify(Object.keys(sample))}`);
+      console.log(`[${accountLabel}] Stats sample: ${JSON.stringify(sample).substring(0, 500)}`);
     }
+    // Also log full response keys
+    console.log(`[${accountLabel}] Stats response keys: ${JSON.stringify(Object.keys(res))}`);
     for (const entry of results) {
       const id = entry.emailId || entry.id;
-      if (id) {
-        statsMap.set(String(id), entry.aggregatedStatistics || entry);
-      }
+      if (id) statsMap.set(String(id), entry.aggregatedStatistics || entry);
     }
   } catch (err: any) {
-    console.error(`[${accountLabel}] Stats list error: ${err.message?.substring(0, 300)}`);
-    
-    // Fallback: try without email IDs to get all stats
-    try {
-      const url = `/marketing/v3/emails/statistics/list?startTimestamp=${startDate}T00:00:00Z&endTimestamp=${endDate}T23:59:59Z`;
-      const res = await hubspotFetch(url, token);
-      const results = res.results || [];
-      console.log(`[${accountLabel}] Stats fallback returned ${results.length} entries`);
-      for (const entry of results) {
-        const id = entry.emailId || entry.id;
-        if (id) {
-          statsMap.set(String(id), entry.aggregatedStatistics || entry);
-        }
+    console.error(`[${accountLabel}] Stats list error: ${err.message?.substring(0, 500)}`);
+  }
+
+  // Approach 2: If no results, try email events API for each email
+  if (statsMap.size === 0 && emailIds.length > 0) {
+    console.log(`[${accountLabel}] Trying email events API...`);
+    for (const id of emailIds.slice(0, 3)) {  // Try first 3 only for debugging
+      try {
+        const eventsUrl = `/email/public/v1/events?campaignId=${id}&limit=1`;
+        const res = await hubspotFetch(eventsUrl, token);
+        console.log(`[${accountLabel}] Events for ${id}: ${JSON.stringify(res).substring(0, 300)}`);
+      } catch (err: any) {
+        console.log(`[${accountLabel}] Events error for ${id}: ${err.message?.substring(0, 200)}`);
       }
-    } catch (err2: any) {
-      console.error(`[${accountLabel}] Stats fallback error: ${err2.message?.substring(0, 300)}`);
     }
   }
 
