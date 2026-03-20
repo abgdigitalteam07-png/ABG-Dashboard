@@ -223,16 +223,17 @@ async function fetchAccountData(
   await Promise.all(stagePromises);
 
   // Fetch all marketing emails
-  const allRawEmails = await fetchAllMarketingEmails(token, accountLabel);
-  console.log(`[${accountLabel}] Fetched ${allRawEmails.length} total raw emails`);
+  const { emails: allRawEmails, apiVersion } = await fetchAllMarketingEmails(token, accountLabel);
+  console.log(`[${accountLabel}] Fetched ${allRawEmails.length} total raw emails (${apiVersion})`);
 
   // Filter by brand name: check name, fromName, campaign name
+  // v3 uses different field names: from.name instead of fromName, etc.
   const brandFiltered = allRawEmails.filter((e: any) => {
+    const fromName = e.fromName || e.from?.name || "";
     return brandMatches(e.name, brandName) ||
-      brandMatches(e.fromName, brandName) ||
+      brandMatches(fromName, brandName) ||
       brandMatches(e.campaign, brandName) ||
       brandMatches(e.campaignName, brandName) ||
-      brandMatches(e.primaryRichTextModuleHtml, brandName) ||
       brandMatches(e.subject, brandName);
   });
 
@@ -240,7 +241,8 @@ async function fetchAccountData(
 
   // Filter by date range
   const dateFiltered = brandFiltered.filter((e: any) => {
-    const timestamp = e.publishDate || e.updated || e.created;
+    // v1: publishDate (ms timestamp), v3: publishedAt (ISO string) or updatedAt
+    const timestamp = e.publishDate || e.publishedAt || e.updatedAt || e.updated || e.created;
     if (!timestamp) return false;
     const pubDate = new Date(timestamp).toISOString().split("T")[0];
     return pubDate >= startDate && pubDate <= endDate;
@@ -248,25 +250,50 @@ async function fetchAccountData(
 
   console.log(`[${accountLabel}] After date filter (${startDate} to ${endDate}): ${dateFiltered.length} emails`);
 
+  // For v3, fetch statistics for filtered emails
+  let v3StatsMap = new Map<string, any>();
+  if (apiVersion === "v3" && dateFiltered.length > 0) {
+    const emailIds = dateFiltered.map((e: any) => e.id).filter(Boolean);
+    v3StatsMap = await fetchV3EmailStats(token, emailIds, accountLabel);
+  }
+
   // Map to EmailRecord with proper stats
   const emails: EmailRecord[] = dateFiltered.map((e: any) => {
-    const stats = e.stats?.counters || {};
-    // HubSpot v1 marketing emails stats field names
-    const sent = stats.sent || stats.processed || 0;
-    const delivered = stats.delivered || (sent - (stats.bounce || 0));
-    const opens = stats.open || stats.uniqueopens || 0;
-    const clicks = stats.click || stats.uniqueclicks || 0;
-    const bounce = stats.bounce || stats.hardbounced || 0;
-    const unsubscribe = stats.unsubscribed || 0;
-    const spam = stats.spamreport || 0;
+    let sent = 0, delivered = 0, opens = 0, clicks = 0, bounce = 0, unsubscribe = 0, spam = 0;
 
-    const pubTimestamp = e.publishDate || e.updated || e.created;
+    if (apiVersion === "v1") {
+      const stats = e.stats?.counters || {};
+      sent = stats.sent || stats.processed || 0;
+      delivered = stats.delivered || (sent - (stats.bounce || 0));
+      opens = stats.open || stats.uniqueopens || 0;
+      clicks = stats.click || stats.uniqueclicks || 0;
+      bounce = stats.bounce || stats.hardbounced || 0;
+      unsubscribe = stats.unsubscribed || 0;
+      spam = stats.spamreport || 0;
+    } else {
+      // v3 stats from separate endpoint
+      const s = v3StatsMap.get(e.id) || {};
+      // v3 statistics response: { counters: { sent, delivered, open, click, ... } } or flat
+      const counters = s.counters || s.ratios || s;
+      sent = counters.sent || s.sent || 0;
+      delivered = counters.delivered || s.delivered || 0;
+      opens = counters.open || counters.uniqueopen || s.open || s.opens || 0;
+      clicks = counters.click || counters.uniqueclick || s.click || s.clicks || 0;
+      bounce = counters.bounce || s.bounce || 0;
+      unsubscribe = counters.unsubscribed || s.unsubscribed || 0;
+      spam = counters.spamreport || s.spamreport || 0;
+      if (!delivered && sent) delivered = sent - bounce;
+    }
+
+    // v1: publishDate (ms), v3: publishedAt (ISO)
+    const pubTimestamp = e.publishDate || e.publishedAt || e.updatedAt || e.updated || e.created;
     const publishDate = pubTimestamp ? new Date(pubTimestamp).toISOString().split("T")[0] : "";
+    const fromName = e.fromName || e.from?.name || "Unknown";
 
     return {
       name: e.name || "Untitled",
       subject: e.subject || "",
-      sender: e.fromName || "Unknown",
+      sender: fromName,
       publishDate,
       sent,
       delivered: delivered > 0 ? delivered : 0,
