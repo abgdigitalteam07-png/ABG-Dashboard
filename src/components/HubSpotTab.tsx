@@ -16,7 +16,14 @@ interface HubSpotTabProps {
   dateTo: Date;
 }
 
-const LIFECYCLE_COLORS = ["#94A3B8", "#3B82F6", "#8B5CF6", "#F59E0B", "#F97316", "#10B981"];
+const LIFECYCLE_COLORS = [
+  "hsl(215 16% 65%)",
+  "hsl(217 91% 60%)",
+  "hsl(262 83% 58%)",
+  "hsl(38 92% 50%)",
+  "hsl(24 95% 53%)",
+  "hsl(158 64% 52%)",
+];
 
 function formatNumber(n: number): string {
   if (n >= 1000000) return (n / 1000000).toFixed(1) + "M";
@@ -43,8 +50,7 @@ function HealthGauge({ score }: { score: number }) {
       <div className="relative h-28 w-28">
         <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90">
           <circle cx="50" cy="50" r="42" fill="none" stroke="hsl(var(--border))" strokeWidth="8" />
-          <circle cx="50" cy="50" r="42" fill="none" stroke={color} strokeWidth="8"
-            strokeDasharray={`${pct * 2.64} 264`} strokeLinecap="round" />
+          <circle cx="50" cy="50" r="42" fill="none" stroke={color} strokeWidth="8" strokeDasharray={`${pct * 2.64} 264`} strokeLinecap="round" />
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
           <span className="text-2xl font-bold tabular-nums text-card-foreground">{score.toFixed(1)}</span>
@@ -75,9 +81,14 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
     let cancelled = false;
     setLoading(true);
     fetchHubSpotData(brand, dateFrom, dateTo).then((result) => {
-      if (!cancelled) { setData(result); setLoading(false); }
+      if (!cancelled) {
+        setData(result);
+        setLoading(false);
+      }
     });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [brand.id, dateFrom.getTime(), dateTo.getTime()]);
 
   const d = useMemo(() => {
@@ -92,18 +103,18 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
       </div>
     );
   }
+
   if (!d) return null;
 
   const emailCount = d.totalEmails ?? d.emails?.length ?? 0;
   const ctr = d.totalOpens > 0
-    ? parseFloat(((d.totalClicks ?? 0) / d.totalOpens * 100).toFixed(1))
-    : (d.clickRate && d.openRate && d.openRate > 0 ? parseFloat((d.clickRate / d.openRate * 100).toFixed(1)) : 0);
+    ? parseFloat(((d.totalClicks ?? 0) / d.totalOpens * 100).toFixed(2))
+    : (d.clickRate && d.openRate && d.openRate > 0 ? parseFloat((d.clickRate / d.openRate * 100).toFixed(2)) : 0);
 
   return (
     <div className="space-y-6 p-6">
-
-      {/* ── SECTION 1 — Email Health Score (gauge + metrics inline) ── */}
-      <div>
+      {/* SECTION 1 — Email Health Score (only one six-card metrics block exists here) */}
+      <section>
         <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Email Health Score</h2>
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[auto_1fr]">
           <div className="flex items-center justify-center rounded-lg border border-border bg-card p-6 shadow-card">
@@ -111,17 +122,17 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
           </div>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
             <MetricCard label="Open Rate" value={`${d.openRate}%`} benchmark={d.openRateLabel} />
-            <MetricCard label="Click-Through Rate" value={`${d.clickRate}%`} benchmark={d.clickRateLabel} />
+            <MetricCard label="Click-Through Rate" value={`${ctr}%`} benchmark={d.clickRateLabel} />
             <MetricCard label="Hard Bounces" value={`${d.bounceRate}%`} benchmark={d.bounceRateLabel} />
             <MetricCard label="Unsubscribes" value={`${d.unsubscribeRate}%`} benchmark={d.unsubscribeRateLabel} />
             <MetricCard label="Spam Reports" value={String(d.spamReports)} />
             <MetricCard label="Total Emails Sent" value={formatNumber(d.totalEmailsSent)} />
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* ── SECTION 2 — Recipient Engagement ── */}
-      <div>
+      {/* SECTION 2 — Recipient Engagement */}
+      <section>
         <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Recipient Engagement</h2>
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           <MetricCard label="Sent" value={formatNumber(d.totalEmailsSent)} sub={`${emailCount} emails`} />
@@ -129,21 +140,24 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
           <MetricCard label="Click Rate" value={`${d.clickRate}%`} />
           <MetricCard label="Click-Through Rate" value={`${ctr}%`} sub="clicks / opens" />
         </div>
-      </div>
+      </section>
 
-      {/* ── SECTION 3 — Delivery ── */}
-      <div>
+      {/* SECTION 3 — Delivery */}
+      <section>
         <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Delivery</h2>
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
           <MetricCard label="Delivery Rate" value={`${d.deliveredRate}%`} />
           <MetricCard label="Hard Bounce Rate" value={`${d.bounceRate}%`} />
           <MetricCard label="Unsubscribe Rate" value={`${d.unsubscribeRate}%`} />
-          <MetricCard label="Spam Report Rate" value={`${d.spamReports > 0 && d.totalEmailsSent > 0 ? (d.spamReports / d.totalEmailsSent * 100).toFixed(2) : "0"}%`} />
+          <MetricCard
+            label="Spam Report Rate"
+            value={`${d.spamReports > 0 && d.totalEmailsSent > 0 ? (d.spamReports / d.totalEmailsSent * 100).toFixed(2) : "0"}%`}
+          />
         </div>
-      </div>
+      </section>
 
-      {/* ── SECTION 4 — Lifecycle Stage Breakdown ── */}
-      <div className="rounded-lg border border-border bg-card p-6 shadow-card">
+      {/* SECTION 4 — Lifecycle Stage Breakdown */}
+      <section className="rounded-lg border border-border bg-card p-6 shadow-card">
         <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Lifecycle Stage Breakdown</h3>
         <ResponsiveContainer width="100%" height={280}>
           <BarChart data={d.lifecycleStages} layout="vertical">
@@ -153,15 +167,15 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
             <Tooltip contentStyle={{ fontSize: 12 }} />
             <Bar dataKey="count" radius={[0, 4, 4, 0]}>
               {d.lifecycleStages.map((_: any, i: number) => (
-                <Cell key={i} fill={LIFECYCLE_COLORS[i]} />
+                <Cell key={i} fill={LIFECYCLE_COLORS[i % LIFECYCLE_COLORS.length]} />
               ))}
             </Bar>
           </BarChart>
         </ResponsiveContainer>
-      </div>
+      </section>
 
-      {/* ── SECTION 5 — Email Performance Table ── */}
-      <div className="rounded-lg border border-border bg-card shadow-card">
+      {/* SECTION 5 — Email Performance Table */}
+      <section className="rounded-lg border border-border bg-card shadow-card">
         <div className="p-6 pb-3">
           <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Email Performance</h3>
         </div>
@@ -184,14 +198,14 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
             <TableBody>
               {d.emails.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center text-sm text-muted-foreground py-8">
+                  <TableCell colSpan={10} className="py-8 text-center text-sm text-muted-foreground">
                     No emails found in this date range.
                   </TableCell>
                 </TableRow>
               ) : (
                 d.emails.map((row: any, idx: number) => (
                   <TableRow key={`${row.name}-${idx}`}>
-                    <TableCell className="text-sm font-medium max-w-[260px] truncate">{row.name}</TableCell>
+                    <TableCell className="max-w-[260px] truncate text-sm font-medium">{row.name}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{row.sender}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{row.publishDate}</TableCell>
                     <TableCell className="text-right tabular-nums text-sm">{row.sent.toLocaleString()}</TableCell>
@@ -207,10 +221,9 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
             </TableBody>
           </Table>
         </div>
-      </div>
+      </section>
 
-      {/* Debug */}
-      <p className="text-xs text-muted-foreground px-1">
+      <p className="px-1 text-xs text-muted-foreground">
         {emailCount} emails for "{d.brandName}"
         {d.totalFetched != null && ` · ${d.totalFetched} total in account`}
         {d.businessUnitId && ` · BU: ${d.businessUnitId}`}
