@@ -306,6 +306,12 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
         </div>
       </div>
 
+      {/* Debug info */}
+      <p className="text-xs text-muted-foreground px-1">
+        Fetched {filteredData.account1Emails ?? "?"} emails from Account 1, {filteredData.account2Emails ?? "?"} emails from Account 2 for "{filteredData.brandName ?? ""}"
+        {filteredData.account1Fetched != null && ` (${filteredData.account1Fetched} total in Acct1, ${filteredData.account2Fetched} total in Acct2)`}
+      </p>
+
       {/* SECTION C - Email Performance Table */}
       <div className="rounded-lg border border-border bg-card shadow-card">
         <div className="p-6 pb-3">
@@ -318,6 +324,7 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
                 <TableHead className="text-xs">Email Name</TableHead>
                 <TableHead className="text-xs">Sender</TableHead>
                 <TableHead className="text-xs">Published</TableHead>
+                <TableHead className="text-xs">Account</TableHead>
                 <TableHead className="text-right text-xs">Sent</TableHead>
                 <TableHead className="text-right text-xs">Click %</TableHead>
                 <TableHead className="text-right text-xs">Delivered %</TableHead>
@@ -330,16 +337,17 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
             <TableBody>
               {filteredData.emails.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center text-sm text-muted-foreground py-8">
+                  <TableCell colSpan={11} className="text-center text-sm text-muted-foreground py-8">
                     No emails found in this date range.
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredData.emails.map((row: any) => (
-                  <TableRow key={row.name}>
+                filteredData.emails.map((row: any, idx: number) => (
+                  <TableRow key={`${row.name}-${idx}`}>
                     <TableCell className="text-sm font-medium">{row.name}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{row.sender}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{row.publishDate}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{row.account}</TableCell>
                     <TableCell className="text-right tabular-nums text-sm">{row.sent.toLocaleString()}</TableCell>
                     <TableCell className="text-right tabular-nums text-sm">{row.clickRate}%</TableCell>
                     <TableCell className="text-right tabular-nums text-sm">{row.deliveredRate}%</TableCell>
