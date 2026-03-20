@@ -212,13 +212,35 @@ Deno.serve(async (req) => {
 
     const body: HubSpotRequest = await req.json();
 
-    // Debug mode
+    // Debug mode - fetch raw emails to inspect brand field
     if (body.debug === true) {
-      const raw = await hubspotFetch("/marketing/v3/emails?limit=1", token);
-      const firstEmail = raw.results?.[0] || null;
-      console.log("Debug — raw email:", JSON.stringify(firstEmail, null, 2));
+      // v3 API - 3 emails
+      const v3Raw = await hubspotFetch("/marketing/v3/emails?limit=3&orderBy=-publishDate&isPublished=true", token);
+      const v3Emails = v3Raw.results || [];
+      for (let i = 0; i < v3Emails.length; i++) {
+        console.log(`RAW v3 EMAIL ${i}:`, JSON.stringify(v3Emails[i], null, 2));
+      }
+
+      // v1 API - 3 emails
+      let v1Emails: any[] = [];
+      try {
+        const v1Raw = await hubspotFetch("/marketing-emails/v1/emails?limit=3&orderBy=-publish_date", token);
+        v1Emails = v1Raw.objects || [];
+        for (let i = 0; i < v1Emails.length; i++) {
+          console.log(`RAW v1 EMAIL ${i}:`, JSON.stringify(v1Emails[i], null, 2));
+        }
+      } catch (e) {
+        console.log("v1 API error:", e);
+      }
+
+      // Extract all top-level keys for easy inspection
+      const v3Keys = v3Emails[0] ? Object.keys(v3Emails[0]) : [];
+      const v1Keys = v1Emails[0] ? Object.keys(v1Emails[0]) : [];
+      console.log("v3 top-level keys:", JSON.stringify(v3Keys));
+      console.log("v1 top-level keys:", JSON.stringify(v1Keys));
+
       return new Response(
-        JSON.stringify({ debug: true, firstEmail }),
+        JSON.stringify({ debug: true, v3Keys, v1Keys, v3First: v3Emails[0], v1First: v1Emails[0] }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
