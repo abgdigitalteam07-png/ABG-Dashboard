@@ -304,7 +304,7 @@ Deno.serve(async (req) => {
 
           const publishDate = extractPublishDate(email) ?? "";
           // Use hs_published_by_name for sender, fallback to fromName
-          const sender = email?.properties?.hs_published_by_name || email?.hs_published_by_name || email?.from?.fromName || "Unknown";
+          const sender = email?.publishedByName || "";
 
           const openRate = delivered > 0 ? parseFloat(((opens / delivered) * 100).toFixed(1)) : 0;
           const clickRate = delivered > 0 ? parseFloat(((clicks / delivered) * 100).toFixed(1)) : 0;
