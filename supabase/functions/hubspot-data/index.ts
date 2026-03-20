@@ -192,13 +192,17 @@ async function fetchAccountData(
     fetchEmailStats(token, accountLabel),
   ]);
 
-  // Filter by brand property
+  // Filter by brand: check name, fromName, campaign, subject
   const brandFiltered = allRawEmails.filter((e: any) => {
-    const emailBrand = (e.brand || "").trim();
-    return emailBrand.toLowerCase() === brandName.toLowerCase();
+    const fromName = e.fromName || e.from?.name || e.from?.fromName || "";
+    return brandMatches(e.name, brandName) ||
+      brandMatches(fromName, brandName) ||
+      brandMatches(e.campaign, brandName) ||
+      brandMatches(e.campaignName, brandName) ||
+      brandMatches(e.subject, brandName);
   });
 
-  console.log(`[${accountLabel}] Found ${brandFiltered.length} emails with brand="${brandName}"`);
+  console.log(`[${accountLabel}] Found ${brandFiltered.length} emails matching brand="${brandName}"`);
 
   // Filter by date range using publishDate
   const dateFiltered = brandFiltered.filter((e: any) => {
