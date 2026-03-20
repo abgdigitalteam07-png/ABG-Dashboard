@@ -107,71 +107,13 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
   const filteredData = useMemo(() => {
     if (!data) return null;
 
-    const fromStr = dateFrom.toISOString().split("T")[0];
-    const toStr = dateTo.toISOString().split("T")[0];
-
-    const filteredEmails = (data.emails || []).filter((e: any) => {
-      return e.publishDate >= fromStr && e.publishDate <= toStr;
-    });
-
-    // Recalculate aggregates from filtered emails
-    let totalSent = 0, totalDelivered = 0, totalOpens = 0, totalClicks = 0;
-    let totalBounce = 0, totalUnsub = 0, totalSpam = 0;
-    for (const e of filteredEmails) {
-      totalSent += e.sent;
-      totalDelivered += e.delivered;
-      totalOpens += e.opens;
-      totalClicks += e.clicks;
-      totalBounce += e.bounce;
-      totalUnsub += e.unsubscribe;
-      totalSpam += e.spam;
-    }
-
-    const openRate = totalDelivered > 0 ? parseFloat((totalOpens / totalDelivered * 100).toFixed(1)) : 0;
-    const clickRate = totalDelivered > 0 ? parseFloat((totalClicks / totalDelivered * 100).toFixed(1)) : 0;
-    const bounceRate = totalSent > 0 ? parseFloat((totalBounce / totalSent * 100).toFixed(2)) : 0;
-    const unsubscribeRate = totalSent > 0 ? parseFloat((totalUnsub / totalSent * 100).toFixed(2)) : 0;
-    const deliveredRate = totalSent > 0 ? parseFloat((totalDelivered / totalSent * 100).toFixed(1)) : 0;
-
-    const healthScore = Math.min(10, Math.max(1, parseFloat(
-      (openRate / 5 + clickRate / 2 - bounceRate * 2 - unsubscribeRate * 5 + 2).toFixed(1)
-    )));
-
-    function getBenchmarkLabel(metric: string, value: number): string {
-      if (metric === "openRate") return value >= 25 ? "Excellent" : value >= 18 ? "Good" : "Needs work";
-      if (metric === "clickRate") return value >= 4 ? "Excellent" : value >= 2.5 ? "Good" : "Needs work";
-      if (metric === "bounceRate") return value <= 0.5 ? "Excellent" : value <= 1.5 ? "Good" : "Needs work";
-      if (metric === "unsubscribeRate") return value <= 0.2 ? "Excellent" : value <= 0.5 ? "Good" : "Needs work";
-      return "Good";
-    }
-
-    const sorted = [...filteredEmails].sort((a: any, b: any) => (b.openRate + b.clickRate) - (a.openRate + a.clickRate));
-
+    // The edge function already handles brand filtering and date filtering,
+    // so use the server-returned data directly. Add brandName for debug display.
     return {
       ...data,
-      emails: filteredEmails,
-      healthScore,
-      openRate,
-      openRateLabel: getBenchmarkLabel("openRate", openRate),
-      clickRate,
-      clickRateLabel: getBenchmarkLabel("clickRate", clickRate),
-      bounceRate,
-      bounceRateLabel: getBenchmarkLabel("bounceRate", bounceRate),
-      unsubscribeRate,
-      unsubscribeRateLabel: getBenchmarkLabel("unsubscribeRate", unsubscribeRate),
-      spamReports: totalSpam,
-      totalEmailsSent: totalSent,
-      deliveredRate,
-      highPerforming: sorted.slice(0, 3),
-      lowPerforming: sorted.slice(-3).reverse(),
-      openRateOverTime: filteredEmails
-        .sort((a: any, b: any) => a.publishDate.localeCompare(b.publishDate))
-        .map((e: any) => ({ date: e.publishDate, value: e.openRate })),
-      unsubscribeRateOverTime: filteredEmails
-        .sort((a: any, b: any) => a.publishDate.localeCompare(b.publishDate))
-        .map((e: any) => ({ date: e.publishDate, value: e.unsubscribeRate })),
+      brandName: brand.hubspotName || brand.name,
     };
-  }, [data, dateFrom, dateTo]);
+  }, [data, brand]);
 
   if (loading) {
     return (
