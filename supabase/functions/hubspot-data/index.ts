@@ -37,10 +37,10 @@ interface LifecycleStage {
 }
 
 interface AccountData {
-  contacts: Map<string, boolean>;
   totalContacts: number;
   lifecycleStages: LifecycleStage[];
   emails: EmailRecord[];
+  totalFetched: number;
   totalSent: number;
   totalDelivered: number;
   totalOpens: number;
@@ -61,6 +61,19 @@ async function hubspotFetch(path: string, token: string) {
   return res.json();
 }
 
+async function hubspotPost(path: string, token: string, body: unknown) {
+  const res = await fetch(`https://api.hubapi.com${path}`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`HubSpot API error (${path}): ${err}`);
+  }
+  return res.json();
+}
+
 function getBenchmarkLabel(metric: string, value: number): string {
   if (metric === "openRate") return value >= 25 ? "Excellent" : value >= 18 ? "Good" : "Needs work";
   if (metric === "clickRate") return value >= 4 ? "Excellent" : value >= 2.5 ? "Good" : "Needs work";
@@ -69,13 +82,49 @@ function getBenchmarkLabel(metric: string, value: number): string {
   return "Good";
 }
 
-async function fetchAccountData(token: string, accountLabel: string, startDate: string, endDate: string): Promise<AccountData> {
-  // Get contacts with emails for dedup
-  const contactEmails = new Map<string, boolean>();
+function brandMatches(text: string | undefined | null, brandName: string): boolean {
+  if (!text) return false;
+  const lower = text.toLowerCase();
+  const brandLower = brandName.toLowerCase();
+  return lower.includes(brandLower);
+}
+
+async function fetchAllMarketingEmails(token: string): Promise<any[]> {
+  const allEmails: any[] = [];
+  let offset = 0;
+  const limit = 250;
+  let hasMore = true;
+
+  while (hasMore && offset < 2000) {
+    try {
+      const res = await hubspotFetch(
+        `/marketing-emails/v1/emails?limit=${limit}&offset=${offset}&orderBy=-updated`,
+        token
+      );
+      const objects = res.objects || [];
+      allEmails.push(...objects);
+      hasMore = objects.length === limit;
+      offset += limit;
+    } catch (err) {
+      console.error(`Error fetching emails at offset ${offset}:`, err);
+      break;
+    }
+  }
+  return allEmails;
+}
+
+async function fetchAccountData(
+  token: string,
+  accountLabel: string,
+  brandName: string,
+  startDate: string,
+  endDate: string
+): Promise<AccountData> {
+  // Get total contacts
   let totalContacts = 0;
   try {
-    const contactsSearch = await hubspotFetch(`/crm/v3/objects/contacts/search`, token).catch(() => ({ total: 0 }));
-    totalContacts = contactsSearch.total || 0;
+    const res = await hubspotPost("/crm/v3/objects/contacts/search", token, { limit: 0 });
+    totalContacts = res.total || 0;
   } catch {
     // ignore
   }
@@ -90,9 +139,9 @@ async function fetchAccountData(token: string, accountLabel: string, startDate: 
     { stage: "Customer", count: 0 },
   ];
 
-  for (const ls of lifecycleStages) {
+  const stagePromises = lifecycleStages.map(async (ls) => {
     try {
-      const searchBody = {
+      const data = await hubspotPost("/crm/v3/objects/contacts/search", token, {
         filterGroups: [{
           filters: [{
             propertyName: "lifecyclestage",
@@ -101,63 +150,76 @@ async function fetchAccountData(token: string, accountLabel: string, startDate: 
           }],
         }],
         limit: 0,
-      };
-      const res = await fetch("https://api.hubapi.com/crm/v3/objects/contacts/search", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify(searchBody),
       });
-      if (res.ok) {
-        const data = await res.json();
-        ls.count = data.total || 0;
-      }
+      ls.count = data.total || 0;
     } catch {
       // skip
     }
-  }
+  });
+  await Promise.all(stagePromises);
 
-  // Get marketing emails
-  const emailsRes = await hubspotFetch(
-    `/marketing-emails/v1/emails?limit=100&orderBy=-publishDate`,
-    token
-  ).catch(() => ({ objects: [] }));
+  // Fetch all marketing emails
+  const allRawEmails = await fetchAllMarketingEmails(token);
+  console.log(`[${accountLabel}] Fetched ${allRawEmails.length} total raw emails`);
 
-  const emails: EmailRecord[] = (emailsRes.objects || [])
-    .filter((e: any) => {
-      const pubDate = e.publishDate ? new Date(e.publishDate).toISOString().split("T")[0] : null;
-      return pubDate && pubDate >= startDate && pubDate <= endDate;
-    })
-    .map((e: any) => {
-      const stats = e.stats?.counters || {};
-      const sent = stats.sent || 0;
-      const delivered = stats.delivered || sent;
-      const opens = stats.open || 0;
-      const clicks = stats.click || 0;
-      const bounce = stats.bounce || 0;
-      const unsubscribe = stats.unsubscribed || 0;
-      const spam = stats.spamreport || 0;
+  // Filter by brand name: check name, fromName, campaign name
+  const brandFiltered = allRawEmails.filter((e: any) => {
+    return brandMatches(e.name, brandName) ||
+      brandMatches(e.fromName, brandName) ||
+      brandMatches(e.campaign, brandName) ||
+      brandMatches(e.campaignName, brandName) ||
+      brandMatches(e.primaryRichTextModuleHtml, brandName) ||
+      brandMatches(e.subject, brandName);
+  });
 
-      return {
-        name: e.name || "Untitled",
-        subject: e.subject || "",
-        sender: e.fromName || "Unknown",
-        publishDate: e.publishDate ? new Date(e.publishDate).toISOString().split("T")[0] : "",
-        sent,
-        delivered,
-        opens,
-        clicks,
-        bounce,
-        unsubscribe,
-        spam,
-        openRate: delivered > 0 ? parseFloat((opens / delivered * 100).toFixed(1)) : 0,
-        clickRate: delivered > 0 ? parseFloat((clicks / delivered * 100).toFixed(1)) : 0,
-        deliveredRate: sent > 0 ? parseFloat((delivered / sent * 100).toFixed(1)) : 0,
-        unsubscribeRate: sent > 0 ? parseFloat((unsubscribe / sent * 100).toFixed(2)) : 0,
-        bounceRate: sent > 0 ? parseFloat((bounce / sent * 100).toFixed(2)) : 0,
-        spamRate: sent > 0 ? parseFloat((spam / sent * 100).toFixed(3)) : 0,
-        account: accountLabel,
-      };
-    });
+  console.log(`[${accountLabel}] Brand "${brandName}" matched ${brandFiltered.length} emails`);
+
+  // Filter by date range
+  const dateFiltered = brandFiltered.filter((e: any) => {
+    const timestamp = e.publishDate || e.updated || e.created;
+    if (!timestamp) return false;
+    const pubDate = new Date(timestamp).toISOString().split("T")[0];
+    return pubDate >= startDate && pubDate <= endDate;
+  });
+
+  console.log(`[${accountLabel}] After date filter (${startDate} to ${endDate}): ${dateFiltered.length} emails`);
+
+  // Map to EmailRecord with proper stats
+  const emails: EmailRecord[] = dateFiltered.map((e: any) => {
+    const stats = e.stats?.counters || {};
+    // HubSpot v1 marketing emails stats field names
+    const sent = stats.sent || stats.processed || 0;
+    const delivered = stats.delivered || (sent - (stats.bounce || 0));
+    const opens = stats.open || stats.uniqueopens || 0;
+    const clicks = stats.click || stats.uniqueclicks || 0;
+    const bounce = stats.bounce || stats.hardbounced || 0;
+    const unsubscribe = stats.unsubscribed || 0;
+    const spam = stats.spamreport || 0;
+
+    const pubTimestamp = e.publishDate || e.updated || e.created;
+    const publishDate = pubTimestamp ? new Date(pubTimestamp).toISOString().split("T")[0] : "";
+
+    return {
+      name: e.name || "Untitled",
+      subject: e.subject || "",
+      sender: e.fromName || "Unknown",
+      publishDate,
+      sent,
+      delivered: delivered > 0 ? delivered : 0,
+      opens,
+      clicks,
+      bounce,
+      unsubscribe,
+      spam,
+      openRate: delivered > 0 ? parseFloat((opens / delivered * 100).toFixed(1)) : 0,
+      clickRate: delivered > 0 ? parseFloat((clicks / delivered * 100).toFixed(1)) : 0,
+      deliveredRate: sent > 0 ? parseFloat((delivered / sent * 100).toFixed(1)) : 0,
+      unsubscribeRate: sent > 0 ? parseFloat((unsubscribe / sent * 100).toFixed(2)) : 0,
+      bounceRate: sent > 0 ? parseFloat((bounce / sent * 100).toFixed(2)) : 0,
+      spamRate: sent > 0 ? parseFloat((spam / sent * 100).toFixed(3)) : 0,
+      account: accountLabel,
+    };
+  });
 
   let totalSent = 0, totalDelivered = 0, totalOpens = 0, totalClicks = 0;
   let totalBounce = 0, totalUnsub = 0, totalSpam = 0;
@@ -172,10 +234,10 @@ async function fetchAccountData(token: string, accountLabel: string, startDate: 
   }
 
   return {
-    contacts: contactEmails,
     totalContacts,
     lifecycleStages,
     emails,
+    totalFetched: allRawEmails.length,
     totalSent,
     totalDelivered,
     totalOpens,
@@ -205,10 +267,12 @@ Deno.serve(async (req) => {
       });
     }
 
+    console.log(`Fetching HubSpot data for brand="${brandName}", ${startDate} to ${endDate}`);
+
     // Fetch from both accounts in parallel
     const promises: Promise<AccountData | null>[] = [];
-    if (token1) promises.push(fetchAccountData(token1, "Account 1", startDate, endDate).catch((err) => { console.error("Account 1 error:", err); return null; }));
-    if (token2) promises.push(fetchAccountData(token2, "Account 2", startDate, endDate).catch((err) => { console.error("Account 2 error:", err); return null; }));
+    if (token1) promises.push(fetchAccountData(token1, "Account 1", brandName, startDate, endDate).catch((err) => { console.error("Account 1 error:", err); return null; }));
+    if (token2) promises.push(fetchAccountData(token2, "Account 2", brandName, startDate, endDate).catch((err) => { console.error("Account 2 error:", err); return null; }));
 
     const results = await Promise.all(promises);
     const validResults = results.filter((r): r is AccountData => r !== null);
@@ -217,7 +281,7 @@ Deno.serve(async (req) => {
       throw new Error("Both HubSpot accounts failed to return data");
     }
 
-    // Merge contacts (sum totals — best approx without full email dedup via API pagination)
+    // Merge contacts
     const totalContacts = validResults.reduce((sum, r) => sum + r.totalContacts, 0);
 
     // Merge lifecycle stages
@@ -240,7 +304,7 @@ Deno.serve(async (req) => {
     const allEmails = validResults.flatMap((r) => r.emails)
       .sort((a, b) => b.publishDate.localeCompare(a.publishDate));
 
-    // Weighted aggregate metrics
+    // Weighted aggregate metrics from raw totals
     const totalSent = validResults.reduce((s, r) => s + r.totalSent, 0);
     const totalDelivered = validResults.reduce((s, r) => s + r.totalDelivered, 0);
     const totalOpens = validResults.reduce((s, r) => s + r.totalOpens, 0);
@@ -263,6 +327,12 @@ Deno.serve(async (req) => {
     const highPerforming = sorted.slice(0, 3);
     const lowPerforming = sorted.slice(-3).reverse();
 
+    // Debug info
+    const account1Emails = validResults[0]?.emails.length ?? 0;
+    const account2Emails = validResults.length > 1 ? (validResults[1]?.emails.length ?? 0) : 0;
+    const account1Fetched = validResults[0]?.totalFetched ?? 0;
+    const account2Fetched = validResults.length > 1 ? (validResults[1]?.totalFetched ?? 0) : 0;
+
     const result = {
       totalContacts,
       totalContactsDelta: 0,
@@ -284,6 +354,10 @@ Deno.serve(async (req) => {
       highPerforming,
       lowPerforming,
       accountsUsed: validResults.length,
+      account1Emails,
+      account2Emails,
+      account1Fetched,
+      account2Fetched,
       openRateOverTime: [...allEmails]
         .sort((a, b) => a.publishDate.localeCompare(b.publishDate))
         .map((e) => ({ date: e.publishDate, value: e.openRate })),
@@ -291,6 +365,8 @@ Deno.serve(async (req) => {
         .sort((a, b) => a.publishDate.localeCompare(b.publishDate))
         .map((e) => ({ date: e.publishDate, value: e.unsubscribeRate })),
     };
+
+    console.log(`Result: ${allEmails.length} emails, openRate=${openRate}, clickRate=${clickRate}`);
 
     return new Response(JSON.stringify(result), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
