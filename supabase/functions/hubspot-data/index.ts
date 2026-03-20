@@ -117,62 +117,57 @@ async function fetchAllEmails(token: string, accountLabel: string): Promise<any[
   return allEmails;
 }
 
-// Fetch per-email statistics - try v1 individual email endpoint which includes stats.counters
-async function fetchEmailStats(token: string, accountLabel: string, emailIds: string[]): Promise<Map<string, any>> {
+// Fetch per-email statistics using the statistics/list endpoint with date range
+async function fetchEmailStats(
+  token: string, accountLabel: string, emailIds: string[], startDate: string, endDate: string
+): Promise<{ statsMap: Map<string, any>; aggCounters: any }> {
   const statsMap = new Map<string, any>();
-  if (emailIds.length === 0) return statsMap;
+  let aggCounters: any = {};
+  const idSet = new Set(emailIds);
 
-  // Try v1 single email endpoint for first email to check if it works
-  const testId = emailIds[0];
-  let useV1 = false;
-  try {
-    const res = await fetch(`https://api.hubapi.com/marketing-emails/v1/emails/${testId}`, {
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.stats?.counters) {
-        useV1 = true;
-        statsMap.set(testId, data.stats.counters);
-        console.log(`[${accountLabel}] v1 stats available! Sample: ${JSON.stringify(data.stats.counters)}`);
-      } else {
-        console.log(`[${accountLabel}] v1 email returned but no stats. Keys: ${Object.keys(data).join(",")}`);
-        if (data.stats) console.log(`[${accountLabel}] stats obj: ${JSON.stringify(data.stats).substring(0, 300)}`);
+  let after: string | undefined;
+  let hasMore = true;
+  let pageCount = 0;
+
+  while (hasMore) {
+    try {
+      let url = `/marketing/v3/emails/statistics/list?startTimestamp=${startDate}T00:00:00Z&endTimestamp=${endDate}T23:59:59Z&limit=100`;
+      if (after) url += `&after=${after}`;
+      const res = await hubspotFetch(url, token);
+
+      // Capture aggregate on first page
+      if (pageCount === 0) {
+        aggCounters = res.aggregate?.counters || {};
+        console.log(`[${accountLabel}] Agg stats: sent=${aggCounters.sent}, delivered=${aggCounters.delivered}, open=${aggCounters.open}, click=${aggCounters.click}, bounce=${aggCounters.bounce}`);
       }
-    } else {
-      const errText = await res.text();
-      console.log(`[${accountLabel}] v1 single email ${res.status}: ${errText.substring(0, 200)}`);
-    }
-  } catch (err: any) {
-    console.log(`[${accountLabel}] v1 single email error: ${err.message?.substring(0, 100)}`);
-  }
 
-  if (useV1) {
-    // Fetch remaining emails via v1 in batches of 10
-    const remaining = emailIds.slice(1);
-    const batchSize = 10;
-    for (let i = 0; i < remaining.length; i += batchSize) {
-      const batch = remaining.slice(i, i + batchSize);
-      const results = await Promise.allSettled(
-        batch.map(async (id) => {
-          const res = await fetch(`https://api.hubapi.com/marketing-emails/v1/emails/${id}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          if (!res.ok) throw new Error(`${res.status}`);
-          const data = await res.json();
-          return { id, counters: data.stats?.counters || {} };
-        })
-      );
-      for (const r of results) {
-        if (r.status === "fulfilled") {
-          statsMap.set(r.value.id, r.value.counters);
+      const results = res.results || [];
+      if (pageCount === 0) {
+        console.log(`[${accountLabel}] Stats page 0: ${results.length} items`);
+        if (results.length > 0) {
+          console.log(`[${accountLabel}] Stats item keys: ${JSON.stringify(Object.keys(results[0]))}`);
+          console.log(`[${accountLabel}] Stats item[0]: ${JSON.stringify(results[0]).substring(0, 500)}`);
         }
       }
+
+      for (const item of results) {
+        const id = String(item.emailId || item.id || "");
+        if (id && idSet.has(id)) {
+          statsMap.set(id, item.counters || {});
+        }
+      }
+
+      after = res.paging?.next?.after;
+      hasMore = !!after;
+      pageCount++;
+    } catch (err: any) {
+      console.error(`[${accountLabel}] Stats list error: ${err.message?.substring(0, 200)}`);
+      break;
     }
   }
 
-  console.log(`[${accountLabel}] Fetched stats for ${statsMap.size}/${emailIds.length} emails`);
-  return statsMap;
+  console.log(`[${accountLabel}] Stats: ${pageCount} pages, matched ${statsMap.size}/${emailIds.length} emails`);
+  return { statsMap, aggCounters };
 }
 
 async function fetchAccountData(
