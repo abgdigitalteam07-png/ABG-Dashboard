@@ -112,35 +112,34 @@ async function fetchAllEmails(token: string, accountLabel: string): Promise<any[
 }
 
 // Fetch per-email statistics keyed by email ID
-async function fetchEmailStats(token: string, accountLabel: string): Promise<Map<string, any>> {
+// Fetch per-email statistics by email IDs in batches
+async function fetchEmailStats(token: string, accountLabel: string, emailIds: string[]): Promise<Map<string, any>> {
   const statsMap = new Map<string, any>();
-  let after: string | undefined;
-  let hasMore = true;
+  if (emailIds.length === 0) return statsMap;
 
-  while (hasMore) {
+  // Batch IDs in groups of 50
+  const batchSize = 50;
+  for (let i = 0; i < emailIds.length; i += batchSize) {
+    const batch = emailIds.slice(i, i + batchSize);
+    const idsParam = batch.map((id) => `emailIds=${id}`).join("&");
     try {
-      const url = `/marketing/v3/emails/statistics/list?limit=100${after ? `&after=${after}` : ""}`;
+      const url = `/marketing/v3/emails/statistics/list?${idsParam}`;
       const res = await hubspotFetch(url, token);
       const results = res.results || [];
       for (const item of results) {
-        if (item.emailId) {
-          statsMap.set(String(item.emailId), item.counters || item.aggregate?.counters || {});
-        }
+        const id = item.emailId || item.id;
+        const counters = item.counters || item.aggregate?.counters || {};
+        if (id) statsMap.set(String(id), counters);
       }
-      after = res.paging?.next?.after;
-      hasMore = !!after && statsMap.size < 5000;
     } catch (err) {
-      console.error(`[${accountLabel}] Error fetching email stats:`, err);
-      break;
+      console.error(`[${accountLabel}] Error fetching email stats batch:`, err);
     }
   }
 
-  console.log(`[${accountLabel}] Fetched stats for ${statsMap.size} emails`);
-  // Log a sample stat
+  console.log(`[${accountLabel}] Fetched stats for ${statsMap.size}/${emailIds.length} emails`);
   const firstKey = statsMap.keys().next().value;
   if (firstKey) {
-    console.log(`[${accountLabel}] Sample stat keys: ${JSON.stringify(Object.keys(statsMap.get(firstKey)!))}`);
-    console.log(`[${accountLabel}] Sample stat values: ${JSON.stringify(statsMap.get(firstKey))}`);
+    console.log(`[${accountLabel}] Sample stat: ${JSON.stringify(statsMap.get(firstKey))}`);
   }
 
   return statsMap;
