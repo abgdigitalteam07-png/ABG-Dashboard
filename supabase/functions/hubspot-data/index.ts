@@ -182,9 +182,18 @@ async function fetchAllEmails(token: string): Promise<any[]> {
 
 // ─── campaign stats ───
 
-async function fetchCampaignStats(token: string, campaignId: string): Promise<any | null> {
+async function fetchCampaignStats(
+  token: string,
+  campaignId: string,
+  startTimestamp: number,
+  endTimestamp: number,
+): Promise<any | null> {
   try {
-    return await hubspotFetch(`/email/public/v1/campaigns/${campaignId}`, token);
+    const params = new URLSearchParams({
+      startTimestamp: String(startTimestamp),
+      endTimestamp: String(endTimestamp),
+    });
+    return await hubspotFetch(`/email/public/v1/campaigns/${campaignId}?${params.toString()}`, token);
   } catch {
     return null;
   }
@@ -217,6 +226,15 @@ Deno.serve(async (req) => {
     const { brandName, startDate, endDate } = body;
     if (!brandName || !startDate || !endDate) {
       return new Response(JSON.stringify({ error: "Missing required params" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const startTimestamp = Math.floor(Date.parse(`${startDate}T00:00:00.000Z`) / 1000);
+    const endTimestamp = Math.floor(Date.parse(`${endDate}T23:59:59.999Z`) / 1000);
+    if (Number.isNaN(startTimestamp) || Number.isNaN(endTimestamp)) {
+      return new Response(JSON.stringify({ error: "Invalid date range" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -273,26 +291,22 @@ Deno.serve(async (req) => {
     console.log(`Total emails after brand filter: ${brandFiltered.length}`);
     console.log(`Matched emails: ${JSON.stringify(matchReasons.map(m => `${m.name} [${m.reason}] (from: ${m.fromName})`))}`);
 
-    // Date filter
-    const dateFiltered = brandFiltered.filter((email) => {
-      const dateStr = extractDateStr(email);
-      if (!dateStr) return false;
-      return dateStr >= startDate && dateStr <= endDate;
-    });
-    console.log(`Total emails after date filter: ${dateFiltered.length}`);
+    console.log(
+      `Date filtering mode: stats-window only (publishDate ignored), startTimestamp=${startTimestamp}, endTimestamp=${endTimestamp}`,
+    );
 
     // ── Stats via campaigns API ──
     let totalSent = 0, totalDelivered = 0, totalOpens = 0, totalClicks = 0;
     let totalBounce = 0, totalUnsub = 0, totalSpam = 0;
     const emails: EmailRecord[] = [];
 
-    for (let i = 0; i < dateFiltered.length; i += 10) {
-      const batch = dateFiltered.slice(i, i + 10);
+    for (let i = 0; i < brandFiltered.length; i += 10) {
+      const batch = brandFiltered.slice(i, i + 10);
       const results = await Promise.all(
         batch.map(async (email: any) => {
           const campaignId = email?.primaryEmailCampaignId;
           const counters = campaignId
-            ? (await fetchCampaignStats(token, campaignId))?.counters
+            ? (await fetchCampaignStats(token, campaignId, startTimestamp, endTimestamp))?.counters
             : null;
 
           const publishDate = extractDateStr(email) ?? "";
@@ -306,15 +320,8 @@ Deno.serve(async (req) => {
           const unsubscribe = counters?.unsubscribed || 0;
           const spam = counters?.spamreport || 0;
 
-          totalSent += sent;
-          totalDelivered += delivered;
-          totalOpens += opens;
-          totalClicks += clicks;
-          totalBounce += bounce;
-          totalUnsub += unsubscribe;
-          totalSpam += spam;
-
-          console.log(`Email stats: sent=${sent} opens=${opens} clicks=${clicks} delivered=${delivered} — "${email?.name || "Untitled"}"`);
+          // Include email only if it was actually sent in the selected stats window.
+          if (sent <= 0) return null;
 
           const openRate = delivered > 0 ? parseFloat(((opens / delivered) * 100).toFixed(1)) : 0;
           const clickRate = delivered > 0 ? parseFloat(((clicks / delivered) * 100).toFixed(1)) : 0;
@@ -344,8 +351,24 @@ Deno.serve(async (req) => {
           } as EmailRecord;
         }),
       );
-      emails.push(...results);
+
+      const inRangeRecords = results.filter((record): record is EmailRecord => record !== null);
+      for (const record of inRangeRecords) {
+        totalSent += record.sent;
+        totalDelivered += record.delivered;
+        totalOpens += record.opens;
+        totalClicks += record.clicks;
+        totalBounce += record.bounce;
+        totalUnsub += record.unsubscribe;
+        totalSpam += record.spam;
+        console.log(
+          `Email stats: sent=${record.sent} opens=${record.opens} clicks=${record.clicks} delivered=${record.delivered} — "${record.name}"`,
+        );
+      }
+      emails.push(...inRangeRecords);
     }
+
+    console.log(`Total emails after date filter: ${emails.length}`);
 
     console.log(`Final stats: sent=${totalSent} opens=${totalOpens} delivered=${totalDelivered} clicks=${totalClicks} bounce=${totalBounce}`);
 
