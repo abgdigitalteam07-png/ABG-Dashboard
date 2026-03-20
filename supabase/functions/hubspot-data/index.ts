@@ -158,34 +158,47 @@ async function fetchAllMarketingEmails(token: string, accountLabel: string): Pro
   return { emails: allEmails, apiVersion };
 }
 
-// For v3 emails, fetch statistics
-async function fetchV3EmailStats(token: string, emailIds: string[], accountLabel: string): Promise<Map<string, any>> {
+// For v3 emails, fetch statistics using the aggregated statistics endpoint
+async function fetchV3EmailStats(token: string, emailIds: string[], accountLabel: string, startDate: string, endDate: string): Promise<Map<string, any>> {
   const statsMap = new Map<string, any>();
-  const batchSize = 10;
-  for (let i = 0; i < emailIds.length; i += batchSize) {
-    const batch = emailIds.slice(i, i + batchSize);
-    const promises = batch.map(async (id) => {
-      // Try v3 stats endpoint
-      try {
-        const stats = await hubspotFetch(`/marketing/v3/emails/${id}/statistics`, token);
-        statsMap.set(id, stats);
-        return;
-      } catch (err: any) {
-        if (i === 0 && batch[0] === id) console.log(`[${accountLabel}] v3 stats error for ${id}: ${err.message?.substring(0, 200)}`);
+
+  try {
+    // Use the batch statistics list endpoint
+    const idParams = emailIds.map(id => `emailIds=${id}`).join("&");
+    const url = `/marketing/v3/emails/statistics/list?startTimestamp=${startDate}T00:00:00Z&endTimestamp=${endDate}T23:59:59Z&${idParams}`;
+    const res = await hubspotFetch(url, token);
+    const results = res.results || [];
+    console.log(`[${accountLabel}] Stats list returned ${results.length} entries`);
+    if (results.length > 0) {
+      console.log(`[${accountLabel}] Sample stats entry keys: ${JSON.stringify(Object.keys(results[0]))}`);
+      console.log(`[${accountLabel}] Sample stats counters: ${JSON.stringify(results[0].aggregatedStatistics?.counters || results[0].counters || "none")}`);
+    }
+    for (const entry of results) {
+      const id = entry.emailId || entry.id;
+      if (id) {
+        statsMap.set(String(id), entry.aggregatedStatistics || entry);
       }
-      // Try v1 stats endpoint as fallback
-      try {
-        const stats = await hubspotFetch(`/marketing-emails/v1/emails/${id}/with-statistics`, token);
-        if (stats?.stats?.counters) {
-          statsMap.set(id, { counters: stats.stats.counters });
+    }
+  } catch (err: any) {
+    console.error(`[${accountLabel}] Stats list error: ${err.message?.substring(0, 300)}`);
+    
+    // Fallback: try without email IDs to get all stats
+    try {
+      const url = `/marketing/v3/emails/statistics/list?startTimestamp=${startDate}T00:00:00Z&endTimestamp=${endDate}T23:59:59Z`;
+      const res = await hubspotFetch(url, token);
+      const results = res.results || [];
+      console.log(`[${accountLabel}] Stats fallback returned ${results.length} entries`);
+      for (const entry of results) {
+        const id = entry.emailId || entry.id;
+        if (id) {
+          statsMap.set(String(id), entry.aggregatedStatistics || entry);
         }
-        return;
-      } catch {
-        // skip
       }
-    });
-    await Promise.all(promises);
+    } catch (err2: any) {
+      console.error(`[${accountLabel}] Stats fallback error: ${err2.message?.substring(0, 300)}`);
+    }
   }
+
   console.log(`[${accountLabel}] Fetched stats for ${statsMap.size}/${emailIds.length} emails`);
   return statsMap;
 }
