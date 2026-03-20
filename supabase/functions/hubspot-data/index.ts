@@ -233,7 +233,55 @@ Deno.serve(async (req) => {
 
     if (!token1 && !token2) throw new Error("No HubSpot access tokens configured");
 
-    const { brandName, startDate, endDate } = (await req.json()) as HubSpotRequest;
+    const body = await req.json();
+
+    // Diagnostic mode: fetch 1 email and log all properties
+    if (body.debug === true) {
+      const allDebugResults: any[] = [];
+      for (const [label, tk] of [["Account 1", token1], ["Account 2", token2]] as const) {
+        if (!tk) continue;
+        try {
+          const raw = await hubspotFetch("/marketing-emails/v1/emails/with-statistics?limit=1&excludeDeletedObjects=true", tk as string);
+          const total = raw.total ?? 0;
+          const email = raw.objects?.[0];
+          console.log(`[DEBUG] ${label}: total=${total}, got email: ${!!email}`);
+
+          if (email) {
+            const topLevelKeys = Object.keys(email);
+            console.log(`[DEBUG] ${label} Top-level keys:`, JSON.stringify(topLevelKeys));
+
+            const brandRelated: Record<string, unknown> = {};
+            for (const key of topLevelKeys) {
+              const lk = key.toLowerCase();
+              if (lk.includes("brand") || lk.includes("category") || lk.includes("type") || lk.includes("group") || lk.includes("tag") || lk.includes("label") || lk.includes("folder") || lk.includes("campaign")) {
+                brandRelated[key] = email[key];
+              }
+            }
+            console.log(`[DEBUG] ${label} Brand-related:`, JSON.stringify(brandRelated));
+            console.log(`[DEBUG] ${label} name:`, email.name);
+            console.log(`[DEBUG] ${label} subject:`, email.subject);
+            console.log(`[DEBUG] ${label} fromName:`, email.fromName);
+
+            const fullJson = JSON.stringify(email);
+            for (let i = 0; i < fullJson.length && i < 10000; i += 2000) {
+              console.log(`[DEBUG] ${label} RAW chunk ${i}:`, fullJson.slice(i, i + 2000));
+            }
+
+            allDebugResults.push({ account: label, total, topLevelKeys, brandRelated, name: email.name, subject: email.subject, fromName: email.fromName });
+          } else {
+            allDebugResults.push({ account: label, total, message: "No emails" });
+          }
+        } catch (e: any) {
+          console.log(`[DEBUG] ${label} failed:`, e.message);
+          allDebugResults.push({ account: label, error: e.message });
+        }
+      }
+      return new Response(JSON.stringify({ debug: true, results: allDebugResults }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const { brandName, startDate, endDate } = body as HubSpotRequest;
     if (!brandName || !startDate || !endDate) {
       return new Response(JSON.stringify({ error: "Missing required params" }), {
         status: 400,
