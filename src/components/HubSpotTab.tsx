@@ -268,7 +268,6 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
                 <TableHead className="text-xs">Email Name</TableHead>
                 <TableHead className="text-xs">Sender</TableHead>
                 <TableHead className="text-xs">Published</TableHead>
-                <TableHead className="text-xs">Account</TableHead>
                 <TableHead className="text-right text-xs">Sent</TableHead>
                 <TableHead className="text-right text-xs">Click %</TableHead>
                 <TableHead className="text-right text-xs">Delivered %</TableHead>
