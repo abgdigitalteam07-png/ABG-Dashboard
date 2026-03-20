@@ -156,19 +156,30 @@ async function fetchAllMarketingEmails(token: string, accountLabel: string): Pro
   return { emails: allEmails, apiVersion };
 }
 
-// For v3 emails, fetch statistics for a batch of email IDs
+// For v3 emails, fetch statistics
 async function fetchV3EmailStats(token: string, emailIds: string[], accountLabel: string): Promise<Map<string, any>> {
   const statsMap = new Map<string, any>();
-  // Fetch stats individually (v3 doesn't have batch stats endpoint)
   const batchSize = 10;
   for (let i = 0; i < emailIds.length; i += batchSize) {
     const batch = emailIds.slice(i, i + batchSize);
     const promises = batch.map(async (id) => {
+      // Try v3 stats endpoint
       try {
         const stats = await hubspotFetch(`/marketing/v3/emails/${id}/statistics`, token);
         statsMap.set(id, stats);
+        return;
+      } catch (err: any) {
+        if (i === 0 && batch[0] === id) console.log(`[${accountLabel}] v3 stats error for ${id}: ${err.message?.substring(0, 200)}`);
+      }
+      // Try v1 stats endpoint as fallback
+      try {
+        const stats = await hubspotFetch(`/marketing-emails/v1/emails/${id}/with-statistics`, token);
+        if (stats?.stats?.counters) {
+          statsMap.set(id, { counters: stats.stats.counters });
+        }
+        return;
       } catch {
-        // skip individual stats failures
+        // skip
       }
     });
     await Promise.all(promises);
