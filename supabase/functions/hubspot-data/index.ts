@@ -89,11 +89,12 @@ function brandMatches(text: string | undefined | null, brandName: string): boole
   return lower.includes(brandLower);
 }
 
-async function fetchAllMarketingEmails(token: string, accountLabel: string): Promise<any[]> {
+async function fetchAllMarketingEmails(token: string, accountLabel: string): Promise<{ emails: any[]; apiVersion: string }> {
   // Try v1 API first
   let allEmails: any[] = [];
-  let useV1 = true;
+  let apiVersion = "v1";
 
+  let useV1 = true;
   try {
     const testRes = await hubspotFetch(`/marketing-emails/v1/emails?limit=1`, token);
     if (!testRes.objects) useV1 = false;
@@ -121,7 +122,7 @@ async function fetchAllMarketingEmails(token: string, accountLabel: string): Pro
       }
     }
   } else {
-    // Try v3 marketing emails API
+    apiVersion = "v3";
     console.log(`[${accountLabel}] v1 API unavailable, trying v3...`);
     let after: string | undefined;
     let hasMore = true;
@@ -140,11 +141,40 @@ async function fetchAllMarketingEmails(token: string, accountLabel: string): Pro
     }
   }
 
-  // Log first 5 email names for debugging
+  // Log first email object keys for debugging
+  if (allEmails.length > 0) {
+    const sample = allEmails[0];
+    console.log(`[${accountLabel}] API=${apiVersion}, keys: ${Object.keys(sample).join(",")}`);
+    // Log stats-related fields
+    console.log(`[${accountLabel}] Sample stats: ${JSON.stringify(sample.stats || sample.statistics || "none")}`);
+    console.log(`[${accountLabel}] Sample: name=${sample.name}, subject=${sample.subject}, fromName=${sample.fromName || sample.from?.name || "?"}, publishDate=${sample.publishDate || sample.publishedAt || sample.updatedAt || "?"}`);
+  }
+
   const sampleNames = allEmails.slice(0, 5).map((e: any) => e.name || e.subject || "no-name");
   console.log(`[${accountLabel}] Sample email names: ${JSON.stringify(sampleNames)}`);
 
-  return allEmails;
+  return { emails: allEmails, apiVersion };
+}
+
+// For v3 emails, fetch statistics for a batch of email IDs
+async function fetchV3EmailStats(token: string, emailIds: string[], accountLabel: string): Promise<Map<string, any>> {
+  const statsMap = new Map<string, any>();
+  // Fetch stats individually (v3 doesn't have batch stats endpoint)
+  const batchSize = 10;
+  for (let i = 0; i < emailIds.length; i += batchSize) {
+    const batch = emailIds.slice(i, i + batchSize);
+    const promises = batch.map(async (id) => {
+      try {
+        const stats = await hubspotFetch(`/marketing/v3/emails/${id}/statistics`, token);
+        statsMap.set(id, stats);
+      } catch {
+        // skip individual stats failures
+      }
+    });
+    await Promise.all(promises);
+  }
+  console.log(`[${accountLabel}] Fetched stats for ${statsMap.size}/${emailIds.length} emails`);
+  return statsMap;
 }
 
 async function fetchAccountData(
