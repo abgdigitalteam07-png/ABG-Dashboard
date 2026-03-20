@@ -158,41 +158,18 @@ async function fetchAllMarketingEmails(token: string, accountLabel: string): Pro
   return { emails: allEmails, apiVersion };
 }
 
-// For v3 emails, fetch statistics
-async function fetchV3EmailStats(token: string, emailIds: string[], accountLabel: string, startDate: string, endDate: string): Promise<Map<string, any>> {
-  const statsMap = new Map<string, any>();
-
+// Fetch aggregate email stats for the account
+async function fetchAggregateEmailStats(token: string, accountLabel: string, startDate: string, endDate: string): Promise<any> {
   try {
     const url = `/marketing/v3/emails/statistics/list?startTimestamp=${startDate}T00:00:00Z&endTimestamp=${endDate}T23:59:59Z`;
     const res = await hubspotFetch(url, token);
-
-    // The response has { aggregate, campaignAggregations, emails } structure
-    const emailStats = res.emails || res.results || [];
-    console.log(`[${accountLabel}] Stats response keys: ${JSON.stringify(Object.keys(res))}, emails array: ${emailStats.length}`);
-    
-    if (emailStats.length > 0) {
-      const sample = emailStats[0];
-      console.log(`[${accountLabel}] Stats email entry keys: ${JSON.stringify(Object.keys(sample))}`);
-      console.log(`[${accountLabel}] Stats sample: ${JSON.stringify(sample).substring(0, 800)}`);
-    }
-
-    // Also log aggregate stats
-    if (res.aggregate) {
-      console.log(`[${accountLabel}] Aggregate stats: ${JSON.stringify(res.aggregate).substring(0, 500)}`);
-    }
-
-    for (const entry of emailStats) {
-      const id = String(entry.emailId || entry.id || "");
-      if (id) {
-        statsMap.set(id, entry.aggregatedStatistics || entry);
-      }
-    }
+    const agg = res.aggregate?.counters || {};
+    console.log(`[${accountLabel}] Aggregate stats: sent=${agg.sent}, delivered=${agg.delivered}, open=${agg.open}, click=${agg.click}, bounce=${agg.bounce}`);
+    return agg;
   } catch (err: any) {
-    console.error(`[${accountLabel}] Stats error: ${err.message?.substring(0, 500)}`);
+    console.error(`[${accountLabel}] Aggregate stats error: ${err.message?.substring(0, 200)}`);
+    return {};
   }
-
-  console.log(`[${accountLabel}] Fetched stats for ${statsMap.size}/${emailIds.length} emails`);
-  return statsMap;
 }
 
 async function fetchAccountData(
