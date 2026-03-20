@@ -280,7 +280,7 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
             <TableBody>
               {filteredData.emails.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={11} className="text-center text-sm text-muted-foreground py-8">
+                  <TableCell colSpan={10} className="text-center text-sm text-muted-foreground py-8">
                     No emails found in this date range.
                   </TableCell>
                 </TableRow>
