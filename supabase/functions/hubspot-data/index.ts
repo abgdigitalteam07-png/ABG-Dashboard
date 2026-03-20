@@ -113,9 +113,12 @@ async function fetchAllEmails(token: string, accountLabel: string): Promise<any[
 
 // Fetch per-email statistics keyed by email ID
 // Fetch per-email statistics by email IDs in batches
-async function fetchEmailStats(token: string, accountLabel: string, emailIds: string[]): Promise<Map<string, any>> {
+async function fetchEmailStats(token: string, accountLabel: string, emailIds: string[], startDate: string, endDate: string): Promise<Map<string, any>> {
   const statsMap = new Map<string, any>();
   if (emailIds.length === 0) return statsMap;
+
+  const startTs = `${startDate}T00:00:00Z`;
+  const endTs = `${endDate}T23:59:59Z`;
 
   // Batch IDs in groups of 50
   const batchSize = 50;
@@ -123,13 +126,18 @@ async function fetchEmailStats(token: string, accountLabel: string, emailIds: st
     const batch = emailIds.slice(i, i + batchSize);
     const idsParam = batch.map((id) => `emailIds=${id}`).join("&");
     try {
-      const url = `/marketing/v3/emails/statistics/list?${idsParam}`;
+      const url = `/marketing/v3/emails/statistics/list?startTimestamp=${encodeURIComponent(startTs)}&endTimestamp=${encodeURIComponent(endTs)}&${idsParam}`;
       const res = await hubspotFetch(url, token);
       const results = res.results || [];
       for (const item of results) {
         const id = item.emailId || item.id;
         const counters = item.counters || item.aggregate?.counters || {};
         if (id) statsMap.set(String(id), counters);
+      }
+      // Log first batch response structure
+      if (i === 0 && results.length > 0) {
+        console.log(`[${accountLabel}] Stats response sample keys: ${JSON.stringify(Object.keys(results[0]))}`);
+        console.log(`[${accountLabel}] Stats response sample: ${JSON.stringify(results[0]).substring(0, 500)}`);
       }
     } catch (err) {
       console.error(`[${accountLabel}] Error fetching email stats batch:`, err);
