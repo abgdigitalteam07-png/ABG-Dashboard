@@ -124,6 +124,11 @@ async function fetchAllEmails(token: string): Promise<any[]> {
 
     try {
       const res = await hubspotFetch(url, token);
+      if (all.length === 0 && res.results?.length > 0) {
+        console.log("RAW FIRST EMAIL KEYS:", JSON.stringify(Object.keys(res.results[0])));
+        console.log("RAW FIRST EMAIL PROPERTIES:", JSON.stringify(res.results[0].properties || {}));
+        console.log("RAW FIRST EMAIL publishedByName:", res.results[0].publishedByName, "publishedById:", res.results[0].publishedById);
+      }
       all.push(...(res.results || []));
       if (res.paging?.next?.after) {
         after = res.paging.next.after;
