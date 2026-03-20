@@ -238,8 +238,20 @@ Deno.serve(async (req) => {
     // Diagnostic mode: fetch 1 email and log all properties
     if (body.debug === true) {
       const debugToken = token1 || token2!;
-      const raw = await hubspotFetch("/marketing-emails/v1/emails?limit=1&excludeDeletedObjects=true", debugToken);
-      const email = raw.objects?.[0];
+      // Try with-statistics endpoint (what the main flow uses)
+      let email: any = null;
+      try {
+        const raw1 = await hubspotFetch("/marketing-emails/v1/emails/with-statistics?limit=1&excludeDeletedObjects=true", debugToken);
+        email = raw1.objects?.[0];
+      } catch (e1) {
+        console.log("[DEBUG] with-statistics failed, trying plain endpoint:", e1);
+        try {
+          const raw2 = await hubspotFetch("/marketing-emails/v1/emails?limit=1&excludeDeletedObjects=true", debugToken);
+          email = raw2.objects?.[0];
+        } catch (e2) {
+          console.log("[DEBUG] plain endpoint also failed:", e2);
+        }
+      }
       if (!email) {
         console.log("[DEBUG] No emails found at all");
         return new Response(JSON.stringify({ debug: true, message: "No emails found" }), {
