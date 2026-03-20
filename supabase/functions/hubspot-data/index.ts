@@ -185,15 +185,9 @@ async function fetchAllEmails(token: string): Promise<any[]> {
 async function fetchCampaignStats(
   token: string,
   campaignId: string,
-  startTimestamp: number,
-  endTimestamp: number,
 ): Promise<any | null> {
   try {
-    const params = new URLSearchParams({
-      startTimestamp: String(startTimestamp),
-      endTimestamp: String(endTimestamp),
-    });
-    return await hubspotFetch(`/email/public/v1/campaigns/${campaignId}?${params.toString()}`, token);
+    return await hubspotFetch(`/email/public/v1/campaigns/${campaignId}`, token);
   } catch {
     return null;
   }
