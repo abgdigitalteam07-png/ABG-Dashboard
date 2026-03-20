@@ -264,10 +264,12 @@ async function fetchAccountData(
   });
 
   console.log(`[${accountLabel}] Brand "${brandName}" matched ${brandFiltered.length} emails`);
+  // Log state/type of first 3 matched emails
+  const sampleStates = brandFiltered.slice(0, 3).map((e: any) => `${e.name}: state=${e.state}, type=${e.type}, isPublished=${e.isPublished}`);
+  console.log(`[${accountLabel}] Sample states: ${JSON.stringify(sampleStates)}`);
 
   // Filter by date range
   const dateFiltered = brandFiltered.filter((e: any) => {
-    // v1: publishDate (ms timestamp), v3: publishedAt (ISO string) or updatedAt
     const timestamp = e.publishDate || e.publishedAt || e.updatedAt || e.updated || e.created;
     if (!timestamp) return false;
     const pubDate = new Date(timestamp).toISOString().split("T")[0];
