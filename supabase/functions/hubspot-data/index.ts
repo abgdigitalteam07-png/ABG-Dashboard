@@ -95,7 +95,7 @@ async function fetchAllEmails(token: string, accountLabel: string): Promise<any[
 
   while (hasMore) {
     try {
-      const url = `/marketing/v3/emails?limit=100${after ? `&after=${after}` : ""}`;
+      const url = `/marketing/v3/emails?limit=100&statistics=SENT_STATISTICS${after ? `&after=${after}` : ""}`;
       const res = await hubspotFetch(url, token);
       const results = res.results || [];
       allEmails.push(...results);
