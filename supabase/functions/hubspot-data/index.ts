@@ -248,15 +248,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    const startTimestamp = Math.floor(Date.parse(`${startDate}T00:00:00.000Z`) / 1000);
-    const endTimestamp = Math.floor(Date.parse(`${endDate}T23:59:59.999Z`) / 1000);
-    if (Number.isNaN(startTimestamp) || Number.isNaN(endTimestamp)) {
-      return new Response(JSON.stringify({ error: "Invalid date range" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     console.log(`Fetching HubSpot data for brand="${brandName}", ${startDate} to ${endDate}`);
 
     // ── Contacts / lifecycle ──
