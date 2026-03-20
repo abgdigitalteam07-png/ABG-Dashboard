@@ -245,27 +245,28 @@ Deno.serve(async (req) => {
       }),
     );
 
-    // ── Fetch & filter emails ──
+    // ── Filter emails by businessUnitId ONLY ──
     const allRawEmails = await fetchAllEmails(token);
     console.log(`Total emails before filter: ${allRawEmails.length}`);
 
+    const buIds = BRAND_TO_BU[brandName];
     const brandFiltered: any[] = [];
-    const matchReasons: { name: string; reason: string; fromName: string }[] = [];
 
     for (const email of allRawEmails) {
-      const result = matchEmailToBrand(email, brandName);
-      if (result.matched) {
+      const emailBuId = String(email.businessUnitId ?? "0");
+      if (buIds && buIds.includes(emailBuId)) {
         brandFiltered.push(email);
-        matchReasons.push({
-          name: email?.name || "Untitled",
-          reason: result.reason,
-          fromName: email?.from?.fromName || "Unknown",
-        });
+      } else if (!buIds) {
+        // Brand not in map — try exact match on email.brand property (case-insensitive)
+        const emailBrand = (email?.brand || "").trim().toLowerCase();
+        if (emailBrand === brandName.toLowerCase()) {
+          brandFiltered.push(email);
+        }
       }
     }
 
-    console.log(`Total emails after brand filter: ${brandFiltered.length}`);
-    console.log(`Matched emails: ${JSON.stringify(matchReasons.map(m => `${m.name} [${m.reason}] (from: ${m.fromName})`))}`);
+    console.log(`Total emails after brand filter (BU only): ${brandFiltered.length}`);
+    console.log(`Matched emails: ${JSON.stringify(brandFiltered.map((e: any) => `${e?.name} (BU:${e.businessUnitId})`))}`);
 
     // ── Date filter by hs_publish_date ──
     const dateFiltered = brandFiltered.filter((email) => {
