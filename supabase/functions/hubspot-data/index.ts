@@ -233,7 +233,60 @@ Deno.serve(async (req) => {
 
     if (!token1 && !token2) throw new Error("No HubSpot access tokens configured");
 
-    const { brandName, startDate, endDate } = (await req.json()) as HubSpotRequest;
+    const body = await req.json();
+
+    // Diagnostic mode: fetch 1 email and log all properties
+    if (body.debug === true) {
+      const debugToken = token1 || token2!;
+      const raw = await hubspotFetch("/marketing-emails/v1/emails?limit=1&excludeDeletedObjects=true", debugToken);
+      const email = raw.objects?.[0];
+      if (!email) {
+        console.log("[DEBUG] No emails found at all");
+        return new Response(JSON.stringify({ debug: true, message: "No emails found" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Log ALL top-level property names
+      const topLevelKeys = Object.keys(email);
+      console.log("[DEBUG] Top-level property names:", JSON.stringify(topLevelKeys));
+
+      // Log values of brand-related fields
+      const brandRelated: Record<string, unknown> = {};
+      for (const key of topLevelKeys) {
+        const lk = key.toLowerCase();
+        if (lk.includes("brand") || lk.includes("category") || lk.includes("type") || lk.includes("group") || lk.includes("tag") || lk.includes("label") || lk.includes("folder") || lk.includes("campaign")) {
+          brandRelated[key] = email[key];
+        }
+      }
+      console.log("[DEBUG] Brand-related properties:", JSON.stringify(brandRelated));
+
+      // Log key identification fields
+      console.log("[DEBUG] name:", email.name);
+      console.log("[DEBUG] subject:", email.subject);
+      console.log("[DEBUG] fromName:", email.fromName);
+      console.log("[DEBUG] primaryRichTextModuleHtml length:", email.primaryRichTextModuleHtml?.length ?? 0);
+
+      // Log the full email object (truncated for safety)
+      const fullJson = JSON.stringify(email);
+      // Log in chunks of 2000 chars
+      for (let i = 0; i < fullJson.length && i < 10000; i += 2000) {
+        console.log(`[DEBUG] RAW email chunk ${i}-${i + 2000}:`, fullJson.slice(i, i + 2000));
+      }
+
+      return new Response(JSON.stringify({ 
+        debug: true, 
+        topLevelKeys, 
+        brandRelated, 
+        name: email.name, 
+        subject: email.subject,
+        fromName: email.fromName,
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const { brandName, startDate, endDate } = body as HubSpotRequest;
     if (!brandName || !startDate || !endDate) {
       return new Response(JSON.stringify({ error: "Missing required params" }), {
         status: 400,
