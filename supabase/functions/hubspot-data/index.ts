@@ -132,20 +132,23 @@ Deno.serve(async (req) => {
     // ---------- STEP 1: Debug mode — log raw email properties ----------
     if (body.debug === true) {
       try {
-        // Fetch 1 raw email to inspect all properties
+        // STEP 1: Fetch 1 raw email to inspect all properties
         const raw = await hubspotFetch("/marketing/v3/emails?limit=1", token);
         const firstEmail = raw.results?.[0] || null;
         console.log("STEP 1 — Raw email properties:", JSON.stringify(firstEmail, null, 2));
 
-        // Fetch business units
+        // STEP 2: Fetch business units
         const units = await fetchBusinessUnits(token);
 
         return new Response(JSON.stringify({
           debug: true,
           rawEmailProperties: firstEmail ? Object.keys(firstEmail) : [],
-          rawEmail: firstEmail,
-          businessUnits: units,
+          businessUnitId_value: firstEmail?.businessUnitId ?? "NOT FOUND",
           hs_all_assigned_business_unit_ids: firstEmail?.hs_all_assigned_business_unit_ids ?? "NOT FOUND",
+          subscriptionName: firstEmail?.subscriptionDetails?.subscriptionName ?? "NOT FOUND",
+          activeDomain: firstEmail?.activeDomain ?? "NOT FOUND",
+          businessUnits: units,
+          note: "businessUnitId exists but business units API may be empty if the Business Units add-on is not enabled. Filtering uses subscriptionDetails.subscriptionName and activeDomain as fallback.",
         }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
