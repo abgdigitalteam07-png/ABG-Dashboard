@@ -83,70 +83,70 @@ function extractDateStr(email: any): string | null {
   return null;
 }
 
-// ─── STRICT brand matching ───
-// Since businessUnitId is "0" for all emails and business units API is 403,
-// we match ONLY on:
-//   1. fromName exactly equals brandName (case-insensitive)
-//   2. email name starts with brandName followed by separator or end
+// ─── Brand → businessUnitId mapping (source of truth from HubSpot) ───
+// Discovered via debug: each brand has a dedicated businessUnitId.
+// BU "0" is the corporate/catch-all (American Bath Group).
+// BU "843133" is shared (Swan, ASD, etc.) — needs fromName secondary filter.
 
-/**
- * Check if fromName exactly equals the brand name (case-insensitive, trimmed).
- */
-function fromNameExactMatch(email: any, brandName: string): boolean {
-  const fromName = (email?.from?.fromName || "").trim().toLowerCase();
-  return fromName === brandName.toLowerCase();
-}
+const BRAND_TO_BU: Record<string, string[]> = {
+  "Bootz":              ["1982886"],
+  "Swan":               ["843133"],     // shared BU, needs fromName filter
+  "Neptune":            ["1690061"],
+  "MAAX":               ["1982891"],
+  "Hamilton":           ["1982889"],
+  "Comfort Designs":    ["1982888"],
+  "Maidstone":          ["1982892"],
+  "Florestone":         ["1690060"],
+  "Laurel Mountain":    ["1982879"],
+  "ABG Hospitality":    ["1982882", "1982890"],
+  "Aquarius":           ["1982883"],
+  "Aquatic":            ["1982884"],
+  "Clarion":            ["1982887"],
+  "RBS":                ["1982893"],
+  "American Bath Group":["0"],
+  "DreamLine":          ["1690059"],
+  "Aker":               ["1982881"],
+};
 
-/**
- * Check if the email name starts with the brand name, followed by a word boundary.
- * "Swan Xpress" → matches "Swan"
- * "Swanstone" → does NOT match "Swan"
- * "Swan" → matches "Swan"
- */
-function nameStartsWithBrand(emailName: string, brandName: string): boolean {
-  if (!emailName) return false;
-  const lower = emailName.trim().toLowerCase();
-  const bn = brandName.toLowerCase();
-  if (!lower.startsWith(bn)) return false;
-  if (lower.length === bn.length) return true;
-  // Next char must be a non-alphanumeric (word boundary)
-  const nextChar = lower[bn.length];
-  return /[^a-z0-9]/.test(nextChar);
-}
+// BUs where multiple brands share the same unit — require fromName check
+const SHARED_BUS = new Set(["0", "843133"]);
 
-/**
- * Check if the email name contains the brand name as a standalone word.
- * "Optima/CleanUp with Swan" → matches "Swan"
- * "Let It Snow with Swanstone" → does NOT match "Swan" (Swanstone ≠ Swan)
- */
-function nameContainsBrandWord(emailName: string, brandName: string): boolean {
-  if (!emailName) return false;
-  const escaped = brandName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  // Match brand name surrounded by word boundaries (non-alphanumeric or start/end)
-  const regex = new RegExp(`(?:^|[^a-zA-Z0-9])${escaped}(?:[^a-zA-Z0-9]|$)`, "i");
-  return regex.test(emailName);
-}
+// fromName mapping for brands in shared BUs
+const BRAND_FROM_NAMES: Record<string, string[]> = {
+  "Swan":               ["Swan"],
+  "American Bath Group":["American Bath Group"],
+};
 
 function matchEmailToBrand(
   email: any,
   brandName: string,
 ): { matched: boolean; reason: string } {
-  // Rule 1: fromName exactly equals brandName
-  if (fromNameExactMatch(email, brandName)) {
-    return { matched: true, reason: "fromName-exact" };
+  const buIds = BRAND_TO_BU[brandName];
+  const emailBuId = String(email.businessUnitId || "0");
+
+  // If brand has known BU IDs, filter by them
+  if (buIds) {
+    if (!buIds.includes(emailBuId)) {
+      return { matched: false, reason: "" };
+    }
+    // For shared BUs, also check fromName
+    if (SHARED_BUS.has(emailBuId)) {
+      const fromName = (email?.from?.fromName || "").trim().toLowerCase();
+      const allowedNames = BRAND_FROM_NAMES[brandName] || [brandName];
+      const nameMatch = allowedNames.some(n => fromName === n.toLowerCase());
+      if (nameMatch) {
+        return { matched: true, reason: `BU-${emailBuId}+fromName` };
+      }
+      return { matched: false, reason: "" };
+    }
+    return { matched: true, reason: `BU-${emailBuId}` };
   }
 
-  // Rule 2: email name starts with brandName + word boundary
-  const emailName = (email?.name || "").trim();
-  if (nameStartsWithBrand(emailName, brandName)) {
-    return { matched: true, reason: "name-startsWith" };
+  // Fallback for brands not in the map (e.g. IMI): match by fromName only
+  const fromName = (email?.from?.fromName || "").trim().toLowerCase();
+  if (fromName === brandName.toLowerCase()) {
+    return { matched: true, reason: "fromName-exact-fallback" };
   }
-
-  // Rule 3: email name contains brandName as standalone word (not part of another word)
-  if (nameContainsBrandWord(emailName, brandName)) {
-    return { matched: true, reason: "name-containsWord" };
-  }
-
   return { matched: false, reason: "" };
 }
 
