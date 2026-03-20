@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  BarChart, Bar, Cell,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
 import { fetchHubSpotData } from "@/lib/api-client";
 import { Brand } from "@/lib/brands";
@@ -30,7 +29,7 @@ function BenchmarkBadge({ label }: { label: string }) {
     label === "Good" ? "text-brand-blue bg-brand-blue/10" :
     "text-brand-red bg-brand-red/10";
   return (
-    <span className={cn("ml-2 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase", color)}>
+    <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase", color)}>
       {label}
     </span>
   );
@@ -63,7 +62,7 @@ function MetricCard({ label, value, sub, benchmark }: { label: string; value: st
       <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
       <p className="mt-1 text-xl font-semibold tabular-nums">{value}</p>
       {sub && <p className="mt-0.5 text-[11px] text-muted-foreground">{sub}</p>}
-      {benchmark && <BenchmarkBadge label={benchmark} />}
+      {benchmark && <div className="mt-1"><BenchmarkBadge label={benchmark} /></div>}
     </div>
   );
 }
@@ -96,7 +95,6 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
   if (!d) return null;
 
   const emailCount = d.totalEmails ?? d.emails?.length ?? 0;
-  // Click-through rate = clicks / opens
   const ctr = d.totalOpens > 0
     ? parseFloat(((d.totalClicks ?? 0) / d.totalOpens * 100).toFixed(1))
     : (d.clickRate && d.openRate && d.openRate > 0 ? parseFloat((d.clickRate / d.openRate * 100).toFixed(1)) : 0);
@@ -104,7 +102,7 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
   return (
     <div className="space-y-6 p-6">
 
-      {/* ── SECTION 1 — Email Health Score ── */}
+      {/* ── SECTION 1 — Email Health Score (gauge + metrics inline) ── */}
       <div>
         <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Email Health Score</h2>
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[auto_1fr]">

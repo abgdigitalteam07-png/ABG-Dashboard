@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { format, startOfDay, subDays, startOfMonth, endOfMonth, subMonths } from "date-fns";
+import { format, startOfDay, subDays, startOfMonth, startOfYear, subYears, endOfYear } from "date-fns";
 import { CalendarIcon, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -16,29 +16,32 @@ interface DateRangePickerProps {
   onChange: (from: Date, to: Date) => void;
 }
 
-type PresetId = "today" | "yesterday" | "last7" | "last30" | "thisMonth" | "lastMonth" | "fixed" | "advanced";
+type PresetId = "last7" | "last14" | "last30" | "last60" | "last90" | "last365" | "thisYear" | "lastYear" | "custom";
 
 const presets: { id: PresetId; label: string }[] = [
-  { id: "today", label: "Today" },
-  { id: "yesterday", label: "Yesterday" },
   { id: "last7", label: "Last 7 days" },
+  { id: "last14", label: "Last 14 days" },
   { id: "last30", label: "Last 30 days" },
-  { id: "thisMonth", label: "This month" },
-  { id: "lastMonth", label: "Last month" },
-  { id: "fixed", label: "Fixed (custom)" },
-  { id: "advanced", label: "Advanced" },
+  { id: "last60", label: "Last 60 days" },
+  { id: "last90", label: "Last 90 days" },
+  { id: "last365", label: "Last 365 days" },
+  { id: "thisYear", label: "This year" },
+  { id: "lastYear", label: "Last year" },
+  { id: "custom", label: "Custom range" },
 ];
 
 function getPresetRange(id: PresetId): { from: Date; to: Date } | null {
   const now = new Date();
   const today = startOfDay(now);
   switch (id) {
-    case "today": return { from: today, to: now };
-    case "yesterday": { const y = subDays(today, 1); return { from: y, to: today }; }
     case "last7": return { from: subDays(today, 7), to: now };
+    case "last14": return { from: subDays(today, 14), to: now };
     case "last30": return { from: subDays(today, 30), to: now };
-    case "thisMonth": return { from: startOfMonth(now), to: now };
-    case "lastMonth": { const lm = subMonths(now, 1); return { from: startOfMonth(lm), to: endOfMonth(lm) }; }
+    case "last60": return { from: subDays(today, 60), to: now };
+    case "last90": return { from: subDays(today, 90), to: now };
+    case "last365": return { from: subDays(today, 365), to: now };
+    case "thisYear": return { from: startOfYear(now), to: now };
+    case "lastYear": { const ly = subYears(now, 1); return { from: startOfYear(ly), to: endOfYear(ly) }; }
     default: return null;
   }
 }
@@ -57,7 +60,6 @@ export function DateRangePicker({ from, to, onChange }: DateRangePickerProps) {
       setShowCalendar(false);
       setOpen(false);
     } else {
-      // fixed or advanced → show calendar
       setShowCalendar(true);
       setRange({ from, to });
     }
