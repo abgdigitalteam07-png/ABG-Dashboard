@@ -89,14 +89,11 @@ function extractPublishDate(email: any): string | null {
   return null;
 }
 
-// ─── Brand → businessUnitId mapping (source of truth from HubSpot) ───
-// Discovered via debug: each brand has a dedicated businessUnitId.
-// BU "0" is the corporate/catch-all (American Bath Group).
-// BU "843133" is shared (Swan, ASD, etc.) — needs fromName secondary filter.
+// ─── Brand → businessUnitId mapping (ONLY filter — no text matching) ───
 
 const BRAND_TO_BU: Record<string, string[]> = {
   "Bootz":              ["1982886"],
-  "Swan":               ["843133"],     // shared BU, needs fromName filter
+  "Swan":               ["843133"],
   "Neptune":            ["1690061"],
   "MAAX":               ["1982891"],
   "Hamilton":           ["1982889"],
@@ -113,48 +110,6 @@ const BRAND_TO_BU: Record<string, string[]> = {
   "DreamLine":          ["1690059"],
   "Aker":               ["1982881"],
 };
-
-// BUs where multiple brands share the same unit — require fromName check
-const SHARED_BUS = new Set(["0", "843133"]);
-
-// fromName mapping for brands in shared BUs
-const BRAND_FROM_NAMES: Record<string, string[]> = {
-  "Swan":               ["Swan"],
-  "American Bath Group":["American Bath Group"],
-};
-
-function matchEmailToBrand(
-  email: any,
-  brandName: string,
-): { matched: boolean; reason: string } {
-  const buIds = BRAND_TO_BU[brandName];
-  const emailBuId = String(email.businessUnitId || "0");
-
-  // If brand has known BU IDs, filter by them
-  if (buIds) {
-    if (!buIds.includes(emailBuId)) {
-      return { matched: false, reason: "" };
-    }
-    // For shared BUs, also check fromName
-    if (SHARED_BUS.has(emailBuId)) {
-      const fromName = (email?.from?.fromName || "").trim().toLowerCase();
-      const allowedNames = BRAND_FROM_NAMES[brandName] || [brandName];
-      const nameMatch = allowedNames.some(n => fromName === n.toLowerCase());
-      if (nameMatch) {
-        return { matched: true, reason: `BU-${emailBuId}+fromName` };
-      }
-      return { matched: false, reason: "" };
-    }
-    return { matched: true, reason: `BU-${emailBuId}` };
-  }
-
-  // Fallback for brands not in the map (e.g. IMI): match by fromName only
-  const fromName = (email?.from?.fromName || "").trim().toLowerCase();
-  if (fromName === brandName.toLowerCase()) {
-    return { matched: true, reason: "fromName-exact-fallback" };
-  }
-  return { matched: false, reason: "" };
-}
 
 // ─── fetch all published emails ───
 
@@ -290,27 +245,28 @@ Deno.serve(async (req) => {
       }),
     );
 
-    // ── Fetch & filter emails ──
+    // ── Filter emails by businessUnitId ONLY ──
     const allRawEmails = await fetchAllEmails(token);
     console.log(`Total emails before filter: ${allRawEmails.length}`);
 
+    const buIds = BRAND_TO_BU[brandName];
     const brandFiltered: any[] = [];
-    const matchReasons: { name: string; reason: string; fromName: string }[] = [];
 
     for (const email of allRawEmails) {
-      const result = matchEmailToBrand(email, brandName);
-      if (result.matched) {
+      const emailBuId = String(email.businessUnitId ?? "0");
+      if (buIds && buIds.includes(emailBuId)) {
         brandFiltered.push(email);
-        matchReasons.push({
-          name: email?.name || "Untitled",
-          reason: result.reason,
-          fromName: email?.from?.fromName || "Unknown",
-        });
+      } else if (!buIds) {
+        // Brand not in map — try exact match on email.brand property (case-insensitive)
+        const emailBrand = (email?.brand || "").trim().toLowerCase();
+        if (emailBrand === brandName.toLowerCase()) {
+          brandFiltered.push(email);
+        }
       }
     }
 
-    console.log(`Total emails after brand filter: ${brandFiltered.length}`);
-    console.log(`Matched emails: ${JSON.stringify(matchReasons.map(m => `${m.name} [${m.reason}] (from: ${m.fromName})`))}`);
+    console.log(`Total emails after brand filter (BU only): ${brandFiltered.length}`);
+    console.log(`Matched emails: ${JSON.stringify(brandFiltered.map((e: any) => `${e?.name} (BU:${e.businessUnitId})`))}`);
 
     // ── Date filter by hs_publish_date ──
     const dateFiltered = brandFiltered.filter((email) => {
