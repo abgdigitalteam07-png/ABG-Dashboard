@@ -101,55 +101,50 @@ Deno.serve(async (req) => {
 
     const body = await req.json();
 
-    // Diagnostic mode: try multiple API endpoints
+    // Diagnostic mode
     if (body.debug === true) {
-      const endpoints = [
-        { label: "v1 with-stats", url: "/marketing-emails/v1/emails/with-statistics?limit=1&excludeDeletedObjects=true" },
-        { label: "v1 plain", url: "/marketing-emails/v1/emails?limit=1" },
-        { label: "v3 marketing emails", url: "/marketing/v3/emails?limit=1" },
-        { label: "v3 marketing emails alt", url: "/marketing/v3/emails/statistics/list?limit=1" },
-      ];
       const results: any[] = [];
-      for (const ep of endpoints) {
-        try {
-          const res = await fetch(`https://api.hubapi.com${ep.url}`, {
-            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-          });
-          const status = res.status;
-          const text = await res.text();
-          let parsed: any = null;
-          try { parsed = JSON.parse(text); } catch {}
-          
-          if (status === 200 && parsed) {
-            const items = parsed.objects || parsed.results || [];
-            const total = parsed.total ?? parsed.totalCount ?? items.length;
-            const first = items[0];
-            const keys = first ? Object.keys(first) : [];
-            
-            const brandRelated: Record<string, unknown> = {};
-            if (first) {
-              for (const key of keys) {
-                const lk = key.toLowerCase();
-                if (lk.includes("brand") || lk.includes("category") || lk.includes("type") || lk.includes("group") || lk.includes("tag") || lk.includes("label") || lk.includes("folder") || lk.includes("campaign") || lk.includes("business")) {
-                  brandRelated[key] = first[key];
-                }
-              }
+      try {
+        // Fetch a few published emails to find a real one
+        const raw = await hubspotFetch("/marketing/v3/emails?limit=5&orderBy=-publishDate&isPublished=true", token);
+        const items = raw.results || [];
+        console.log(`[DEBUG] v3: ${items.length} published emails, total=${raw.total}`);
+
+        for (const email of items.slice(0, 3)) {
+          const keys = Object.keys(email);
+          const brandRelated: Record<string, unknown> = {};
+          for (const key of keys) {
+            const lk = key.toLowerCase();
+            if (lk.includes("brand") || lk.includes("category") || lk.includes("type") || lk.includes("group") || lk.includes("tag") || lk.includes("label") || lk.includes("folder") || lk.includes("campaign") || lk.includes("business")) {
+              brandRelated[key] = email[key];
             }
-            
-            console.log(`[DEBUG] ${ep.label}: status=${status}, total=${total}, keys=${JSON.stringify(keys)}`);
-            if (first) {
-              const chunk = JSON.stringify(first).slice(0, 3000);
-              console.log(`[DEBUG] ${ep.label} first item:`, chunk);
-            }
-            
-            results.push({ endpoint: ep.label, status, total, keys, brandRelated, name: first?.name, subject: first?.subject });
-          } else {
-            console.log(`[DEBUG] ${ep.label}: status=${status}`);
-            results.push({ endpoint: ep.label, status, error: text.slice(0, 200) });
           }
-        } catch (e: any) {
-          results.push({ endpoint: ep.label, error: e.message });
+          
+          // Try to get stats for this email
+          let stats: any = null;
+          try {
+            stats = await hubspotFetch(`/marketing/v3/emails/${email.id}/statistics`, token);
+          } catch (e: any) {
+            stats = { error: e.message.slice(0, 200) };
+          }
+
+          const chunk = JSON.stringify(email).slice(0, 2000);
+          console.log(`[DEBUG] Email "${email.name}":`, chunk);
+          console.log(`[DEBUG] Stats for ${email.id}:`, JSON.stringify(stats).slice(0, 1000));
+
+          results.push({
+            id: email.id,
+            name: email.name,
+            subject: email.subject,
+            from: email.from,
+            publishDate: email.publishDate,
+            brandRelated,
+            allKeys: keys,
+            stats,
+          });
         }
+      } catch (e: any) {
+        results.push({ error: e.message });
       }
       return new Response(JSON.stringify({ debug: true, results }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
