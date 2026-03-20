@@ -13,6 +13,7 @@ interface HubSpotRequest {
 
 interface EmailRecord {
   name: string;
+  brandName: string;
   subject: string;
   sender: string;
   publishDate: string;
