@@ -117,38 +117,57 @@ async function fetchAllEmails(token: string, accountLabel: string): Promise<any[
   return allEmails;
 }
 
-// Fetch per-email statistics keyed by email ID
-// Fetch per-email statistics using individual endpoint
-async function fetchEmailStats(token: string, accountLabel: string, emailIds: string[]): Promise<Map<string, any>> {
+// Fetch per-email statistics using the statistics/list endpoint with date range
+async function fetchEmailStats(
+  token: string, accountLabel: string, emailIds: string[], startDate: string, endDate: string
+): Promise<{ statsMap: Map<string, any>; aggCounters: any }> {
   const statsMap = new Map<string, any>();
-  if (emailIds.length === 0) return statsMap;
+  let aggCounters: any = {};
+  const idSet = new Set(emailIds);
 
-  // Fetch individual email stats in parallel batches of 10
-  const batchSize = 10;
-  for (let i = 0; i < emailIds.length; i += batchSize) {
-    const batch = emailIds.slice(i, i + batchSize);
-    const results = await Promise.allSettled(
-      batch.map(async (id) => {
-        const res = await hubspotFetch(`/marketing/v3/emails/${id}/statistics`, token);
-        return { id, res };
-      })
-    );
-    for (const r of results) {
-      if (r.status === "fulfilled") {
-        const { id, res } = r.value;
-        const counters = res.counters || res.aggregate?.counters || {};
-        statsMap.set(id, counters);
-        // Log first successful response structure
-        if (statsMap.size === 1) {
-          console.log(`[${accountLabel}] Stats response keys: ${JSON.stringify(Object.keys(res))}`);
-          console.log(`[${accountLabel}] Stats counters: ${JSON.stringify(counters)}`);
+  let after: string | undefined;
+  let hasMore = true;
+  let pageCount = 0;
+
+  while (hasMore) {
+    try {
+      let url = `/marketing/v3/emails/statistics/list?startTimestamp=${startDate}T00:00:00Z&endTimestamp=${endDate}T23:59:59Z&limit=100`;
+      if (after) url += `&after=${after}`;
+      const res = await hubspotFetch(url, token);
+
+      // Capture aggregate on first page
+      if (pageCount === 0) {
+        aggCounters = res.aggregate?.counters || {};
+        console.log(`[${accountLabel}] Agg stats: sent=${aggCounters.sent}, delivered=${aggCounters.delivered}, open=${aggCounters.open}, click=${aggCounters.click}, bounce=${aggCounters.bounce}`);
+      }
+
+      const results = res.results || [];
+      if (pageCount === 0) {
+        console.log(`[${accountLabel}] Stats page 0: ${results.length} items`);
+        if (results.length > 0) {
+          console.log(`[${accountLabel}] Stats item keys: ${JSON.stringify(Object.keys(results[0]))}`);
+          console.log(`[${accountLabel}] Stats item[0]: ${JSON.stringify(results[0]).substring(0, 500)}`);
         }
       }
+
+      for (const item of results) {
+        const id = String(item.emailId || item.id || "");
+        if (id && idSet.has(id)) {
+          statsMap.set(id, item.counters || {});
+        }
+      }
+
+      after = res.paging?.next?.after;
+      hasMore = !!after;
+      pageCount++;
+    } catch (err: any) {
+      console.error(`[${accountLabel}] Stats list error: ${err.message?.substring(0, 200)}`);
+      break;
     }
   }
 
-  console.log(`[${accountLabel}] Fetched stats for ${statsMap.size}/${emailIds.length} emails`);
-  return statsMap;
+  console.log(`[${accountLabel}] Stats: ${pageCount} pages, matched ${statsMap.size}/${emailIds.length} emails`);
+  return { statsMap, aggCounters };
 }
 
 async function fetchAccountData(
@@ -218,9 +237,9 @@ async function fetchAccountData(
 
   // Fetch per-email stats for the date-filtered emails
   const emailIds = dateFiltered.map((e: any) => String(e.id));
-  const statsMap = await fetchEmailStats(token, accountLabel, emailIds);
+  const { statsMap, aggCounters } = await fetchEmailStats(token, accountLabel, emailIds, startDate, endDate);
 
-  // Build email records with per-email stats
+  // Build email records with per-email stats (fall back to aggregate if no per-email stats)
   let totalSent = 0, totalDelivered = 0, totalOpens = 0, totalClicks = 0, totalBounce = 0, totalUnsub = 0, totalSpam = 0;
 
   const emails: EmailRecord[] = dateFiltered.map((e: any) => {
@@ -263,6 +282,19 @@ async function fetchAccountData(
       account: accountLabel,
     };
   });
+
+  // If per-email stats yielded 0, use aggregate counters for scorecards
+  const usedAgg = totalSent === 0 && (aggCounters.sent || 0) > 0;
+  if (usedAgg) {
+    totalSent = aggCounters.sent || 0;
+    totalDelivered = aggCounters.delivered || 0;
+    totalOpens = aggCounters.open || 0;
+    totalClicks = aggCounters.click || 0;
+    totalBounce = aggCounters.bounce || 0;
+    totalUnsub = aggCounters.unsubscribed || 0;
+    totalSpam = aggCounters.spamreport || 0;
+    console.log(`[${accountLabel}] Using aggregate stats for scorecards (no per-email stats)`);
+  }
 
   return {
     totalContacts,
