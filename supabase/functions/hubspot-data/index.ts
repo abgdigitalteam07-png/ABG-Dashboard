@@ -105,43 +105,40 @@ Deno.serve(async (req) => {
     if (body.debug === true) {
       const results: any[] = [];
       try {
-        // Fetch a few published emails to find a real one
-        const raw = await hubspotFetch("/marketing/v3/emails?limit=5&orderBy=-publishDate&isPublished=true", token);
-        const items = raw.results || [];
-        console.log(`[DEBUG] v3: ${items.length} published emails, total=${raw.total}`);
-
-        for (const email of items.slice(0, 3)) {
-          const keys = Object.keys(email);
-          const brandRelated: Record<string, unknown> = {};
-          for (const key of keys) {
-            const lk = key.toLowerCase();
-            if (lk.includes("brand") || lk.includes("category") || lk.includes("type") || lk.includes("group") || lk.includes("tag") || lk.includes("label") || lk.includes("folder") || lk.includes("campaign") || lk.includes("business")) {
-              brandRelated[key] = email[key];
-            }
-          }
-          
-          // Try to get stats for this email
-          let stats: any = null;
+        // Try aggregate stats endpoint
+        const statsEndpoints = [
+          "/marketing/v3/emails/statistics/list?limit=3",
+          "/marketing/v3/emails/statistics?startTimestamp=2026-03-01T00:00:00Z&endTimestamp=2026-03-20T00:00:00Z",
+          "/email/public/v1/campaigns?limit=3",
+        ];
+        for (const ep of statsEndpoints) {
           try {
-            stats = await hubspotFetch(`/marketing/v3/emails/${email.id}/statistics`, token);
+            const res = await fetch(`https://api.hubapi.com${ep}`, {
+              headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+            });
+            const text = await res.text();
+            console.log(`[DEBUG] ${ep}: status=${res.status}, body=${text.slice(0, 500)}`);
+            results.push({ endpoint: ep, status: res.status, body: text.slice(0, 500) });
           } catch (e: any) {
-            stats = { error: e.message.slice(0, 200) };
+            results.push({ endpoint: ep, error: e.message });
           }
+        }
 
-          const chunk = JSON.stringify(email).slice(0, 2000);
-          console.log(`[DEBUG] Email "${email.name}":`, chunk);
-          console.log(`[DEBUG] Stats for ${email.id}:`, JSON.stringify(stats).slice(0, 1000));
-
-          results.push({
-            id: email.id,
-            name: email.name,
-            subject: email.subject,
-            from: email.from,
-            publishDate: email.publishDate,
-            brandRelated,
-            allKeys: keys,
-            stats,
-          });
+        // Also try v1 campaign endpoint for stats
+        const emailRes = await hubspotFetch("/marketing/v3/emails?limit=1&orderBy=-publishDate&isPublished=true", token);
+        const email = emailRes.results?.[0];
+        if (email?.primaryEmailCampaignId) {
+          const campId = email.primaryEmailCampaignId;
+          try {
+            const campRes = await fetch(`https://api.hubapi.com/email/public/v1/campaigns/${campId}`, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            const campText = await campRes.text();
+            console.log(`[DEBUG] Campaign ${campId}: status=${campRes.status}, body=${campText.slice(0, 1000)}`);
+            results.push({ endpoint: `campaign/${campId}`, status: campRes.status, body: campText.slice(0, 1000) });
+          } catch (e: any) {
+            results.push({ endpoint: `campaign/${campId}`, error: e.message });
+          }
         }
       } catch (e: any) {
         results.push({ error: e.message });
