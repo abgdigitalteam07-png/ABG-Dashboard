@@ -153,29 +153,11 @@ async function fetchAccountData(
   startDate: string,
   endDate: string
 ): Promise<AccountData> {
-  // Get total contacts (try filtering by brand property)
   let totalContacts = 0;
   try {
-    const res = await hubspotPost("/crm/v3/objects/contacts/search", token, {
-      filterGroups: [{
-        filters: [{
-          propertyName: "brand",
-          operator: "EQ",
-          value: brandName,
-        }],
-      }],
-      limit: 0,
-    });
+    const res = await hubspotPost("/crm/v3/objects/contacts/search", token, { limit: 0 });
     totalContacts = res.total || 0;
-    console.log(`[${accountLabel}] Contacts with brand="${brandName}": ${totalContacts}`);
-  } catch (err: any) {
-    // brand property may not exist on contacts, fall back to total
-    console.log(`[${accountLabel}] Brand filter on contacts failed, fetching total: ${err.message?.substring(0, 100)}`);
-    try {
-      const res = await hubspotPost("/crm/v3/objects/contacts/search", token, { limit: 0 });
-      totalContacts = res.total || 0;
-    } catch { /* ignore */ }
-  }
+  } catch { /* ignore */ }
 
   // Get lifecycle stage breakdown
   const lifecycleStages: LifecycleStage[] = [
