@@ -89,27 +89,61 @@ function brandMatches(text: string | undefined | null, brandName: string): boole
   return lower.includes(brandLower);
 }
 
-async function fetchAllMarketingEmails(token: string): Promise<any[]> {
-  const allEmails: any[] = [];
-  let offset = 0;
-  const limit = 250;
-  let hasMore = true;
+async function fetchAllMarketingEmails(token: string, accountLabel: string): Promise<any[]> {
+  // Try v1 API first
+  let allEmails: any[] = [];
+  let useV1 = true;
 
-  while (hasMore && offset < 2000) {
-    try {
-      const res = await hubspotFetch(
-        `/marketing-emails/v1/emails?limit=${limit}&offset=${offset}&orderBy=-updated`,
-        token
-      );
-      const objects = res.objects || [];
-      allEmails.push(...objects);
-      hasMore = objects.length === limit;
-      offset += limit;
-    } catch (err) {
-      console.error(`Error fetching emails at offset ${offset}:`, err);
-      break;
+  try {
+    const testRes = await hubspotFetch(`/marketing-emails/v1/emails?limit=1`, token);
+    if (!testRes.objects) useV1 = false;
+  } catch {
+    useV1 = false;
+  }
+
+  if (useV1) {
+    let offset = 0;
+    const limit = 250;
+    let hasMore = true;
+    while (hasMore && offset < 2000) {
+      try {
+        const res = await hubspotFetch(
+          `/marketing-emails/v1/emails?limit=${limit}&offset=${offset}&orderBy=-updated`,
+          token
+        );
+        const objects = res.objects || [];
+        allEmails.push(...objects);
+        hasMore = objects.length === limit;
+        offset += limit;
+      } catch (err) {
+        console.error(`[${accountLabel}] Error fetching v1 emails at offset ${offset}:`, err);
+        break;
+      }
+    }
+  } else {
+    // Try v3 marketing emails API
+    console.log(`[${accountLabel}] v1 API unavailable, trying v3...`);
+    let after: string | undefined;
+    let hasMore = true;
+    while (hasMore) {
+      try {
+        const url = `/marketing/v3/emails?limit=100${after ? `&after=${after}` : ""}`;
+        const res = await hubspotFetch(url, token);
+        const results = res.results || [];
+        allEmails.push(...results);
+        after = res.paging?.next?.after;
+        hasMore = !!after && allEmails.length < 2000;
+      } catch (err) {
+        console.error(`[${accountLabel}] Error fetching v3 emails:`, err);
+        break;
+      }
     }
   }
+
+  // Log first 5 email names for debugging
+  const sampleNames = allEmails.slice(0, 5).map((e: any) => e.name || e.subject || "no-name");
+  console.log(`[${accountLabel}] Sample email names: ${JSON.stringify(sampleNames)}`);
+
   return allEmails;
 }
 
