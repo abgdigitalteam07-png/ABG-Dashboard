@@ -10,6 +10,46 @@ interface HubSpotRequest {
   endDate: string;
 }
 
+interface EmailRecord {
+  name: string;
+  subject: string;
+  sender: string;
+  publishDate: string;
+  sent: number;
+  delivered: number;
+  opens: number;
+  clicks: number;
+  bounce: number;
+  unsubscribe: number;
+  spam: number;
+  openRate: number;
+  clickRate: number;
+  deliveredRate: number;
+  unsubscribeRate: number;
+  bounceRate: number;
+  spamRate: number;
+  account: string;
+}
+
+interface LifecycleStage {
+  stage: string;
+  count: number;
+}
+
+interface AccountData {
+  contacts: Map<string, boolean>;
+  totalContacts: number;
+  lifecycleStages: LifecycleStage[];
+  emails: EmailRecord[];
+  totalSent: number;
+  totalDelivered: number;
+  totalOpens: number;
+  totalClicks: number;
+  totalBounce: number;
+  totalUnsub: number;
+  totalSpam: number;
+}
+
 async function hubspotFetch(path: string, token: string) {
   const res = await fetch(`https://api.hubapi.com${path}`, {
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -29,14 +69,133 @@ function getBenchmarkLabel(metric: string, value: number): string {
   return "Good";
 }
 
+async function fetchAccountData(token: string, accountLabel: string, startDate: string, endDate: string): Promise<AccountData> {
+  // Get contacts with emails for dedup
+  const contactEmails = new Map<string, boolean>();
+  let totalContacts = 0;
+  try {
+    const contactsSearch = await hubspotFetch(`/crm/v3/objects/contacts/search`, token).catch(() => ({ total: 0 }));
+    totalContacts = contactsSearch.total || 0;
+  } catch {
+    // ignore
+  }
+
+  // Get lifecycle stage breakdown
+  const lifecycleStages: LifecycleStage[] = [
+    { stage: "Subscriber", count: 0 },
+    { stage: "Lead", count: 0 },
+    { stage: "MQL", count: 0 },
+    { stage: "SQL", count: 0 },
+    { stage: "Opportunity", count: 0 },
+    { stage: "Customer", count: 0 },
+  ];
+
+  for (const ls of lifecycleStages) {
+    try {
+      const searchBody = {
+        filterGroups: [{
+          filters: [{
+            propertyName: "lifecyclestage",
+            operator: "EQ",
+            value: ls.stage.toLowerCase().replace(/ /g, ""),
+          }],
+        }],
+        limit: 0,
+      };
+      const res = await fetch("https://api.hubapi.com/crm/v3/objects/contacts/search", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify(searchBody),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        ls.count = data.total || 0;
+      }
+    } catch {
+      // skip
+    }
+  }
+
+  // Get marketing emails
+  const emailsRes = await hubspotFetch(
+    `/marketing-emails/v1/emails?limit=100&orderBy=-publishDate`,
+    token
+  ).catch(() => ({ objects: [] }));
+
+  const emails: EmailRecord[] = (emailsRes.objects || [])
+    .filter((e: any) => {
+      const pubDate = e.publishDate ? new Date(e.publishDate).toISOString().split("T")[0] : null;
+      return pubDate && pubDate >= startDate && pubDate <= endDate;
+    })
+    .map((e: any) => {
+      const stats = e.stats?.counters || {};
+      const sent = stats.sent || 0;
+      const delivered = stats.delivered || sent;
+      const opens = stats.open || 0;
+      const clicks = stats.click || 0;
+      const bounce = stats.bounce || 0;
+      const unsubscribe = stats.unsubscribed || 0;
+      const spam = stats.spamreport || 0;
+
+      return {
+        name: e.name || "Untitled",
+        subject: e.subject || "",
+        sender: e.fromName || "Unknown",
+        publishDate: e.publishDate ? new Date(e.publishDate).toISOString().split("T")[0] : "",
+        sent,
+        delivered,
+        opens,
+        clicks,
+        bounce,
+        unsubscribe,
+        spam,
+        openRate: delivered > 0 ? parseFloat((opens / delivered * 100).toFixed(1)) : 0,
+        clickRate: delivered > 0 ? parseFloat((clicks / delivered * 100).toFixed(1)) : 0,
+        deliveredRate: sent > 0 ? parseFloat((delivered / sent * 100).toFixed(1)) : 0,
+        unsubscribeRate: sent > 0 ? parseFloat((unsubscribe / sent * 100).toFixed(2)) : 0,
+        bounceRate: sent > 0 ? parseFloat((bounce / sent * 100).toFixed(2)) : 0,
+        spamRate: sent > 0 ? parseFloat((spam / sent * 100).toFixed(3)) : 0,
+        account: accountLabel,
+      };
+    });
+
+  let totalSent = 0, totalDelivered = 0, totalOpens = 0, totalClicks = 0;
+  let totalBounce = 0, totalUnsub = 0, totalSpam = 0;
+  for (const e of emails) {
+    totalSent += e.sent;
+    totalDelivered += e.delivered;
+    totalOpens += e.opens;
+    totalClicks += e.clicks;
+    totalBounce += e.bounce;
+    totalUnsub += e.unsubscribe;
+    totalSpam += e.spam;
+  }
+
+  return {
+    contacts: contactEmails,
+    totalContacts,
+    lifecycleStages,
+    emails,
+    totalSent,
+    totalDelivered,
+    totalOpens,
+    totalClicks,
+    totalBounce,
+    totalUnsub,
+    totalSpam,
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const token = Deno.env.get("HUBSPOT_ACCESS_TOKEN");
-    if (!token) throw new Error("HUBSPOT_ACCESS_TOKEN not configured");
+    const token1 = Deno.env.get("HUBSPOT_ACCESS_TOKEN");
+    const token2 = Deno.env.get("HUBSPOT_ACCESS_TOKEN_2");
+
+    if (!token1 && !token2) throw new Error("No HubSpot access tokens configured");
 
     const { brandName, startDate, endDate } = (await req.json()) as HubSpotRequest;
     if (!brandName || !startDate || !endDate) {
@@ -46,18 +205,23 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Get contacts count
-    const contactsSearch = await hubspotFetch(
-      `/crm/v3/objects/contacts/search`,
-      token
-    ).catch(() => ({ total: 0 }));
+    // Fetch from both accounts in parallel
+    const promises: Promise<AccountData | null>[] = [];
+    if (token1) promises.push(fetchAccountData(token1, "Account 1", startDate, endDate).catch((err) => { console.error("Account 1 error:", err); return null; }));
+    if (token2) promises.push(fetchAccountData(token2, "Account 2", startDate, endDate).catch((err) => { console.error("Account 2 error:", err); return null; }));
 
-    // Note: filtering by brand requires a custom property in HubSpot.
-    // For now we get total and the caller can filter by brand property if configured.
-    const totalContacts = contactsSearch.total || 0;
+    const results = await Promise.all(promises);
+    const validResults = results.filter((r): r is AccountData => r !== null);
 
-    // Get lifecycle stage breakdown
-    const lifecycleStages = [
+    if (validResults.length === 0) {
+      throw new Error("Both HubSpot accounts failed to return data");
+    }
+
+    // Merge contacts (sum totals — best approx without full email dedup via API pagination)
+    const totalContacts = validResults.reduce((sum, r) => sum + r.totalContacts, 0);
+
+    // Merge lifecycle stages
+    const mergedStages: LifecycleStage[] = [
       { stage: "Subscriber", count: 0 },
       { stage: "Lead", count: 0 },
       { stage: "MQL", count: 0 },
@@ -65,92 +229,25 @@ Deno.serve(async (req) => {
       { stage: "Opportunity", count: 0 },
       { stage: "Customer", count: 0 },
     ];
-
-    // Search contacts by lifecycle stage
-    for (const ls of lifecycleStages) {
-      try {
-        const searchBody = {
-          filterGroups: [
-            {
-              filters: [
-                {
-                  propertyName: "lifecyclestage",
-                  operator: "EQ",
-                  value: ls.stage.toLowerCase().replace(/ /g, ""),
-                },
-              ],
-            },
-          ],
-          limit: 0,
-        };
-        const res = await fetch("https://api.hubapi.com/crm/v3/objects/contacts/search", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-          body: JSON.stringify(searchBody),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          ls.count = data.total || 0;
-        }
-      } catch {
-        // Skip on error
+    for (const result of validResults) {
+      for (const ls of result.lifecycleStages) {
+        const merged = mergedStages.find((m) => m.stage === ls.stage);
+        if (merged) merged.count += ls.count;
       }
     }
 
-    // Get marketing emails
-    const emailsRes = await hubspotFetch(
-      `/marketing-emails/v1/emails?limit=100&orderBy=-publishDate`,
-      token
-    ).catch(() => ({ objects: [] }));
+    // Merge emails and sort by date
+    const allEmails = validResults.flatMap((r) => r.emails)
+      .sort((a, b) => b.publishDate.localeCompare(a.publishDate));
 
-    const allEmails = (emailsRes.objects || [])
-      .filter((e: any) => {
-        const pubDate = e.publishDate ? new Date(e.publishDate).toISOString().split("T")[0] : null;
-        return pubDate && pubDate >= startDate && pubDate <= endDate;
-      })
-      .map((e: any) => {
-        const stats = e.stats?.counters || {};
-        const sent = stats.sent || 0;
-        const delivered = stats.delivered || sent;
-        const opens = stats.open || 0;
-        const clicks = stats.click || 0;
-        const bounce = stats.bounce || 0;
-        const unsubscribe = stats.unsubscribed || 0;
-        const spam = stats.spamreport || 0;
-
-        return {
-          name: e.name || "Untitled",
-          subject: e.subject || "",
-          sender: e.fromName || "Unknown",
-          publishDate: e.publishDate ? new Date(e.publishDate).toISOString().split("T")[0] : "",
-          sent,
-          delivered,
-          opens,
-          clicks,
-          bounce,
-          unsubscribe,
-          spam,
-          openRate: delivered > 0 ? parseFloat((opens / delivered * 100).toFixed(1)) : 0,
-          clickRate: delivered > 0 ? parseFloat((clicks / delivered * 100).toFixed(1)) : 0,
-          deliveredRate: sent > 0 ? parseFloat((delivered / sent * 100).toFixed(1)) : 0,
-          unsubscribeRate: sent > 0 ? parseFloat((unsubscribe / sent * 100).toFixed(2)) : 0,
-          bounceRate: sent > 0 ? parseFloat((bounce / sent * 100).toFixed(2)) : 0,
-          spamRate: sent > 0 ? parseFloat((spam / sent * 100).toFixed(3)) : 0,
-        };
-      });
-
-    // Calculate aggregate metrics from filtered emails
-    let totalSent = 0, totalDelivered = 0, totalOpens = 0, totalClicks = 0;
-    let totalBounce = 0, totalUnsub = 0, totalSpam = 0;
-    for (const e of allEmails) {
-      totalSent += e.sent;
-      totalDelivered += e.delivered;
-      totalOpens += e.opens;
-      totalClicks += e.clicks;
-      totalBounce += e.bounce;
-      totalUnsub += e.unsubscribe;
-      totalSpam += e.spam;
-    }
+    // Weighted aggregate metrics
+    const totalSent = validResults.reduce((s, r) => s + r.totalSent, 0);
+    const totalDelivered = validResults.reduce((s, r) => s + r.totalDelivered, 0);
+    const totalOpens = validResults.reduce((s, r) => s + r.totalOpens, 0);
+    const totalClicks = validResults.reduce((s, r) => s + r.totalClicks, 0);
+    const totalBounce = validResults.reduce((s, r) => s + r.totalBounce, 0);
+    const totalUnsub = validResults.reduce((s, r) => s + r.totalUnsub, 0);
+    const totalSpam = validResults.reduce((s, r) => s + r.totalSpam, 0);
 
     const openRate = totalDelivered > 0 ? parseFloat((totalOpens / totalDelivered * 100).toFixed(1)) : 0;
     const clickRate = totalDelivered > 0 ? parseFloat((totalClicks / totalDelivered * 100).toFixed(1)) : 0;
@@ -162,7 +259,6 @@ Deno.serve(async (req) => {
       (openRate / 5 + clickRate / 2 - bounceRate * 2 - unsubscribeRate * 5 + 2).toFixed(1)
     )));
 
-    // Sort for high/low performing
     const sorted = [...allEmails].sort((a, b) => (b.openRate + b.clickRate) - (a.openRate + a.clickRate));
     const highPerforming = sorted.slice(0, 3);
     const lowPerforming = sorted.slice(-3).reverse();
@@ -183,15 +279,15 @@ Deno.serve(async (req) => {
       totalEmailsSent: totalSent,
       deliveredRate,
       deliveredRateDelta: 0,
-      lifecycleStages,
+      lifecycleStages: mergedStages,
       emails: allEmails,
       highPerforming,
       lowPerforming,
-      // Time series from email data
-      openRateOverTime: allEmails
+      accountsUsed: validResults.length,
+      openRateOverTime: [...allEmails]
         .sort((a, b) => a.publishDate.localeCompare(b.publishDate))
         .map((e) => ({ date: e.publishDate, value: e.openRate })),
-      unsubscribeRateOverTime: allEmails
+      unsubscribeRateOverTime: [...allEmails]
         .sort((a, b) => a.publishDate.localeCompare(b.publishDate))
         .map((e) => ({ date: e.publishDate, value: e.unsubscribeRate })),
     };
