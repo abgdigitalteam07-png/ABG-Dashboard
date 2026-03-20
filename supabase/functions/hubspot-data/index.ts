@@ -236,7 +236,7 @@ async function fetchAccountData(
 
   // Fetch per-email stats for the date-filtered emails
   const emailIds = dateFiltered.map((e: any) => String(e.id));
-  const statsMap = await fetchEmailStats(token, accountLabel, emailIds, startDate, endDate);
+  const statsMap = await fetchEmailStats(token, accountLabel, emailIds);
 
   // Build email records with per-email stats
   let totalSent = 0, totalDelivered = 0, totalOpens = 0, totalClicks = 0, totalBounce = 0, totalUnsub = 0, totalSpam = 0;
