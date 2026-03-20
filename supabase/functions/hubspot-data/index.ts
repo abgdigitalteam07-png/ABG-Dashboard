@@ -174,7 +174,7 @@ Deno.serve(async (req) => {
       (u) => u.name.toLowerCase() === brandName.toLowerCase()
     );
     const businessUnitId = matchedUnit?.id;
-    console.log(`Business unit ID for "${brandName}": ${businessUnitId ?? "NOT FOUND"}`);
+    console.log(`Business unit ID for "${brandName}": ${businessUnitId ?? "NOT FOUND (will use text/domain matching)"}`);
 
     // ---------- Contacts ----------
     let totalContacts = 0;
@@ -198,31 +198,28 @@ Deno.serve(async (req) => {
       } catch { /* skip */ }
     }));
 
-    // ---------- STEP 3: Fetch emails & filter by business unit ID ----------
+    // ---------- STEP 3: Fetch emails & filter by brand ----------
     const allRawEmails = await fetchAllEmails(token);
 
+    // Strategy: try businessUnitId mapping first, then fall back to multi-signal text matching
     let brandFiltered: any[];
     if (businessUnitId) {
-      brandFiltered = allRawEmails.filter((e: any) => {
-        const buIds = e.hs_all_assigned_business_unit_ids;
-        if (!buIds) return false;
-        // Could be a string, number, or array
-        if (Array.isArray(buIds)) return buIds.map(String).includes(businessUnitId);
-        return String(buIds) === businessUnitId;
-      });
+      brandFiltered = allRawEmails.filter((e: any) => String(e.businessUnitId) === businessUnitId);
       console.log(`Found ${brandFiltered.length} emails for "${brandName}" (business unit ID: ${businessUnitId})`);
     } else {
-      // Fallback: text-based matching if no business unit found
-      console.log(`No business unit found for "${brandName}", falling back to text matching`);
+      // Fall back: match against subscriptionName, activeDomain, from name, email name, subject
+      const bn = brandName.toLowerCase();
       brandFiltered = allRawEmails.filter((e: any) => {
-        const fromName = e.from?.fromName || "";
-        const bn = brandName.toLowerCase();
-        return (e.name || "").toLowerCase().includes(bn) ||
-          fromName.toLowerCase().includes(bn) ||
-          (e.subject || "").toLowerCase().includes(bn) ||
-          (e.campaignName || "").toLowerCase().includes(bn);
+        const fromName = (e.from?.fromName || "").toLowerCase();
+        const subName = (e.subscriptionDetails?.subscriptionName || "").toLowerCase();
+        const domain = (e.activeDomain || "").toLowerCase();
+        const name = (e.name || "").toLowerCase();
+        const subject = (e.subject || "").toLowerCase();
+        const campaignName = (e.campaignName || "").toLowerCase();
+        return subName.includes(bn) || domain.includes(bn) || name.includes(bn) ||
+          fromName.includes(bn) || subject.includes(bn) || campaignName.includes(bn);
       });
-      console.log(`Found ${brandFiltered.length} emails for "${brandName}" via text match`);
+      console.log(`Found ${brandFiltered.length} emails for "${brandName}" via text/domain matching`);
     }
 
     // Filter by date range
