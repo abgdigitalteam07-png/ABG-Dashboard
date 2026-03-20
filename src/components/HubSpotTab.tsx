@@ -172,10 +172,12 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
       {/* CRM Overview */}
       <div>
         <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">CRM Overview</h2>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
           <ScoreCard title="Total Contacts" value={formatNumber(filteredData.totalContacts)} delta={filteredData.totalContactsDelta} />
           <ScoreCard title="Delivered Rate" value={`${filteredData.deliveredRate}%`} delta={filteredData.deliveredRateDelta} />
           <ScoreCard title="Total Emails Sent" value={formatNumber(filteredData.totalEmailsSent)} />
+          <ScoreCard title="Total Emails" value={formatNumber(filteredData.totalEmails ?? 0)} />
+          <ScoreCard title="Contacts Reached" value={formatNumber(filteredData.contactsReached ?? 0)} />
         </div>
       </div>
 
