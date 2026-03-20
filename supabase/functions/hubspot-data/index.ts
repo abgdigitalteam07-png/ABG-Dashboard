@@ -63,7 +63,6 @@ function getBenchmarkLabel(metric: string, value: number): string {
   return "Good";
 }
 
-// ---------- STEP 2: Fetch business units ----------
 interface BusinessUnit { id: string; name: string; }
 
 async function fetchBusinessUnits(token: string): Promise<BusinessUnit[]> {
@@ -78,7 +77,6 @@ async function fetchBusinessUnits(token: string): Promise<BusinessUnit[]> {
   }
 }
 
-// ---------- Fetch all published emails (paginated) ----------
 async function fetchAllEmails(token: string): Promise<any[]> {
   const allEmails: any[] = [];
   let after: string | undefined = undefined;
@@ -109,13 +107,44 @@ async function fetchAllEmails(token: string): Promise<any[]> {
   return allEmails;
 }
 
-// ---------- Fetch campaign stats ----------
 async function fetchCampaignStats(token: string, campaignId: string): Promise<any | null> {
   try {
     return await hubspotFetch(`/email/public/v1/campaigns/${campaignId}`, token);
   } catch {
     return null;
   }
+}
+
+// Priority-based brand matching
+function matchEmailToBrand(email: any, brandName: string, businessUnitId?: string): boolean {
+  // Priority 1: businessUnitId match
+  if (businessUnitId && String(email.businessUnitId) === businessUnitId) {
+    return true;
+  }
+
+  const bn = brandName.toLowerCase();
+
+  // Priority 2: subscriptionDetails.subscriptionName
+  const subName = (email.subscriptionDetails?.subscriptionName || "").toLowerCase();
+  if (subName && subName.includes(bn)) return true;
+
+  // Priority 3: activeDomain contains brand name
+  const domain = (email.activeDomain || "").toLowerCase();
+  if (domain && domain.includes(bn)) return true;
+
+  // Priority 4: email name contains brand name
+  const name = (email.name || "").toLowerCase();
+  if (name.includes(bn)) return true;
+
+  // Priority 5: fromName contains brand name
+  const fromName = (email.from?.fromName || "").toLowerCase();
+  if (fromName.includes(bn)) return true;
+
+  // Priority 6: subject contains brand name
+  const subject = (email.subject || "").toLowerCase();
+  if (subject.includes(bn)) return true;
+
+  return false;
 }
 
 Deno.serve(async (req) => {
@@ -129,26 +158,19 @@ Deno.serve(async (req) => {
 
     const body: HubSpotRequest = await req.json();
 
-    // ---------- STEP 1: Debug mode — log raw email properties ----------
     if (body.debug === true) {
       try {
-        // STEP 1: Fetch 1 raw email to inspect all properties
         const raw = await hubspotFetch("/marketing/v3/emails?limit=1", token);
         const firstEmail = raw.results?.[0] || null;
         console.log("STEP 1 — Raw email properties:", JSON.stringify(firstEmail, null, 2));
-
-        // STEP 2: Fetch business units
         const units = await fetchBusinessUnits(token);
-
         return new Response(JSON.stringify({
           debug: true,
           rawEmailProperties: firstEmail ? Object.keys(firstEmail) : [],
           businessUnitId_value: firstEmail?.businessUnitId ?? "NOT FOUND",
-          hs_all_assigned_business_unit_ids: firstEmail?.hs_all_assigned_business_unit_ids ?? "NOT FOUND",
           subscriptionName: firstEmail?.subscriptionDetails?.subscriptionName ?? "NOT FOUND",
           activeDomain: firstEmail?.activeDomain ?? "NOT FOUND",
           businessUnits: units,
-          note: "businessUnitId exists but business units API may be empty if the Business Units add-on is not enabled. Filtering uses subscriptionDetails.subscriptionName and activeDomain as fallback.",
         }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
@@ -168,7 +190,6 @@ Deno.serve(async (req) => {
 
     console.log(`Fetching HubSpot data for brand="${brandName}", ${startDate} to ${endDate}`);
 
-    // ---------- STEP 2: Get business units & resolve brand ID ----------
     const businessUnits = await fetchBusinessUnits(token);
     const matchedUnit = businessUnits.find(
       (u) => u.name.toLowerCase() === brandName.toLowerCase()
@@ -176,7 +197,7 @@ Deno.serve(async (req) => {
     const businessUnitId = matchedUnit?.id;
     console.log(`Business unit ID for "${brandName}": ${businessUnitId ?? "NOT FOUND (will use text/domain matching)"}`);
 
-    // ---------- Contacts ----------
+    // Contacts
     let totalContacts = 0;
     try {
       const res = await hubspotPost("/crm/v3/objects/contacts/search", token, { limit: 0 });
@@ -198,28 +219,17 @@ Deno.serve(async (req) => {
       } catch { /* skip */ }
     }));
 
-    // ---------- STEP 3: Fetch emails & filter by brand ----------
+    // Fetch emails & filter by brand using priority-based matching
     const allRawEmails = await fetchAllEmails(token);
 
-    // Strategy: try businessUnitId mapping first, then fall back to multi-signal text matching
-    let brandFiltered: any[];
-    if (businessUnitId) {
-      brandFiltered = allRawEmails.filter((e: any) => String(e.businessUnitId) === businessUnitId);
-      console.log(`Found ${brandFiltered.length} emails for "${brandName}" (business unit ID: ${businessUnitId})`);
-    } else {
-      // Fall back: match against subscriptionName, activeDomain, from name, email name, subject
-      const bn = brandName.toLowerCase();
-      brandFiltered = allRawEmails.filter((e: any) => {
-        const fromName = (e.from?.fromName || "").toLowerCase();
-        const subName = (e.subscriptionDetails?.subscriptionName || "").toLowerCase();
-        const domain = (e.activeDomain || "").toLowerCase();
-        const name = (e.name || "").toLowerCase();
-        const subject = (e.subject || "").toLowerCase();
-        const campaignName = (e.campaignName || "").toLowerCase();
-        return subName.includes(bn) || domain.includes(bn) || name.includes(bn) ||
-          fromName.includes(bn) || subject.includes(bn) || campaignName.includes(bn);
+    const brandFiltered = allRawEmails.filter((e: any) => matchEmailToBrand(e, brandName, businessUnitId));
+    console.log(`Found ${brandFiltered.length} emails for "${brandName}" via priority matching`);
+
+    // Log first few matched emails for debugging
+    if (brandFiltered.length > 0 && brandFiltered.length <= 5) {
+      brandFiltered.forEach((e: any) => {
+        console.log(`  Matched email: "${e.name}" | publishDate=${e.publishDate || e.publishedAt || e.updatedAt}`);
       });
-      console.log(`Found ${brandFiltered.length} emails for "${brandName}" via text/domain matching`);
     }
 
     // Filter by date range
@@ -231,7 +241,7 @@ Deno.serve(async (req) => {
     });
     console.log(`After date filter (${startDate} to ${endDate}): ${dateFiltered.length} emails`);
 
-    // ---------- STEP 4: Fetch stats via campaigns API ----------
+    // Fetch stats via campaigns API
     let totalSent = 0, totalDelivered = 0, totalOpens = 0, totalClicks = 0, totalBounce = 0, totalUnsub = 0, totalSpam = 0;
 
     const emails: EmailRecord[] = [];
@@ -280,34 +290,8 @@ Deno.serve(async (req) => {
       (openRate / 5 + clickRate / 2 - bounceRate * 2 - unsubscribeRate * 5 + 2).toFixed(1)
     )));
 
-    const sorted = [...emails].sort((a, b) => (b.openRate + b.clickRate) - (a.openRate + a.clickRate));
-    const highPerforming = sorted.slice(0, 3);
-    const lowPerforming = sorted.slice(-3).reverse();
-
-    // Time-series
-    const emailsByDate = new Map<string, { opens: number; delivered: number; unsub: number; sent: number }>();
-    for (const e of emails) {
-      if (!e.publishDate) continue;
-      const existing = emailsByDate.get(e.publishDate) || { opens: 0, delivered: 0, unsub: 0, sent: 0 };
-      existing.opens += e.opens; existing.delivered += e.delivered;
-      existing.unsub += e.unsubscribe; existing.sent += e.sent;
-      emailsByDate.set(e.publishDate, existing);
-    }
-
-    const sortedDates = [...emailsByDate.keys()].sort();
-    const openRateOverTime = sortedDates.map((date) => {
-      const d = emailsByDate.get(date)!;
-      return { date, value: d.delivered > 0 ? parseFloat((d.opens / d.delivered * 100).toFixed(1)) : 0 };
-    });
-    const unsubscribeRateOverTime = sortedDates.map((date) => {
-      const d = emailsByDate.get(date)!;
-      return { date, value: d.sent > 0 ? parseFloat((d.unsub / d.sent * 100).toFixed(2)) : 0 };
-    });
-
-    // ---------- STEP 5: New scorecards ----------
     const result = {
       totalContacts,
-      totalContactsDelta: 0,
       healthScore,
       openRate,
       openRateLabel: getBenchmarkLabel("openRate", openRate),
@@ -323,16 +307,11 @@ Deno.serve(async (req) => {
       totalOpens,
       totalClicks,
       deliveredRate,
-      deliveredRateDelta: 0,
       lifecycleStages,
       emails,
-      highPerforming,
-      lowPerforming,
       totalFetched: allRawEmails.length,
       brandFilteredCount: brandFiltered.length,
       businessUnitId: businessUnitId ?? null,
-      openRateOverTime,
-      unsubscribeRateOverTime,
     };
 
     console.log(`Result: ${emails.length} emails, openRate=${openRate}, clickRate=${clickRate}, totalSent=${totalSent}`);
