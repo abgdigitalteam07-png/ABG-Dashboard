@@ -87,69 +87,28 @@ function brandMatches(text: string | undefined | null, brandName: string): boole
   return text.toLowerCase().includes(brandName.toLowerCase());
 }
 
-// Fetch all marketing emails from v3 API
-async function fetchAllEmails(token: string, accountLabel: string): Promise<any[]> {
+// Fetch all marketing emails WITH statistics using v1 endpoint
+async function fetchAllEmailsWithStats(token: string, accountLabel: string): Promise<any[]> {
   const allEmails: any[] = [];
-  let after: string | undefined;
+  let offset = 0;
   let hasMore = true;
 
   while (hasMore) {
     try {
-      const url = `/marketing/v3/emails?limit=100${after ? `&after=${after}` : ""}`;
+      const url = `/marketing-emails/v1/emails/with-statistics?limit=100&offset=${offset}&excludeDeletedObjects=true`;
       const res = await hubspotFetch(url, token);
-      const results = res.results || [];
-      allEmails.push(...results);
-      after = res.paging?.next?.after;
-      hasMore = !!after && allEmails.length < 5000;
+      const objects = res.objects || [];
+      allEmails.push(...objects);
+      offset += objects.length;
+      hasMore = objects.length === 100 && allEmails.length < 5000;
     } catch (err) {
-      console.error(`[${accountLabel}] Error fetching v3 emails:`, err);
+      console.error(`[${accountLabel}] Error fetching v1 emails with stats:`, err);
       break;
     }
   }
 
-  console.log(`[${accountLabel}] Fetched ${allEmails.length} total emails`);
+  console.log(`[${accountLabel}] Fetched ${allEmails.length} total emails with statistics`);
   return allEmails;
-}
-
-// Fetch events for a single email using the Email Events API
-async function fetchEmailEvents(
-  token: string,
-  emailId: string,
-  startMs: number,
-  endMs: number
-): Promise<{ sent: number; delivered: number; opens: number; clicks: number; bounces: number; unsubs: number; spam: number }> {
-  const counts = { sent: 0, delivered: 0, opens: 0, clicks: 0, bounces: 0, unsubs: 0, spam: 0 };
-  let offset: string | undefined;
-  let hasMore = true;
-
-  while (hasMore) {
-    try {
-      let url = `/email/public/v1/events?startTimestamp=${startMs}&endTimestamp=${endMs}&emailId=${emailId}&limit=1000`;
-      if (offset) url += `&offset=${offset}`;
-      const res = await hubspotFetch(url, token);
-      const events = res.events || [];
-
-      for (const ev of events) {
-        const type = ev.type;
-        if (type === "SENT") counts.sent++;
-        else if (type === "DELIVERED") counts.delivered++;
-        else if (type === "OPEN") counts.opens++;
-        else if (type === "CLICK") counts.clicks++;
-        else if (type === "BOUNCE") counts.bounces++;
-        else if (type === "STATUSCHANGE" && ev.subscriptionStatus === "UNSUBSCRIBED") counts.unsubs++;
-        else if (type === "SPAMREPORT") counts.spam++;
-      }
-
-      offset = res.offset;
-      hasMore = res.hasMore === true;
-    } catch (err: any) {
-      // If events API fails for this email, just return zeros
-      console.warn(`Events API failed for email ${emailId}: ${err.message?.substring(0, 200)}`);
-      break;
-    }
-  }
-
-  return counts;
 }
 
 async function fetchAccountData(
@@ -165,7 +124,6 @@ async function fetchAccountData(
     totalContacts = res.total || 0;
   } catch { /* ignore */ }
 
-  // Lifecycle stage breakdown
   const lifecycleStages: LifecycleStage[] = [
     { stage: "Subscriber", count: 0 }, { stage: "Lead", count: 0 },
     { stage: "MQL", count: 0 }, { stage: "SQL", count: 0 },
@@ -185,16 +143,15 @@ async function fetchAccountData(
   });
   await Promise.all(stagePromises);
 
-  // Fetch all emails
-  const allRawEmails = await fetchAllEmails(token, accountLabel);
+  // Fetch all emails with built-in statistics
+  const allRawEmails = await fetchAllEmailsWithStats(token, accountLabel);
 
-  // Filter by brand
+  // Filter by brand: exact match on brand property first, then name/subject/fromName
   const brandFiltered = allRawEmails.filter((e: any) => {
-    const fromName = e.fromName || e.from?.name || e.from?.fromName || "";
+    if (e.brand && e.brand === brandName) return true;
+    const fromName = e.fromName || e.from?.name || "";
     return brandMatches(e.name, brandName) ||
       brandMatches(fromName, brandName) ||
-      brandMatches(e.campaign, brandName) ||
-      brandMatches(e.campaignName, brandName) ||
       brandMatches(e.subject, brandName);
   });
 
@@ -210,75 +167,58 @@ async function fetchAccountData(
 
   console.log(`[${accountLabel}] After date filter (${startDate} to ${endDate}): ${dateFiltered.length} emails`);
 
-  // Fetch events for each email using Email Events API
-  const startMs = new Date(startDate + "T00:00:00Z").getTime();
-  const endMs = new Date(endDate + "T23:59:59Z").getTime();
-
-  // Process in batches of 5 to avoid rate limits
-  const batchSize = 5;
-  const emailEventResults: Map<string, { sent: number; delivered: number; opens: number; clicks: number; bounces: number; unsubs: number; spam: number }> = new Map();
-
-  for (let i = 0; i < dateFiltered.length; i += batchSize) {
-    const batch = dateFiltered.slice(i, i + batchSize);
-    const batchResults = await Promise.all(
-      batch.map((e: any) => fetchEmailEvents(token, String(e.id), startMs, endMs))
-    );
-    batch.forEach((e: any, idx: number) => {
-      emailEventResults.set(String(e.id), batchResults[idx]);
-    });
-  }
-
-  // Build email records with event-based stats
+  // Build email records from stats.counters
   let totalSent = 0, totalDelivered = 0, totalOpens = 0, totalClicks = 0, totalBounce = 0, totalUnsub = 0, totalSpam = 0;
 
   const emails: EmailRecord[] = dateFiltered.map((e: any) => {
     const pubTimestamp = e.publishDate || e.publishedAt || e.updatedAt;
     const publishDate = pubTimestamp ? new Date(pubTimestamp).toISOString().split("T")[0] : "";
-    const fromName = e.fromName || e.from?.name || e.from?.fromName || "Unknown";
-    const emailId = String(e.id);
-    const ev = emailEventResults.get(emailId) || { sent: 0, delivered: 0, opens: 0, clicks: 0, bounces: 0, unsubs: 0, spam: 0 };
+    const fromName = e.fromName || e.from?.name || "Unknown";
+    const counters = e.stats?.counters || {};
 
-    totalSent += ev.sent;
-    totalDelivered += ev.delivered;
-    totalOpens += ev.opens;
-    totalClicks += ev.clicks;
-    totalBounce += ev.bounces;
-    totalUnsub += ev.unsubs;
-    totalSpam += ev.spam;
+    const sent = counters.sent || 0;
+    const delivered = counters.delivered || 0;
+    const opens = counters.open || 0;
+    const clicks = counters.click || 0;
+    const bounces = counters.bounce || 0;
+    const unsubs = counters.unsubscribed || 0;
+    const spam = counters.spamreport || 0;
 
-    const openRate = ev.delivered > 0 ? parseFloat((ev.opens / ev.delivered * 100).toFixed(1)) : 0;
-    const clickRate = ev.delivered > 0 ? parseFloat((ev.clicks / ev.delivered * 100).toFixed(1)) : 0;
-    const deliveredRate = ev.sent > 0 ? parseFloat((ev.delivered / ev.sent * 100).toFixed(1)) : 0;
-    const unsubscribeRate = ev.sent > 0 ? parseFloat((ev.unsubs / ev.sent * 100).toFixed(2)) : 0;
-    const bounceRate = ev.sent > 0 ? parseFloat((ev.bounces / ev.sent * 100).toFixed(2)) : 0;
-    const spamRate = ev.sent > 0 ? parseFloat((ev.spam / ev.sent * 100).toFixed(2)) : 0;
+    totalSent += sent;
+    totalDelivered += delivered;
+    totalOpens += opens;
+    totalClicks += clicks;
+    totalBounce += bounces;
+    totalUnsub += unsubs;
+    totalSpam += spam;
+
+    const openRate = delivered > 0 ? parseFloat((opens / delivered * 100).toFixed(1)) : 0;
+    const clickRate = delivered > 0 ? parseFloat((clicks / delivered * 100).toFixed(1)) : 0;
+    const deliveredRate = sent > 0 ? parseFloat((delivered / sent * 100).toFixed(1)) : 0;
+    const unsubscribeRate = sent > 0 ? parseFloat((unsubs / sent * 100).toFixed(2)) : 0;
+    const bounceRate = sent > 0 ? parseFloat((bounces / sent * 100).toFixed(2)) : 0;
+    const spamRate = sent > 0 ? parseFloat((spam / sent * 100).toFixed(2)) : 0;
 
     return {
       name: e.name || "Untitled",
       subject: e.subject || "",
       sender: fromName,
       publishDate,
-      sent: ev.sent, delivered: ev.delivered, opens: ev.opens, clicks: ev.clicks,
-      bounce: ev.bounces, unsubscribe: ev.unsubs, spam: ev.spam,
+      sent, delivered, opens, clicks,
+      bounce: bounces, unsubscribe: unsubs, spam,
       openRate, clickRate, deliveredRate, unsubscribeRate, bounceRate, spamRate,
       account: accountLabel,
     };
   });
 
-  console.log(`[${accountLabel}] Fetched events for ${dateFiltered.length} emails, total opens: ${totalOpens}, clicks: ${totalClicks} for brand "${brandName}"`);
+  console.log(`[${accountLabel}] v1 with-statistics: found ${dateFiltered.length} emails for brand ${brandName} with stats`);
 
   return {
     totalContacts,
     lifecycleStages,
     emails,
     totalFetched: allRawEmails.length,
-    totalSent,
-    totalDelivered,
-    totalOpens,
-    totalClicks,
-    totalBounce,
-    totalUnsub,
-    totalSpam,
+    totalSent, totalDelivered, totalOpens, totalClicks, totalBounce, totalUnsub, totalSpam,
   };
 }
 
