@@ -89,11 +89,12 @@ function brandMatches(text: string | undefined | null, brandName: string): boole
   return lower.includes(brandLower);
 }
 
-async function fetchAllMarketingEmails(token: string, accountLabel: string): Promise<any[]> {
+async function fetchAllMarketingEmails(token: string, accountLabel: string): Promise<{ emails: any[]; apiVersion: string }> {
   // Try v1 API first
   let allEmails: any[] = [];
-  let useV1 = true;
+  let apiVersion = "v1";
 
+  let useV1 = true;
   try {
     const testRes = await hubspotFetch(`/marketing-emails/v1/emails?limit=1`, token);
     if (!testRes.objects) useV1 = false;
@@ -121,7 +122,7 @@ async function fetchAllMarketingEmails(token: string, accountLabel: string): Pro
       }
     }
   } else {
-    // Try v3 marketing emails API
+    apiVersion = "v3";
     console.log(`[${accountLabel}] v1 API unavailable, trying v3...`);
     let after: string | undefined;
     let hasMore = true;
@@ -140,11 +141,35 @@ async function fetchAllMarketingEmails(token: string, accountLabel: string): Pro
     }
   }
 
-  // Log first 5 email names for debugging
+  // Log first email object keys for debugging
+  if (allEmails.length > 0) {
+    const sample = allEmails[0];
+    console.log(`[${accountLabel}] API=${apiVersion}, keys: ${Object.keys(sample).join(",")}`);
+    console.log(`[${accountLabel}] Sample stats: ${JSON.stringify(sample.stats || sample.statistics || "none")}`);
+    console.log(`[${accountLabel}] Sample: name=${sample.name}, subject=${sample.subject}, fromName=${sample.fromName || sample.from?.name || "?"}, publishDate=${sample.publishDate || sample.publishedAt || sample.updatedAt || "?"}`);
+    // Full first email JSON (truncated)
+    const fullSample = JSON.stringify(sample);
+    console.log(`[${accountLabel}] Full email[0]: ${fullSample.substring(0, 1500)}`);
+  }
+
   const sampleNames = allEmails.slice(0, 5).map((e: any) => e.name || e.subject || "no-name");
   console.log(`[${accountLabel}] Sample email names: ${JSON.stringify(sampleNames)}`);
 
-  return allEmails;
+  return { emails: allEmails, apiVersion };
+}
+
+// Fetch aggregate email stats for the account
+async function fetchAggregateEmailStats(token: string, accountLabel: string, startDate: string, endDate: string): Promise<any> {
+  try {
+    const url = `/marketing/v3/emails/statistics/list?startTimestamp=${startDate}T00:00:00Z&endTimestamp=${endDate}T23:59:59Z`;
+    const res = await hubspotFetch(url, token);
+    const agg = res.aggregate?.counters || {};
+    console.log(`[${accountLabel}] Aggregate stats: sent=${agg.sent}, delivered=${agg.delivered}, open=${agg.open}, click=${agg.click}, bounce=${agg.bounce}`);
+    return agg;
+  } catch (err: any) {
+    console.error(`[${accountLabel}] Aggregate stats error: ${err.message?.substring(0, 200)}`);
+    return {};
+  }
 }
 
 async function fetchAccountData(
@@ -193,24 +218,28 @@ async function fetchAccountData(
   await Promise.all(stagePromises);
 
   // Fetch all marketing emails
-  const allRawEmails = await fetchAllMarketingEmails(token, accountLabel);
-  console.log(`[${accountLabel}] Fetched ${allRawEmails.length} total raw emails`);
+  const { emails: allRawEmails, apiVersion } = await fetchAllMarketingEmails(token, accountLabel);
+  console.log(`[${accountLabel}] Fetched ${allRawEmails.length} total raw emails (${apiVersion})`);
 
   // Filter by brand name: check name, fromName, campaign name
+  // v3 uses different field names: from.name instead of fromName, etc.
   const brandFiltered = allRawEmails.filter((e: any) => {
+    const fromName = e.fromName || e.from?.name || "";
     return brandMatches(e.name, brandName) ||
-      brandMatches(e.fromName, brandName) ||
+      brandMatches(fromName, brandName) ||
       brandMatches(e.campaign, brandName) ||
       brandMatches(e.campaignName, brandName) ||
-      brandMatches(e.primaryRichTextModuleHtml, brandName) ||
       brandMatches(e.subject, brandName);
   });
 
   console.log(`[${accountLabel}] Brand "${brandName}" matched ${brandFiltered.length} emails`);
+  // Log state/type of first 3 matched emails
+  const sampleStates = brandFiltered.slice(0, 3).map((e: any) => `${e.name}: state=${e.state}, type=${e.type}, isPublished=${e.isPublished}`);
+  console.log(`[${accountLabel}] Sample states: ${JSON.stringify(sampleStates)}`);
 
   // Filter by date range
   const dateFiltered = brandFiltered.filter((e: any) => {
-    const timestamp = e.publishDate || e.updated || e.created;
+    const timestamp = e.publishDate || e.publishedAt || e.updatedAt || e.updated || e.created;
     if (!timestamp) return false;
     const pubDate = new Date(timestamp).toISOString().split("T")[0];
     return pubDate >= startDate && pubDate <= endDate;
@@ -218,54 +247,34 @@ async function fetchAccountData(
 
   console.log(`[${accountLabel}] After date filter (${startDate} to ${endDate}): ${dateFiltered.length} emails`);
 
-  // Map to EmailRecord with proper stats
-  const emails: EmailRecord[] = dateFiltered.map((e: any) => {
-    const stats = e.stats?.counters || {};
-    // HubSpot v1 marketing emails stats field names
-    const sent = stats.sent || stats.processed || 0;
-    const delivered = stats.delivered || (sent - (stats.bounce || 0));
-    const opens = stats.open || stats.uniqueopens || 0;
-    const clicks = stats.click || stats.uniqueclicks || 0;
-    const bounce = stats.bounce || stats.hardbounced || 0;
-    const unsubscribe = stats.unsubscribed || 0;
-    const spam = stats.spamreport || 0;
+  // Fetch aggregate stats for the account (covers ALL emails, not per-brand)
+  const aggStats = await fetchAggregateEmailStats(token, accountLabel, startDate, endDate);
 
-    const pubTimestamp = e.publishDate || e.updated || e.created;
+  // Map emails to EmailRecord (per-email stats not available via v3, so show listing only)
+  const emails: EmailRecord[] = dateFiltered.map((e: any) => {
+    const pubTimestamp = e.publishDate || e.publishedAt || e.updatedAt || e.updated || e.created;
     const publishDate = pubTimestamp ? new Date(pubTimestamp).toISOString().split("T")[0] : "";
+    const fromName = e.fromName || e.from?.name || e.from?.fromName || "Unknown";
 
     return {
       name: e.name || "Untitled",
       subject: e.subject || "",
-      sender: e.fromName || "Unknown",
+      sender: fromName,
       publishDate,
-      sent,
-      delivered: delivered > 0 ? delivered : 0,
-      opens,
-      clicks,
-      bounce,
-      unsubscribe,
-      spam,
-      openRate: delivered > 0 ? parseFloat((opens / delivered * 100).toFixed(1)) : 0,
-      clickRate: delivered > 0 ? parseFloat((clicks / delivered * 100).toFixed(1)) : 0,
-      deliveredRate: sent > 0 ? parseFloat((delivered / sent * 100).toFixed(1)) : 0,
-      unsubscribeRate: sent > 0 ? parseFloat((unsubscribe / sent * 100).toFixed(2)) : 0,
-      bounceRate: sent > 0 ? parseFloat((bounce / sent * 100).toFixed(2)) : 0,
-      spamRate: sent > 0 ? parseFloat((spam / sent * 100).toFixed(3)) : 0,
+      sent: 0, delivered: 0, opens: 0, clicks: 0, bounce: 0, unsubscribe: 0, spam: 0,
+      openRate: 0, clickRate: 0, deliveredRate: 0, unsubscribeRate: 0, bounceRate: 0, spamRate: 0,
       account: accountLabel,
     };
   });
 
-  let totalSent = 0, totalDelivered = 0, totalOpens = 0, totalClicks = 0;
-  let totalBounce = 0, totalUnsub = 0, totalSpam = 0;
-  for (const e of emails) {
-    totalSent += e.sent;
-    totalDelivered += e.delivered;
-    totalOpens += e.opens;
-    totalClicks += e.clicks;
-    totalBounce += e.bounce;
-    totalUnsub += e.unsubscribe;
-    totalSpam += e.spam;
-  }
+  // Use aggregate stats for totals
+  const totalSent = aggStats.sent || 0;
+  const totalDelivered = aggStats.delivered || 0;
+  const totalOpens = aggStats.open || 0;
+  const totalClicks = aggStats.click || 0;
+  const totalBounce = aggStats.bounce || 0;
+  const totalUnsub = aggStats.unsubscribed || 0;
+  const totalSpam = aggStats.spamreport || 0;
 
   return {
     totalContacts,
