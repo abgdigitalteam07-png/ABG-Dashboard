@@ -138,11 +138,12 @@ async function fetchEmailStats(token: string, accountLabel: string, emailIds: st
         const { id, res } = r.value;
         const counters = res.counters || res.aggregate?.counters || {};
         statsMap.set(id, counters);
-        // Log first successful response structure
         if (statsMap.size === 1) {
           console.log(`[${accountLabel}] Stats response keys: ${JSON.stringify(Object.keys(res))}`);
           console.log(`[${accountLabel}] Stats counters: ${JSON.stringify(counters)}`);
         }
+      } else {
+        console.error(`[${accountLabel}] Stats fetch failed: ${r.reason?.message?.substring(0, 200)}`);
       }
     }
   }
