@@ -254,6 +254,8 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
       <p className="text-xs text-muted-foreground px-1">
         Fetched {filteredData.emails?.length ?? 0} emails for "{filteredData.brandName ?? ""}"
         {filteredData.totalFetched != null && ` (${filteredData.totalFetched} total in account)`}
+        {filteredData.businessUnitId && ` · BU ID: ${filteredData.businessUnitId}`}
+        {filteredData.brandFilteredCount != null && ` · ${filteredData.brandFilteredCount} matched brand`}
       </p>
 
       {/* SECTION C - Email Performance Table */}
