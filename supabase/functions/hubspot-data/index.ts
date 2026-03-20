@@ -145,9 +145,11 @@ async function fetchAllMarketingEmails(token: string, accountLabel: string): Pro
   if (allEmails.length > 0) {
     const sample = allEmails[0];
     console.log(`[${accountLabel}] API=${apiVersion}, keys: ${Object.keys(sample).join(",")}`);
-    // Log stats-related fields
     console.log(`[${accountLabel}] Sample stats: ${JSON.stringify(sample.stats || sample.statistics || "none")}`);
     console.log(`[${accountLabel}] Sample: name=${sample.name}, subject=${sample.subject}, fromName=${sample.fromName || sample.from?.name || "?"}, publishDate=${sample.publishDate || sample.publishedAt || sample.updatedAt || "?"}`);
+    // Full first email JSON (truncated)
+    const fullSample = JSON.stringify(sample);
+    console.log(`[${accountLabel}] Full email[0]: ${fullSample.substring(0, 1500)}`);
   }
 
   const sampleNames = allEmails.slice(0, 5).map((e: any) => e.name || e.subject || "no-name");
