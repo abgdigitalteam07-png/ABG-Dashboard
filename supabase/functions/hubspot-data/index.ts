@@ -13,6 +13,7 @@ interface HubSpotRequest {
 
 interface EmailRecord {
   name: string;
+  brandName: string;
   subject: string;
   sender: string;
   publishDate: string;
@@ -180,14 +181,21 @@ async function fetchAllEmails(token: string): Promise<any[]> {
   return all;
 }
 
-// ─── campaign stats ───
+// ─── campaign stats with optional date range ───
 
 async function fetchCampaignStats(
   token: string,
   campaignId: string,
+  startTimestamp?: number,
+  endTimestamp?: number,
 ): Promise<any | null> {
   try {
-    return await hubspotFetch(`/email/public/v1/campaigns/${campaignId}`, token);
+    let url = `/email/public/v1/campaigns/${campaignId}`;
+    const params: string[] = [];
+    if (startTimestamp) params.push(`startTimestamp=${startTimestamp}`);
+    if (endTimestamp) params.push(`endTimestamp=${endTimestamp}`);
+    if (params.length) url += `?${params.join("&")}`;
+    return await hubspotFetch(url, token);
   } catch {
     return null;
   }
@@ -299,40 +307,39 @@ Deno.serve(async (req) => {
     console.log(`Total emails after brand filter: ${brandFiltered.length}`);
     console.log(`Matched emails: ${JSON.stringify(matchReasons.map(m => `${m.name} [${m.reason}] (from: ${m.fromName})`))}`);
 
-    // ── Date filter by publishDate strictly ──
-    const dateFiltered = brandFiltered.filter((email) => {
-      const dateStr = extractDateStr(email);
-      if (!dateStr) return false;
-      return dateStr >= startDate && dateStr <= endDate;
-    });
+    // ── Date range timestamps for campaign stats API ──
+    const startTs = new Date(startDate).getTime();
+    const endTs = new Date(endDate + "T23:59:59Z").getTime();
+    console.log(`Date range for campaign stats: ${startDate} (${startTs}) to ${endDate} (${endTs})`);
 
-    console.log(`Date filtering: publishDate must be between ${startDate} and ${endDate}`);
-    console.log(`Total emails after date filter: ${dateFiltered.length}`);
-
-    // ── Stats via campaigns API ──
+    // ── Stats via campaigns API with date range — include only if sent > 0 ──
     let totalSent = 0, totalDelivered = 0, totalOpens = 0, totalClicks = 0;
     let totalBounce = 0, totalUnsub = 0, totalSpam = 0;
     const emails: EmailRecord[] = [];
 
-    for (let i = 0; i < dateFiltered.length; i += 10) {
-      const batch = dateFiltered.slice(i, i + 10);
+    for (let i = 0; i < brandFiltered.length; i += 10) {
+      const batch = brandFiltered.slice(i, i + 10);
       const results = await Promise.all(
         batch.map(async (email: any) => {
           const campaignId = email?.primaryEmailCampaignId;
-          const counters = campaignId
-            ? (await fetchCampaignStats(token, campaignId))?.counters
-            : null;
+          if (!campaignId) return null;
+
+          const statsRes = await fetchCampaignStats(token, campaignId, startTs, endTs);
+          const counters = statsRes?.counters;
+          if (!counters) return null;
+
+          const sent = counters.sent || 0;
+          if (sent === 0) return null; // No sends in date range
+
+          const delivered = counters.delivered || 0;
+          const opens = counters.open || 0;
+          const clicks = counters.click || 0;
+          const bounce = counters.bounce || 0;
+          const unsubscribe = counters.unsubscribed || 0;
+          const spam = counters.spamreport || 0;
 
           const publishDate = extractDateStr(email) ?? "";
           const sender = email?.from?.fromName || "Unknown";
-
-          const sent = counters?.sent || 0;
-          const delivered = counters?.delivered || 0;
-          const opens = counters?.open || 0;
-          const clicks = counters?.click || 0;
-          const bounce = counters?.bounce || 0;
-          const unsubscribe = counters?.unsubscribed || 0;
-          const spam = counters?.spamreport || 0;
 
           const openRate = delivered > 0 ? parseFloat(((opens / delivered) * 100).toFixed(1)) : 0;
           const clickRate = delivered > 0 ? parseFloat(((clicks / delivered) * 100).toFixed(1)) : 0;
@@ -343,6 +350,7 @@ Deno.serve(async (req) => {
 
           return {
             name: email?.name || "Untitled",
+            brandName: brandName,
             subject: email?.subject || "",
             sender,
             publishDate,
@@ -363,8 +371,8 @@ Deno.serve(async (req) => {
         }),
       );
 
-      const inRangeRecords = results.filter((record): record is EmailRecord => record !== null);
-      for (const record of inRangeRecords) {
+      for (const record of results) {
+        if (!record) continue;
         totalSent += record.sent;
         totalDelivered += record.delivered;
         totalOpens += record.opens;
@@ -375,8 +383,8 @@ Deno.serve(async (req) => {
         console.log(
           `Email stats: sent=${record.sent} opens=${record.opens} clicks=${record.clicks} delivered=${record.delivered} — "${record.name}"`,
         );
+        emails.push(record);
       }
-      emails.push(...inRangeRecords);
     }
 
     console.log(`Total emails after date filter: ${emails.length}`);
