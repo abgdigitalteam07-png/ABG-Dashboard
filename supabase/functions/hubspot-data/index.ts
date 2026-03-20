@@ -212,35 +212,36 @@ Deno.serve(async (req) => {
 
     const body: HubSpotRequest = await req.json();
 
-    // Debug mode - fetch raw emails to inspect brand field
+    // Debug mode - discover businessUnitId → brand mapping
     if (body.debug === true) {
-      // v3 API - 3 emails
-      const v3Raw = await hubspotFetch("/marketing/v3/emails?limit=3&orderBy=-publishDate&isPublished=true", token);
-      const v3Emails = v3Raw.results || [];
-      for (let i = 0; i < v3Emails.length; i++) {
-        console.log(`RAW v3 EMAIL ${i}:`, JSON.stringify(v3Emails[i], null, 2));
-      }
-
-      // v1 API - 3 emails
-      let v1Emails: any[] = [];
+      // Try business units API
+      let businessUnits: any[] = [];
       try {
-        const v1Raw = await hubspotFetch("/marketing-emails/v1/emails?limit=3&orderBy=-publish_date", token);
-        v1Emails = v1Raw.objects || [];
-        for (let i = 0; i < v1Emails.length; i++) {
-          console.log(`RAW v1 EMAIL ${i}:`, JSON.stringify(v1Emails[i], null, 2));
-        }
+        const buRes = await hubspotFetch("/business-units/v3/business-units/user/me", token);
+        businessUnits = buRes.results || [];
+        console.log("Business Units API:", JSON.stringify(businessUnits.map((bu: any) => ({ id: bu.id, name: bu.name })), null, 2));
       } catch (e) {
-        console.log("v1 API error:", e);
+        console.log("Business Units API error (expected if no scope):", e);
       }
 
-      // Extract all top-level keys for easy inspection
-      const v3Keys = v3Emails[0] ? Object.keys(v3Emails[0]) : [];
-      const v1Keys = v1Emails[0] ? Object.keys(v1Emails[0]) : [];
-      console.log("v3 top-level keys:", JSON.stringify(v3Keys));
-      console.log("v1 top-level keys:", JSON.stringify(v1Keys));
+      // Fetch all emails and build businessUnitId → fromName mapping
+      const allEmails = await fetchAllEmails(token);
+      const buMap: Record<string, { fromNames: Set<string>; names: string[] }> = {};
+      for (const email of allEmails) {
+        const buId = email.businessUnitId || "none";
+        if (!buMap[buId]) buMap[buId] = { fromNames: new Set(), names: [] };
+        buMap[buId].fromNames.add(email?.from?.fromName || "Unknown");
+        if (buMap[buId].names.length < 3) buMap[buId].names.push(email?.name || "Untitled");
+      }
+      const buSummary = Object.entries(buMap).map(([id, data]) => ({
+        businessUnitId: id,
+        fromNames: Array.from(data.fromNames),
+        sampleEmails: data.names,
+      }));
+      console.log("BusinessUnitId mapping:", JSON.stringify(buSummary, null, 2));
 
       return new Response(
-        JSON.stringify({ debug: true, v3Keys, v1Keys, v3First: v3Emails[0], v1First: v1Emails[0] }),
+        JSON.stringify({ debug: true, businessUnits, buSummary }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
