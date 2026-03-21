@@ -58,6 +58,14 @@ export default {
           green: "hsl(var(--brand-green))",
           red: "hsl(var(--brand-red))",
         },
+        funnel: {
+          pending: "hsl(var(--funnel-pending))",
+          "pending-foreground": "hsl(var(--funnel-pending-foreground))",
+          negative: "hsl(var(--funnel-negative))",
+          "negative-foreground": "hsl(var(--funnel-negative-foreground))",
+          positive: "hsl(var(--funnel-positive))",
+        },
+        "table-header": "hsl(var(--table-header))",
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
           foreground: "hsl(var(--sidebar-foreground))",

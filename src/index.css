@@ -42,6 +42,13 @@
     --brand-green: 142 71% 45%;
     --brand-red: 0 84% 60%;
 
+    --funnel-pending: 45 100% 90%;
+    --funnel-pending-foreground: 45 100% 30%;
+    --funnel-negative: 350 100% 94%;
+    --funnel-negative-foreground: 350 80% 45%;
+    --funnel-positive: 0 0% 100%;
+    --table-header: 230 40% 25%;
+
     --chart-sessions: 217 91% 60%;
     --chart-users: 24 95% 53%;
     --chart-views: 215 14% 65%;
