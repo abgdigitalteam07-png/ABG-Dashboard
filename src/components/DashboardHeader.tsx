@@ -25,6 +25,9 @@ export function DashboardHeader({
         <div className="h-6 w-px bg-primary-foreground/20" />
         <BrandSwitcher selectedBrand={selectedBrand} onSelect={onBrandChange} />
       </div>
+      <h1 className="absolute left-1/2 -translate-x-1/2 text-base font-bold tracking-wide text-primary-foreground lg:text-lg">
+        US WHOLESALE DIGITAL DASHBOARD
+      </h1>
       <DateRangePicker from={dateFrom} to={dateTo} onChange={onDateChange} />
     </header>
   );
