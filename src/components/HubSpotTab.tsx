@@ -112,15 +112,16 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
 
   /* ── Aggregate chart data by interval ── */
   const chartData = useMemo(() => {
-    if (!d?.emails?.length) return [];
-    const buckets: Record<string, { opens: number; delivered: number; clicks: number }> = {};
+    if (!d) return [];
 
-    for (const email of d.emails) {
+    // Build buckets from emails
+    const buckets: Record<string, { opens: number; delivered: number; clicks: number }> = {};
+    for (const email of d.emails || []) {
       if (!email.publishDate) continue;
       let key: string;
       const date = parseISO(email.publishDate);
       if (interval === "daily") {
-        key = email.publishDate;
+        key = format(startOfDay(date), "yyyy-MM-dd");
       } else if (interval === "weekly") {
         key = format(startOfWeek(date, { weekStartsOn: 1 }), "yyyy-MM-dd");
       } else {
@@ -132,14 +133,31 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
       buckets[key].clicks += email.clicks || 0;
     }
 
-    return Object.entries(buckets)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, v]) => ({
+    // Generate ALL time slots in the date range (fill gaps with 0)
+    const slots: string[] = [];
+    let cursor = interval === "daily"
+      ? startOfDay(dateFrom)
+      : interval === "weekly"
+        ? startOfWeek(dateFrom, { weekStartsOn: 1 })
+        : startOfMonth(dateFrom);
+    const end = dateTo;
+    const advance = interval === "daily" ? addDays : interval === "weekly" ? addWeeks : addMonths;
+    const fmt = interval === "monthly" ? "yyyy-MM" : "yyyy-MM-dd";
+
+    while (isBefore(cursor, end) || isEqual(cursor, end)) {
+      slots.push(format(cursor, fmt));
+      cursor = advance(cursor, 1);
+    }
+
+    return slots.map((date) => {
+      const v = buckets[date] || { opens: 0, delivered: 0, clicks: 0 };
+      return {
         date,
         openRate: v.delivered > 0 ? parseFloat(((v.opens / v.delivered) * 100).toFixed(1)) : 0,
         ctr: v.opens > 0 ? parseFloat(((v.clicks / v.opens) * 100).toFixed(1)) : 0,
-      }));
-  }, [d, interval]);
+      };
+    });
+  }, [d, interval, dateFrom, dateTo]);
 
   /* ── High & low performing emails ── */
   const { highPerf, lowPerf } = useMemo(() => {
