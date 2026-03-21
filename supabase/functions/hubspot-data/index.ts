@@ -155,6 +155,129 @@ async function fetchCampaignStats(token: string, campaignId: string): Promise<an
   }
 }
 
+// ─── compute stats for a set of emails ───
+
+interface PeriodStats {
+  totalSent: number;
+  totalDelivered: number;
+  totalOpens: number;
+  totalClicks: number;
+  totalBounce: number;
+  totalHardBounce: number;
+  totalSoftBounce: number;
+  totalUnsub: number;
+  totalSpam: number;
+  totalPending: number;
+  totalEmails: number;
+}
+
+async function computeStats(
+  filteredEmails: any[],
+  token: string,
+  brandName: string,
+): Promise<{ stats: PeriodStats; emails: (EmailRecord & { pending: number })[]; deliveryByDate: Record<string, number> }> {
+  const stats: PeriodStats = {
+    totalSent: 0, totalDelivered: 0, totalOpens: 0, totalClicks: 0,
+    totalBounce: 0, totalHardBounce: 0, totalSoftBounce: 0,
+    totalUnsub: 0, totalSpam: 0, totalPending: 0, totalEmails: 0,
+  };
+  const emails: (EmailRecord & { pending: number })[] = [];
+  const deliveryByDate: Record<string, number> = {};
+
+  for (let i = 0; i < filteredEmails.length; i += 10) {
+    const batch = filteredEmails.slice(i, i + 10);
+    const results = await Promise.all(
+      batch.map(async (email: any) => {
+        const campaignId = email?.primaryEmailCampaignId;
+        if (!campaignId) return null;
+
+        const statsRes = await fetchCampaignStats(token, campaignId);
+        const counters = statsRes?.counters;
+        if (!counters) return null;
+
+        const sent = counters.sent || 0;
+        const delivered = counters.delivered || 0;
+        const opens = counters.open || 0;
+        const clicks = counters.click || 0;
+        const bounce = counters.bounce || 0;
+        const hardbounced = counters.hardbounced || 0;
+        const softbounced = counters.softbounced || 0;
+        const unsubscribe = counters.unsubscribed || 0;
+        const spam = counters.spamreport || 0;
+        const pending = counters.pending || Math.max(0, sent - delivered - bounce);
+
+        const publishDate = extractPublishDate(email) ?? "";
+        const sender = email?.publishedByName || "";
+        const emailBuId = String(email.businessUnitId ?? "0");
+        const displayBrand = BU_TO_BRAND[emailBuId] || brandName;
+
+        const state = email?.state || email?.properties?.state || "PUBLISHED";
+        const subcategory = email?.subcategory || email?.properties?.subcategory || "marketing_email";
+
+        const openRate = delivered > 0 ? parseFloat(((opens / delivered) * 100).toFixed(1)) : 0;
+        const clickRate = delivered > 0 ? parseFloat(((clicks / delivered) * 100).toFixed(1)) : 0;
+        const deliveredRate = sent > 0 ? parseFloat(((delivered / sent) * 100).toFixed(1)) : 0;
+        const unsubscribeRate = sent > 0 ? parseFloat(((unsubscribe / sent) * 100).toFixed(2)) : 0;
+        const bounceRate = sent > 0 ? parseFloat(((bounce / sent) * 100).toFixed(2)) : 0;
+        const spamRate = sent > 0 ? parseFloat(((spam / sent) * 100).toFixed(2)) : 0;
+
+        if (publishDate) {
+          deliveryByDate[publishDate] = (deliveryByDate[publishDate] || 0) + delivered;
+        }
+
+        return {
+          name: email?.name || "Untitled",
+          brandName: displayBrand,
+          subject: email?.subject || "",
+          sender, publishDate, state, subcategory,
+          sent, delivered, opens, clicks,
+          bounce, hardBounce: hardbounced, softBounce: softbounced,
+          unsubscribe, spam, pending,
+          openRate, clickRate, deliveredRate, unsubscribeRate, bounceRate, spamRate,
+        } as EmailRecord & { pending: number };
+      }),
+    );
+
+    for (const record of results) {
+      if (!record) continue;
+      stats.totalSent += record.sent;
+      stats.totalDelivered += record.delivered;
+      stats.totalOpens += record.opens;
+      stats.totalClicks += record.clicks;
+      stats.totalBounce += record.bounce;
+      stats.totalHardBounce += record.hardBounce;
+      stats.totalSoftBounce += record.softBounce;
+      stats.totalUnsub += record.unsubscribe;
+      stats.totalSpam += record.spam;
+      stats.totalPending += record.pending;
+      emails.push(record);
+    }
+  }
+
+  stats.totalEmails = emails.length;
+  return { stats, emails, deliveryByDate };
+}
+
+// ─── compute previous period date range ───
+
+function getPreviousPeriod(startDate: string, endDate: string): { prevStart: string; prevEnd: string } {
+  const start = new Date(startDate + "T00:00:00Z");
+  const end = new Date(endDate + "T00:00:00Z");
+  const diffMs = end.getTime() - start.getTime();
+  const prevEnd = new Date(start.getTime() - 86400000); // day before start
+  const prevStart = new Date(prevEnd.getTime() - diffMs);
+  return {
+    prevStart: prevStart.toISOString().split("T")[0],
+    prevEnd: prevEnd.toISOString().split("T")[0],
+  };
+}
+
+function pctChange(current: number, previous: number): number | null {
+  if (previous === 0 && current === 0) return 0;
+  if (previous === 0) return current > 0 ? 100 : -100;
+  return parseFloat((((current - previous) / previous) * 100).toFixed(2));
+}
+
 // ─── main handler ───
 
 Deno.serve(async (req) => {
@@ -251,124 +374,66 @@ Deno.serve(async (req) => {
 
     console.log(`Total emails after brand filter: ${brandFiltered.length}`);
 
-    // ── Date filter by hs_publish_date ──
+    // ── Date filter current period ──
     const dateFiltered = brandFiltered.filter((email) => {
       const dateStr = extractPublishDate(email);
       if (!dateStr) return false;
       return dateStr >= startDate && dateStr <= endDate;
     });
+    console.log(`Total emails after date filter (current): ${dateFiltered.length}`);
 
-    console.log(`Total emails after date filter: ${dateFiltered.length}`);
+    // ── Date filter previous period ──
+    const { prevStart, prevEnd } = getPreviousPeriod(startDate, endDate);
+    console.log(`Previous period: ${prevStart} to ${prevEnd}`);
 
-    // ── Stats via campaigns API ──
-    let totalSent = 0, totalDelivered = 0, totalOpens = 0, totalClicks = 0;
-    let totalBounce = 0, totalHardBounce = 0, totalSoftBounce = 0;
-    let totalUnsub = 0, totalSpam = 0, totalPending = 0;
-    const emails: EmailRecord[] = [];
-    // For delivery over time chart
-    const deliveryByDate: Record<string, number> = {};
+    const prevDateFiltered = brandFiltered.filter((email) => {
+      const dateStr = extractPublishDate(email);
+      if (!dateStr) return false;
+      return dateStr >= prevStart && dateStr <= prevEnd;
+    });
+    console.log(`Total emails in previous period: ${prevDateFiltered.length}`);
 
-    for (let i = 0; i < dateFiltered.length; i += 10) {
-      const batch = dateFiltered.slice(i, i + 10);
-      const results = await Promise.all(
-        batch.map(async (email: any) => {
-          const campaignId = email?.primaryEmailCampaignId;
-          if (!campaignId) return null;
+    // ── Compute stats for both periods ──
+    const current = await computeStats(dateFiltered, token, brandName);
+    const prev = await computeStats(prevDateFiltered, token, brandName);
 
-          const statsRes = await fetchCampaignStats(token, campaignId);
-          const counters = statsRes?.counters;
-          if (!counters) return null;
+    const s = current.stats;
+    const p = prev.stats;
 
-          const sent = counters.sent || 0;
-          const delivered = counters.delivered || 0;
-          const opens = counters.open || 0;
-          const clicks = counters.click || 0;
-          const bounce = counters.bounce || 0;
-          const hardbounced = counters.hardbounced || 0;
-          const softbounced = counters.softbounced || 0;
-          const unsubscribe = counters.unsubscribed || 0;
-          const spam = counters.spamreport || 0;
-          const pending = counters.pending || Math.max(0, sent - delivered - bounce);
+    console.log(`Final stats: sent=${s.totalSent} delivered=${s.totalDelivered} opens=${s.totalOpens} clicks=${s.totalClicks}`);
 
-          const publishDate = extractPublishDate(email) ?? "";
-          const sender = email?.publishedByName || "";
-          const emailBuId = String(email.businessUnitId ?? "0");
-          const displayBrand = BU_TO_BRAND[emailBuId] || brandName;
-          
-          // State and subcategory from email object
-          const state = email?.state || email?.properties?.state || "PUBLISHED";
-          const subcategory = email?.subcategory || email?.properties?.subcategory || "marketing_email";
+    const openRate = s.totalDelivered > 0 ? parseFloat(((s.totalOpens / s.totalDelivered) * 100).toFixed(1)) : 0;
+    const clickRate = s.totalDelivered > 0 ? parseFloat(((s.totalClicks / s.totalDelivered) * 100).toFixed(1)) : 0;
+    const bounceRate = s.totalSent > 0 ? parseFloat(((s.totalBounce / s.totalSent) * 100).toFixed(2)) : 0;
+    const unsubscribeRate = s.totalSent > 0 ? parseFloat(((s.totalUnsub / s.totalSent) * 100).toFixed(2)) : 0;
+    const deliveredRate = s.totalSent > 0 ? parseFloat(((s.totalDelivered / s.totalSent) * 100).toFixed(1)) : 0;
+    const pendingRate = s.totalSent > 0 ? parseFloat(((s.totalPending / s.totalSent) * 100).toFixed(2)) : 0;
+    const hardBounceRate = s.totalSent > 0 ? parseFloat(((s.totalHardBounce / s.totalSent) * 100).toFixed(2)) : 0;
+    const softBounceRate = s.totalSent > 0 ? parseFloat(((s.totalSoftBounce / s.totalSent) * 100).toFixed(2)) : 0;
+    const spamRate = s.totalSent > 0 ? parseFloat(((s.totalSpam / s.totalSent) * 100).toFixed(2)) : 0;
 
-          const openRate = delivered > 0 ? parseFloat(((opens / delivered) * 100).toFixed(1)) : 0;
-          const clickRate = delivered > 0 ? parseFloat(((clicks / delivered) * 100).toFixed(1)) : 0;
-          const deliveredRate = sent > 0 ? parseFloat(((delivered / sent) * 100).toFixed(1)) : 0;
-          const unsubscribeRate = sent > 0 ? parseFloat(((unsubscribe / sent) * 100).toFixed(2)) : 0;
-          const bounceRate = sent > 0 ? parseFloat(((bounce / sent) * 100).toFixed(2)) : 0;
-          const spamRate = sent > 0 ? parseFloat(((spam / sent) * 100).toFixed(2)) : 0;
-
-          // Accumulate delivery by date
-          if (publishDate) {
-            deliveryByDate[publishDate] = (deliveryByDate[publishDate] || 0) + delivered;
-          }
-
-          return {
-            name: email?.name || "Untitled",
-            brandName: displayBrand,
-            subject: email?.subject || "",
-            sender,
-            publishDate,
-            state,
-            subcategory,
-            sent, delivered, opens, clicks,
-            bounce, hardBounce: hardbounced, softBounce: softbounced,
-            unsubscribe, spam, pending,
-            openRate, clickRate, deliveredRate, unsubscribeRate, bounceRate, spamRate,
-          } as EmailRecord & { pending: number };
-        }),
-      );
-
-      for (const record of results) {
-        if (!record) continue;
-        totalSent += record.sent;
-        totalDelivered += record.delivered;
-        totalOpens += record.opens;
-        totalClicks += record.clicks;
-        totalBounce += record.bounce;
-        totalHardBounce += record.hardBounce;
-        totalSoftBounce += record.softBounce;
-        totalUnsub += record.unsubscribe;
-        totalSpam += record.spam;
-        totalPending += (record as any).pending || 0;
-        emails.push(record);
-      }
-    }
-
-    console.log(`Final stats: sent=${totalSent} delivered=${totalDelivered} opens=${totalOpens} clicks=${totalClicks}`);
-
-    const openRate = totalDelivered > 0 ? parseFloat(((totalOpens / totalDelivered) * 100).toFixed(1)) : 0;
-    const clickRate = totalDelivered > 0 ? parseFloat(((totalClicks / totalDelivered) * 100).toFixed(1)) : 0;
-    const bounceRate = totalSent > 0 ? parseFloat(((totalBounce / totalSent) * 100).toFixed(2)) : 0;
-    const unsubscribeRate = totalSent > 0 ? parseFloat(((totalUnsub / totalSent) * 100).toFixed(2)) : 0;
-    const deliveredRate = totalSent > 0 ? parseFloat(((totalDelivered / totalSent) * 100).toFixed(1)) : 0;
-    const pendingRate = totalSent > 0 ? parseFloat(((totalPending / totalSent) * 100).toFixed(2)) : 0;
-    const hardBounceRate = totalSent > 0 ? parseFloat(((totalHardBounce / totalSent) * 100).toFixed(2)) : 0;
-    const softBounceRate = totalSent > 0 ? parseFloat(((totalSoftBounce / totalSent) * 100).toFixed(2)) : 0;
-    const spamRate = totalSent > 0 ? parseFloat(((totalSpam / totalSent) * 100).toFixed(2)) : 0;
+    // Previous period rates
+    const prevOpenRate = p.totalDelivered > 0 ? parseFloat(((p.totalOpens / p.totalDelivered) * 100).toFixed(1)) : 0;
+    const prevClickRate = p.totalDelivered > 0 ? parseFloat(((p.totalClicks / p.totalDelivered) * 100).toFixed(1)) : 0;
+    const prevBounceRate = p.totalSent > 0 ? parseFloat(((p.totalBounce / p.totalSent) * 100).toFixed(2)) : 0;
+    const prevUnsubscribeRate = p.totalSent > 0 ? parseFloat(((p.totalUnsub / p.totalSent) * 100).toFixed(2)) : 0;
+    const prevDeliveredRate = p.totalSent > 0 ? parseFloat(((p.totalDelivered / p.totalSent) * 100).toFixed(1)) : 0;
+    const prevHardBounceRate = p.totalSent > 0 ? parseFloat(((p.totalHardBounce / p.totalSent) * 100).toFixed(2)) : 0;
+    const prevSoftBounceRate = p.totalSent > 0 ? parseFloat(((p.totalSoftBounce / p.totalSent) * 100).toFixed(2)) : 0;
+    const prevSpamRate = p.totalSent > 0 ? parseFloat(((p.totalSpam / p.totalSent) * 100).toFixed(2)) : 0;
 
     const healthScore = Math.min(
       10,
       Math.max(1, parseFloat((openRate / 5 + clickRate / 2 - bounceRate * 2 - unsubscribeRate * 5 + 2).toFixed(1))),
     );
 
-    // Build delivery over time series sorted by date
-    const deliveryOverTime = Object.entries(deliveryByDate)
+    const deliveryOverTime = Object.entries(current.deliveryByDate)
       .map(([date, count]) => ({ date, delivered: count }))
       .sort((a, b) => a.date.localeCompare(b.date));
 
-    // Distribution by state and subcategory
     const stateDistribution: Record<string, number> = {};
     const subcategoryDistribution: Record<string, number> = {};
-    for (const e of emails) {
+    for (const e of current.emails) {
       const st = e.state || "PUBLISHED";
       const sub = e.subcategory || "marketing_email";
       stateDistribution[st] = (stateDistribution[st] || 0) + 1;
@@ -384,20 +449,43 @@ Deno.serve(async (req) => {
       bounceRateLabel: getBenchmarkLabel("bounceRate", bounceRate),
       unsubscribeRate,
       unsubscribeRateLabel: getBenchmarkLabel("unsubscribeRate", unsubscribeRate),
-      spamReports: totalSpam,
+      spamReports: s.totalSpam,
       spamRate,
-      totalEmailsSent: totalSent,
-      totalEmails: emails.length,
-      totalOpens, totalClicks, totalDelivered, totalBounce,
-      totalHardBounce, totalSoftBounce, totalUnsub, totalPending,
+      totalEmailsSent: s.totalSent,
+      totalEmails: current.emails.length,
+      totalOpens: s.totalOpens, totalClicks: s.totalClicks,
+      totalDelivered: s.totalDelivered, totalBounce: s.totalBounce,
+      totalHardBounce: s.totalHardBounce, totalSoftBounce: s.totalSoftBounce,
+      totalUnsub: s.totalUnsub, totalPending: s.totalPending,
       pendingRate, deliveredRate,
-      lifecycleStages, emails,
+      lifecycleStages, emails: current.emails,
       deliveryOverTime,
       stateDistribution: Object.entries(stateDistribution).map(([name, value]) => ({ name, value })),
       subcategoryDistribution: Object.entries(subcategoryDistribution).map(([name, value]) => ({ name, value })),
       totalFetched: allRawEmails.length,
       brandFilteredCount: brandFiltered.length,
       businessUnitId: null,
+      // Previous period comparison deltas
+      deltas: {
+        sent: pctChange(s.totalSent, p.totalSent),
+        delivered: pctChange(s.totalDelivered, p.totalDelivered),
+        opens: pctChange(s.totalOpens, p.totalOpens),
+        clicks: pctChange(s.totalClicks, p.totalClicks),
+        deliveredRate: pctChange(deliveredRate, prevDeliveredRate),
+        openRate: pctChange(openRate, prevOpenRate),
+        clickRate: pctChange(clickRate, prevClickRate),
+        bounce: pctChange(s.totalBounce, p.totalBounce),
+        unsubscribed: pctChange(s.totalUnsub, p.totalUnsub),
+        hardBounce: pctChange(s.totalHardBounce, p.totalHardBounce),
+        softBounce: pctChange(s.totalSoftBounce, p.totalSoftBounce),
+        spam: pctChange(s.totalSpam, p.totalSpam),
+        bounceRate: pctChange(bounceRate, prevBounceRate),
+        unsubscribeRate: pctChange(unsubscribeRate, prevUnsubscribeRate),
+        hardBounceRate: pctChange(hardBounceRate, prevHardBounceRate),
+        softBounceRate: pctChange(softBounceRate, prevSoftBounceRate),
+        spamRate: pctChange(spamRate, prevSpamRate),
+      },
+      prevPeriod: { start: prevStart, end: prevEnd },
     };
 
     return new Response(JSON.stringify(result), {

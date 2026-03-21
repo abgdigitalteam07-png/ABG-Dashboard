@@ -9,7 +9,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { Loader2, ArrowRight, ArrowDown } from "lucide-react";
+import { Loader2, ArrowRight, ArrowDown, TrendingUp, TrendingDown } from "lucide-react";
 
 interface HubSpotTabProps {
   brand: Brand;
@@ -23,12 +23,28 @@ function fmt(n: number): string {
   return n.toLocaleString();
 }
 
+/* ── Delta badge ── */
+function DeltaBadge({ delta, invert }: { delta?: number | null; invert?: boolean }) {
+  if (delta === null || delta === undefined) return null;
+  // For negative metrics (bounce, unsub, spam), down is good
+  const isGood = invert ? delta <= 0 : delta >= 0;
+  const arrow = delta >= 0 ? "↑" : "↓";
+  return (
+    <span className={cn("mt-0.5 flex items-center gap-0.5 text-[10px] font-medium tabular-nums", isGood ? "text-brand-green" : "text-brand-red")}>
+      {delta >= 0 ? <TrendingUp className="h-2.5 w-2.5" /> : <TrendingDown className="h-2.5 w-2.5" />}
+      {arrow} {Math.abs(delta).toFixed(2)}% vs prev period
+    </span>
+  );
+}
+
 /* ── KPI Funnel Card ── */
 function FunnelCard({
-  label, value, sub, variant = "positive",
+  label, value, sub, variant = "positive", delta, invertDelta,
 }: {
   label: string; value: string; sub?: string;
   variant?: "positive" | "pending" | "negative";
+  delta?: number | null;
+  invertDelta?: boolean;
 }) {
   const bg = variant === "pending"
     ? "bg-funnel-pending text-funnel-pending-foreground"
@@ -40,6 +56,7 @@ function FunnelCard({
       <p className="text-[11px] font-medium uppercase tracking-wider opacity-70">{label}</p>
       <p className="mt-1 text-xl font-bold tabular-nums">{value}</p>
       {sub && <p className="mt-0.5 text-[11px] opacity-60">{sub}</p>}
+      <DeltaBadge delta={delta} invert={invertDelta} />
     </div>
   );
 }
@@ -97,9 +114,12 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
   }
   if (!d) return null;
 
-  const ctr = d.totalOpens > 0
-    ? parseFloat(((d.totalClicks / d.totalOpens) * 100).toFixed(2))
-    : 0;
+  const dl = d.deltas || {};
+
+  // AVG emails per week calculation
+  const daysBetween = Math.max(1, Math.ceil((dateTo.getTime() - dateFrom.getTime()) / 86400000));
+  const weeks = daysBetween / 7;
+  const avgEmailsPerWeek = weeks > 0 ? parseFloat((d.totalEmails / weeks).toFixed(1)) : 0;
 
   return (
     <div className="space-y-6 p-6">
@@ -109,40 +129,45 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
 
         {/* Row 1 — Core metrics with arrows */}
         <div className="grid grid-cols-2 gap-3 lg:flex lg:items-center lg:gap-0">
-          <div className="lg:flex-1"><FunnelCard label="Sent" value={fmt(d.totalEmailsSent)} sub={`${d.totalEmails} emails`} /></div>
+          <div className="lg:flex-1"><FunnelCard label="Sent" value={fmt(d.totalEmailsSent)} sub={`${d.totalEmails} emails`} delta={dl.sent} /></div>
           <HArrow />
-          <div className="lg:flex-1"><FunnelCard label="Delivered" value={fmt(d.totalDelivered ?? 0)} /></div>
+          <div className="lg:flex-1"><FunnelCard label="Delivered" value={fmt(d.totalDelivered ?? 0)} delta={dl.delivered} /></div>
           <HArrow />
-          <div className="lg:flex-1"><FunnelCard label="Opens" value={fmt(d.totalOpens)} /></div>
+          <div className="lg:flex-1"><FunnelCard label="Opens" value={fmt(d.totalOpens)} delta={dl.opens} /></div>
           <HArrow />
-          <div className="lg:flex-1"><FunnelCard label="Clicks" value={fmt(d.totalClicks)} /></div>
+          <div className="lg:flex-1"><FunnelCard label="Clicks" value={fmt(d.totalClicks)} delta={dl.clicks} /></div>
         </div>
 
         <VArrow />
 
         {/* Row 2 — Ratio metrics */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <FunnelCard label="Pending" value={fmt(d.totalPending ?? 0)} sub={`${d.pendingRate ?? 0}%`} variant="pending" />
-          <FunnelCard label="Delivered Ratio" value={`${d.deliveredRate}%`} />
-          <FunnelCard label="Open Ratio" value={`${d.openRate}%`} />
-          <FunnelCard label="Click Ratio" value={`${d.clickRate}%`} />
+          <FunnelCard
+            label="AVG Emails Per Week"
+            value={String(avgEmailsPerWeek)}
+            sub={`Based on ${d.totalEmails} emails over ${Math.round(weeks)} weeks`}
+            variant="pending"
+          />
+          <FunnelCard label="Delivered Ratio" value={`${d.deliveredRate}%`} delta={dl.deliveredRate} />
+          <FunnelCard label="Open Ratio" value={`${d.openRate}%`} delta={dl.openRate} />
+          <FunnelCard label="Click Ratio" value={`${d.clickRate}%`} delta={dl.clickRate} />
         </div>
 
         <VArrow />
 
         {/* Row 3 — Negative metrics */}
         <div className="grid grid-cols-2 gap-3">
-          <FunnelCard label="Bounce" value={fmt(d.totalBounce ?? 0)} sub={`${d.bounceRate}%`} variant="negative" />
-          <FunnelCard label="Unsubscribed" value={fmt(d.totalUnsub ?? 0)} sub={`${d.unsubscribeRate}%`} variant="negative" />
+          <FunnelCard label="Bounce" value={fmt(d.totalBounce ?? 0)} sub={`${d.bounceRate}%`} variant="negative" delta={dl.bounce} invertDelta />
+          <FunnelCard label="Unsubscribed" value={fmt(d.totalUnsub ?? 0)} sub={`${d.unsubscribeRate}%`} variant="negative" delta={dl.unsubscribed} invertDelta />
         </div>
 
         <VArrow />
 
         {/* Row 4 — Deep negative metrics */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <FunnelCard label="Hard Bounce" value={fmt(d.totalHardBounce ?? 0)} sub={`${d.hardBounceRate ?? 0}%`} variant="negative" />
-          <FunnelCard label="Soft Bounce" value={fmt(d.totalSoftBounce ?? 0)} sub={`${d.softBounceRate ?? 0}%`} variant="negative" />
-          <FunnelCard label="Spam Report" value={String(d.spamReports)} sub={`${d.spamRate ?? 0}%`} variant="negative" />
+          <FunnelCard label="Hard Bounce" value={fmt(d.totalHardBounce ?? 0)} sub={`${d.hardBounceRate ?? 0}%`} variant="negative" delta={dl.hardBounce} invertDelta />
+          <FunnelCard label="Soft Bounce" value={fmt(d.totalSoftBounce ?? 0)} sub={`${d.softBounceRate ?? 0}%`} variant="negative" delta={dl.softBounce} invertDelta />
+          <FunnelCard label="Spam Report" value={String(d.spamReports)} sub={`${d.spamRate ?? 0}%`} variant="negative" delta={dl.spam} invertDelta />
         </div>
       </section>
 
@@ -226,20 +251,12 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
 
       {/* ═══ SECTION 4 — Distribution Charts (donuts) ═══ */}
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-        {/* State distribution */}
         {d.stateDistribution && d.stateDistribution.length > 0 && (
           <section className="rounded-lg border border-border bg-card p-6 shadow-card">
             <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Breakdown by State</h3>
             <ResponsiveContainer width="100%" height={240}>
               <PieChart>
-                <Pie
-                  data={d.stateDistribution}
-                  dataKey="value"
-                  nameKey="name"
-                  cx="50%" cy="50%"
-                  innerRadius={55} outerRadius={90}
-                  paddingAngle={2}
-                >
+                <Pie data={d.stateDistribution} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={55} outerRadius={90} paddingAngle={2}>
                   {d.stateDistribution.map((_: any, i: number) => (
                     <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
                   ))}
@@ -259,20 +276,12 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
           </section>
         )}
 
-        {/* Subcategory distribution */}
         {d.subcategoryDistribution && d.subcategoryDistribution.length > 0 && (
           <section className="rounded-lg border border-border bg-card p-6 shadow-card">
             <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Breakdown by Subcategory</h3>
             <ResponsiveContainer width="100%" height={240}>
               <PieChart>
-                <Pie
-                  data={d.subcategoryDistribution}
-                  dataKey="value"
-                  nameKey="name"
-                  cx="50%" cy="50%"
-                  innerRadius={55} outerRadius={90}
-                  paddingAngle={2}
-                >
+                <Pie data={d.subcategoryDistribution} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={55} outerRadius={90} paddingAngle={2}>
                   {d.subcategoryDistribution.map((_: any, i: number) => (
                     <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
                   ))}
@@ -314,6 +323,7 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
       <p className="px-1 text-xs text-muted-foreground">
         {d.totalEmails} emails for "{d.brandName}"
         {d.totalFetched != null && ` · ${d.totalFetched} total in account`}
+        {d.prevPeriod && ` · Compared to ${d.prevPeriod.start} – ${d.prevPeriod.end}`}
       </p>
     </div>
   );
