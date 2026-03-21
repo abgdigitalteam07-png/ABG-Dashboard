@@ -69,18 +69,12 @@ function getBenchmarkLabel(metric: string, value: number): string {
 // ─── date extraction using hs_publish_date ───
 
 function extractPublishDate(email: any): string | null {
-  // Primary: hs_publish_date from v3 API
   const hsPublishDate = email?.hs_publish_date;
   if (hsPublishDate) {
     const d = new Date(hsPublishDate);
     if (!isNaN(d.getTime())) return d.toISOString().split("T")[0];
   }
-  // Fallback candidates
-  const candidates = [
-    email?.publishDate,
-    email?.publishedAt,
-    email?.updatedAt,
-  ];
+  const candidates = [email?.publishDate, email?.publishedAt, email?.updatedAt];
   for (const c of candidates) {
     if (!c) continue;
     const d = new Date(typeof c === "number" ? (c < 1e12 ? c * 1000 : c) : c);
@@ -89,7 +83,8 @@ function extractPublishDate(email: any): string | null {
   return null;
 }
 
-// ─── Brand → businessUnitId mapping (ONLY filter — no text matching) ───
+// ─── Brand → businessUnitId mapping ───
+// IMI = 1982890 (was incorrectly under ABG Hospitality before)
 
 const BRAND_TO_BU: Record<string, string[]> = {
   "Bootz":              ["1982886"],
@@ -101,7 +96,7 @@ const BRAND_TO_BU: Record<string, string[]> = {
   "Maidstone":          ["1982892"],
   "Florestone":         ["1690060"],
   "Laurel Mountain":    ["1982879"],
-  "ABG Hospitality":    ["1982882", "1982890"],
+  "ABG Hospitality":    ["1982882"],
   "Aquarius":           ["1982883"],
   "Aquatic":            ["1982884"],
   "Clarion":            ["1982887"],
@@ -109,7 +104,14 @@ const BRAND_TO_BU: Record<string, string[]> = {
   "American Bath Group":["0"],
   "DreamLine":          ["1690059"],
   "Aker":               ["1982881"],
+  "IMI":                ["1982890"],
 };
+
+// Reverse map: businessUnitId → brand name (for Brand column display)
+const BU_TO_BRAND: Record<string, string> = {};
+for (const [brand, ids] of Object.entries(BRAND_TO_BU)) {
+  for (const id of ids) BU_TO_BRAND[id] = brand;
+}
 
 // ─── fetch all published emails ───
 
@@ -119,7 +121,7 @@ async function fetchAllEmails(token: string): Promise<any[]> {
   let page = 0;
 
   while (page < 50) {
-    let url = "/marketing/v3/emails?limit=100&orderBy=-publishDate&isPublished=true&property=hs_publish_date&property=hs_published_by_name";
+    let url = "/marketing/v3/emails?limit=100&orderBy=-publishDate&isPublished=true&property=hs_publish_date&property=hs_published_by_name&property=brand";
     if (after) url += `&after=${after}`;
 
     try {
@@ -141,21 +143,11 @@ async function fetchAllEmails(token: string): Promise<any[]> {
   return all;
 }
 
-// ─── campaign stats with optional date range ───
+// ─── campaign stats ───
 
-async function fetchCampaignStats(
-  token: string,
-  campaignId: string,
-  startTimestamp?: number,
-  endTimestamp?: number,
-): Promise<any | null> {
+async function fetchCampaignStats(token: string, campaignId: string): Promise<any | null> {
   try {
-    let url = `/email/public/v1/campaigns/${campaignId}`;
-    const params: string[] = [];
-    if (startTimestamp) params.push(`startTimestamp=${startTimestamp}`);
-    if (endTimestamp) params.push(`endTimestamp=${endTimestamp}`);
-    if (params.length) url += `?${params.join("&")}`;
-    return await hubspotFetch(url, token);
+    return await hubspotFetch(`/email/public/v1/campaigns/${campaignId}`, token);
   } catch {
     return null;
   }
@@ -174,19 +166,16 @@ Deno.serve(async (req) => {
 
     const body: HubSpotRequest = await req.json();
 
-    // Debug mode - discover businessUnitId → brand mapping
+    // Debug mode
     if (body.debug === true) {
-      // Try business units API
       let businessUnits: any[] = [];
       try {
         const buRes = await hubspotFetch("/business-units/v3/business-units/user/me", token);
         businessUnits = buRes.results || [];
-        console.log("Business Units API:", JSON.stringify(businessUnits.map((bu: any) => ({ id: bu.id, name: bu.name })), null, 2));
       } catch (e) {
-        console.log("Business Units API error (expected if no scope):", e);
+        console.log("Business Units API error:", e);
       }
 
-      // Fetch all emails and build businessUnitId → fromName mapping
       const allEmails = await fetchAllEmails(token);
       const buMap: Record<string, { fromNames: Set<string>; names: string[] }> = {};
       for (const email of allEmails) {
@@ -200,7 +189,6 @@ Deno.serve(async (req) => {
         fromNames: Array.from(data.fromNames),
         sampleEmails: data.names,
       }));
-      console.log("BusinessUnitId mapping:", JSON.stringify(buSummary, null, 2));
 
       return new Response(
         JSON.stringify({ debug: true, businessUnits, buSummary }),
@@ -245,7 +233,7 @@ Deno.serve(async (req) => {
       }),
     );
 
-    // ── Filter emails by businessUnitId ONLY ──
+    // ── Filter emails by businessUnitId ──
     const allRawEmails = await fetchAllEmails(token);
     console.log(`Total emails before filter: ${allRawEmails.length}`);
 
@@ -256,16 +244,10 @@ Deno.serve(async (req) => {
       const emailBuId = String(email.businessUnitId ?? "0");
       if (buIds && buIds.includes(emailBuId)) {
         brandFiltered.push(email);
-      } else if (!buIds) {
-        // Brand not in map — try exact match on email.brand property (case-insensitive)
-        const emailBrand = (email?.brand || "").trim().toLowerCase();
-        if (emailBrand === brandName.toLowerCase()) {
-          brandFiltered.push(email);
-        }
       }
     }
 
-    console.log(`Total emails after brand filter (BU only): ${brandFiltered.length}`);
+    console.log(`Total emails after brand filter: ${brandFiltered.length}`);
     console.log(`Matched emails: ${JSON.stringify(brandFiltered.map((e: any) => `${e?.name} (BU:${e.businessUnitId})`))}`);
 
     // ── Date filter by hs_publish_date ──
@@ -275,10 +257,9 @@ Deno.serve(async (req) => {
       return dateStr >= startDate && dateStr <= endDate;
     });
 
-    console.log(`Total emails after date filter (hs_publish_date): ${dateFiltered.length}`);
-    console.log(`Date-filtered emails: ${JSON.stringify(dateFiltered.map((e: any) => `${e?.name} (${extractPublishDate(e)})`))}`);
+    console.log(`Total emails after date filter: ${dateFiltered.length}`);
 
-    // ── Stats via campaigns API (no date range params — cumulative stats) ──
+    // ── Stats via campaigns API ──
     let totalSent = 0, totalDelivered = 0, totalOpens = 0, totalClicks = 0;
     let totalBounce = 0, totalUnsub = 0, totalSpam = 0;
     const emails: EmailRecord[] = [];
@@ -303,8 +284,10 @@ Deno.serve(async (req) => {
           const spam = counters.spamreport || 0;
 
           const publishDate = extractPublishDate(email) ?? "";
-          // Use hs_published_by_name for sender, fallback to fromName
           const sender = email?.publishedByName || "";
+          // Brand name from BU mapping for display
+          const emailBuId = String(email.businessUnitId ?? "0");
+          const displayBrand = BU_TO_BRAND[emailBuId] || brandName;
 
           const openRate = delivered > 0 ? parseFloat(((opens / delivered) * 100).toFixed(1)) : 0;
           const clickRate = delivered > 0 ? parseFloat(((clicks / delivered) * 100).toFixed(1)) : 0;
@@ -315,23 +298,12 @@ Deno.serve(async (req) => {
 
           return {
             name: email?.name || "Untitled",
-            brandName: brandName,
+            brandName: displayBrand,
             subject: email?.subject || "",
             sender,
             publishDate,
-            sent,
-            delivered,
-            opens,
-            clicks,
-            bounce,
-            unsubscribe,
-            spam,
-            openRate,
-            clickRate,
-            deliveredRate,
-            unsubscribeRate,
-            bounceRate,
-            spamRate,
+            sent, delivered, opens, clicks, bounce, unsubscribe, spam,
+            openRate, clickRate, deliveredRate, unsubscribeRate, bounceRate, spamRate,
           } as EmailRecord;
         }),
       );
@@ -345,16 +317,12 @@ Deno.serve(async (req) => {
         totalBounce += record.bounce;
         totalUnsub += record.unsubscribe;
         totalSpam += record.spam;
-        console.log(
-          `Email stats: sent=${record.sent} opens=${record.opens} clicks=${record.clicks} delivered=${record.delivered} sender="${record.sender}" — "${record.name}"`,
-        );
+        console.log(`Email stats: sent=${record.sent} opens=${record.opens} clicks=${record.clicks} — "${record.name}"`);
         emails.push(record);
       }
     }
 
-    console.log(`Total emails after date filter: ${emails.length}`);
-
-    console.log(`Final stats: sent=${totalSent} opens=${totalOpens} delivered=${totalDelivered} clicks=${totalClicks} bounce=${totalBounce}`);
+    console.log(`Final stats: sent=${totalSent} opens=${totalOpens} delivered=${totalDelivered} clicks=${totalClicks}`);
 
     const openRate = totalDelivered > 0 ? parseFloat(((totalOpens / totalDelivered) * 100).toFixed(1)) : 0;
     const clickRate = totalDelivered > 0 ? parseFloat(((totalClicks / totalDelivered) * 100).toFixed(1)) : 0;
@@ -368,9 +336,7 @@ Deno.serve(async (req) => {
     );
 
     const result = {
-      totalContacts,
-      healthScore,
-      openRate,
+      totalContacts, healthScore, openRate,
       openRateLabel: getBenchmarkLabel("openRate", openRate),
       clickRate,
       clickRateLabel: getBenchmarkLabel("clickRate", clickRate),
@@ -381,17 +347,12 @@ Deno.serve(async (req) => {
       spamReports: totalSpam,
       totalEmailsSent: totalSent,
       totalEmails: emails.length,
-      totalOpens,
-      totalClicks,
-      deliveredRate,
-      lifecycleStages,
-      emails,
+      totalOpens, totalClicks, deliveredRate,
+      lifecycleStages, emails,
       totalFetched: allRawEmails.length,
       brandFilteredCount: brandFiltered.length,
       businessUnitId: null,
     };
-
-    console.log(`Result: ${emails.length} emails, openRate=${openRate}, clickRate=${clickRate}, totalSent=${totalSent}`);
 
     return new Response(JSON.stringify(result), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
