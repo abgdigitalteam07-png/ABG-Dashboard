@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
-  LineChart, Line, PieChart, Pie,
+  LineChart, Line, AreaChart, Area, Legend,
 } from "recharts";
 import { fetchHubSpotData } from "@/lib/api-client";
 import { Brand } from "@/lib/brands";
@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { Loader2, ArrowRight, ArrowDown, TrendingUp, TrendingDown } from "lucide-react";
+import { format, startOfWeek, startOfMonth, parseISO } from "date-fns";
 
 interface HubSpotTabProps {
   brand: Brand;
@@ -26,7 +27,6 @@ function fmt(n: number): string {
 /* ── Delta badge ── */
 function DeltaBadge({ delta, invert }: { delta?: number | null; invert?: boolean }) {
   if (delta === null || delta === undefined) return null;
-  // For negative metrics (bounce, unsub, spam), down is good
   const isGood = invert ? delta <= 0 : delta >= 0;
   const arrow = delta >= 0 ? "↑" : "↓";
   return (
@@ -77,19 +77,24 @@ function VArrow() {
   );
 }
 
-const PIE_COLORS = [
-  "hsl(217, 91%, 60%)", "hsl(24, 95%, 53%)", "hsl(142, 71%, 45%)",
-  "hsl(262, 83%, 58%)", "hsl(38, 92%, 50%)", "hsl(215, 16%, 65%)",
-];
-
 const LIFECYCLE_COLORS = [
   "hsl(215 16% 65%)", "hsl(217 91% 60%)", "hsl(262 83% 58%)",
   "hsl(38 92% 50%)", "hsl(24 95% 53%)", "hsl(158 64% 52%)",
 ];
 
+type ChartType = "line" | "area" | "bar" | "column";
+type TimeInterval = "daily" | "weekly" | "monthly";
+
+/* ── Performance score for ranking emails ── */
+function emailScore(e: any): number {
+  return (e.openRate || 0) * 2 + (e.clickRate || 0) * 3 - (e.bounceRate || 0) * 4 - (e.unsubscribeRate || 0) * 5;
+}
+
 export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [chartType, setChartType] = useState<ChartType>("line");
+  const [interval, setInterval] = useState<TimeInterval>("weekly");
 
   useEffect(() => {
     let cancelled = false;
@@ -105,6 +110,47 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
     return { ...data, brandName: brand.hubspotName || brand.name };
   }, [data, brand]);
 
+  /* ── Aggregate chart data by interval ── */
+  const chartData = useMemo(() => {
+    if (!d?.emails?.length) return [];
+    const buckets: Record<string, { opens: number; delivered: number; clicks: number }> = {};
+
+    for (const email of d.emails) {
+      if (!email.publishDate) continue;
+      let key: string;
+      const date = parseISO(email.publishDate);
+      if (interval === "daily") {
+        key = email.publishDate;
+      } else if (interval === "weekly") {
+        key = format(startOfWeek(date, { weekStartsOn: 1 }), "yyyy-MM-dd");
+      } else {
+        key = format(startOfMonth(date), "yyyy-MM");
+      }
+      if (!buckets[key]) buckets[key] = { opens: 0, delivered: 0, clicks: 0 };
+      buckets[key].opens += email.opens || 0;
+      buckets[key].delivered += email.delivered || 0;
+      buckets[key].clicks += email.clicks || 0;
+    }
+
+    return Object.entries(buckets)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, v]) => ({
+        date,
+        openRate: v.delivered > 0 ? parseFloat(((v.opens / v.delivered) * 100).toFixed(1)) : 0,
+        ctr: v.opens > 0 ? parseFloat(((v.clicks / v.opens) * 100).toFixed(1)) : 0,
+      }));
+  }, [d, interval]);
+
+  /* ── High & low performing emails ── */
+  const { highPerf, lowPerf } = useMemo(() => {
+    if (!d?.emails?.length) return { highPerf: [], lowPerf: [] };
+    const sorted = [...d.emails].sort((a: any, b: any) => emailScore(b) - emailScore(a));
+    return {
+      highPerf: sorted.slice(0, 4),
+      lowPerf: sorted.slice(-4).reverse(),
+    };
+  }, [d]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-24">
@@ -115,19 +161,74 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
   if (!d) return null;
 
   const dl = d.deltas || {};
-
-  // AVG emails per week calculation
   const daysBetween = Math.max(1, Math.ceil((dateTo.getTime() - dateFrom.getTime()) / 86400000));
   const weeks = daysBetween / 7;
   const avgEmailsPerWeek = weeks > 0 ? parseFloat((d.totalEmails / weeks).toFixed(1)) : 0;
+
+  const dateLabel = `FROM ${format(dateFrom, "MMM d, yyyy").toUpperCase()} TO ${format(dateTo, "MMM d, yyyy").toUpperCase()} | ${interval.toUpperCase()}`;
+
+  const renderChart = () => {
+    const commonProps = { data: chartData };
+    const xAxis = <XAxis dataKey="date" tick={{ fontSize: 10 }} />;
+    const yAxis = <YAxis tick={{ fontSize: 10 }} domain={[0, 125]} tickFormatter={(v: number) => `${v}%`} />;
+    const grid = <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />;
+    const tooltip = <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} formatter={(v: number) => `${v}%`} />;
+    const legend = <Legend wrapperStyle={{ fontSize: 11 }} />;
+
+    if (chartType === "area") {
+      return (
+        <AreaChart {...commonProps}>
+          {grid}{xAxis}{yAxis}{tooltip}{legend}
+          <Area type="monotone" dataKey="openRate" name="Open Rate" stroke="hsl(var(--brand-blue))" fill="hsl(var(--brand-blue))" fillOpacity={0.15} strokeWidth={2} />
+          <Area type="monotone" dataKey="ctr" name="Click-through Rate" stroke="hsl(24, 95%, 53%)" fill="hsl(24, 95%, 53%)" fillOpacity={0.15} strokeWidth={2} />
+        </AreaChart>
+      );
+    }
+    if (chartType === "bar" || chartType === "column") {
+      return (
+        <BarChart {...commonProps} layout={chartType === "bar" ? "vertical" : "horizontal"}>
+          {grid}
+          {chartType === "bar" ? (
+            <>
+              <YAxis type="category" dataKey="date" tick={{ fontSize: 10 }} width={80} />
+              <XAxis type="number" domain={[0, 125]} tickFormatter={(v: number) => `${v}%`} tick={{ fontSize: 10 }} />
+            </>
+          ) : (
+            <>{xAxis}{yAxis}</>
+          )}
+          {tooltip}{legend}
+          <Bar dataKey="openRate" name="Open Rate" fill="hsl(var(--brand-blue))" radius={[2, 2, 0, 0]} />
+          <Bar dataKey="ctr" name="Click-through Rate" fill="hsl(24, 95%, 53%)" radius={[2, 2, 0, 0]} />
+        </BarChart>
+      );
+    }
+    // Default: line
+    return (
+      <LineChart {...commonProps}>
+        {grid}{xAxis}{yAxis}{tooltip}{legend}
+        <Line type="monotone" dataKey="openRate" name="Open Rate" stroke="hsl(var(--brand-blue))" strokeWidth={2} dot={{ r: 3 }} />
+        <Line type="monotone" dataKey="ctr" name="Click-through Rate" stroke="hsl(24, 95%, 53%)" strokeWidth={2} dot={{ r: 3 }} />
+      </LineChart>
+    );
+  };
+
+  const chartTypes: { value: ChartType; label: string }[] = [
+    { value: "area", label: "Area" },
+    { value: "bar", label: "Bar" },
+    { value: "column", label: "Column" },
+    { value: "line", label: "Line" },
+  ];
+  const intervals: { value: TimeInterval; label: string }[] = [
+    { value: "daily", label: "Daily" },
+    { value: "weekly", label: "Weekly" },
+    { value: "monthly", label: "Monthly" },
+  ];
 
   return (
     <div className="space-y-6 p-6">
       {/* ═══ SECTION 1 — KPI Funnel ═══ */}
       <section>
         <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Email Funnel</h2>
-
-        {/* Row 1 — Core metrics with arrows */}
         <div className="grid grid-cols-2 gap-3 lg:flex lg:items-center lg:gap-0">
           <div className="lg:flex-1"><FunnelCard label="Sent" value={fmt(d.totalEmailsSent)} sub={`${d.totalEmails} emails`} delta={dl.sent} /></div>
           <HArrow />
@@ -137,33 +238,19 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
           <HArrow />
           <div className="lg:flex-1"><FunnelCard label="Clicks" value={fmt(d.totalClicks)} delta={dl.clicks} /></div>
         </div>
-
         <VArrow />
-
-        {/* Row 2 — Ratio metrics */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <FunnelCard
-            label="AVG Emails Per Week"
-            value={String(avgEmailsPerWeek)}
-            sub={`Based on ${d.totalEmails} emails over ${Math.round(weeks)} weeks`}
-            variant="pending"
-          />
+          <FunnelCard label="AVG Emails Per Week" value={String(avgEmailsPerWeek)} sub={`Based on ${d.totalEmails} emails over ${Math.round(weeks)} weeks`} variant="pending" />
           <FunnelCard label="Delivered Ratio" value={`${d.deliveredRate}%`} delta={dl.deliveredRate} />
           <FunnelCard label="Open Ratio" value={`${d.openRate}%`} delta={dl.openRate} />
           <FunnelCard label="Click Ratio" value={`${d.clickRate}%`} delta={dl.clickRate} />
         </div>
-
         <VArrow />
-
-        {/* Row 3 — Negative metrics */}
         <div className="grid grid-cols-2 gap-3">
           <FunnelCard label="Bounce" value={fmt(d.totalBounce ?? 0)} sub={`${d.bounceRate}%`} variant="negative" delta={dl.bounce} invertDelta />
           <FunnelCard label="Unsubscribed" value={fmt(d.totalUnsub ?? 0)} sub={`${d.unsubscribeRate}%`} variant="negative" delta={dl.unsubscribed} invertDelta />
         </div>
-
         <VArrow />
-
-        {/* Row 4 — Deep negative metrics */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <FunnelCard label="Hard Bounce" value={fmt(d.totalHardBounce ?? 0)} sub={`${d.hardBounceRate ?? 0}%`} variant="negative" delta={dl.hardBounce} invertDelta />
           <FunnelCard label="Soft Bounce" value={fmt(d.totalSoftBounce ?? 0)} sub={`${d.softBounceRate ?? 0}%`} variant="negative" delta={dl.softBounce} invertDelta />
@@ -171,21 +258,52 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
         </div>
       </section>
 
-      {/* ═══ SECTION 2 — Performance Over Time ═══ */}
-      {d.deliveryOverTime && d.deliveryOverTime.length > 0 && (
-        <section className="rounded-lg border border-border bg-card p-6 shadow-card">
-          <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Marketing Email Delivered Over Time</h3>
-          <ResponsiveContainer width="100%" height={260}>
-            <LineChart data={d.deliveryOverTime}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-              <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-              <YAxis tick={{ fontSize: 11 }} />
-              <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-              <Line type="monotone" dataKey="delivered" stroke="hsl(var(--brand-blue))" strokeWidth={2} dot={{ r: 3 }} />
-            </LineChart>
+      {/* ═══ SECTION 2 — Performance Over Time (Open Rate + CTR) ═══ */}
+      <section className="rounded-lg border border-border bg-card p-6 shadow-card">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Open Rate & Click-through Rate Over Time</h3>
+            <p className="mt-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">{dateLabel}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex rounded-md border border-border bg-muted/40 text-[11px]">
+              {chartTypes.map((ct) => (
+                <button
+                  key={ct.value}
+                  onClick={() => setChartType(ct.value)}
+                  className={cn(
+                    "px-2.5 py-1 transition-colors first:rounded-l-md last:rounded-r-md",
+                    chartType === ct.value ? "bg-primary text-primary-foreground" : "hover:bg-muted"
+                  )}
+                >
+                  {ct.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex rounded-md border border-border bg-muted/40 text-[11px]">
+              {intervals.map((iv) => (
+                <button
+                  key={iv.value}
+                  onClick={() => setInterval(iv.value)}
+                  className={cn(
+                    "px-2.5 py-1 transition-colors first:rounded-l-md last:rounded-r-md",
+                    interval === iv.value ? "bg-primary text-primary-foreground" : "hover:bg-muted"
+                  )}
+                >
+                  {iv.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+        {chartData.length > 0 ? (
+          <ResponsiveContainer width="100%" height={280}>
+            {renderChart()}
           </ResponsiveContainer>
-        </section>
-      )}
+        ) : (
+          <p className="py-12 text-center text-sm text-muted-foreground">No data for chart</p>
+        )}
+      </section>
 
       {/* ═══ SECTION 3 — Email Performance Table ═══ */}
       <section className="rounded-lg border border-border bg-card shadow-card overflow-hidden">
@@ -198,8 +316,6 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
               <TableRow className="bg-table-header">
                 <TableHead className="text-xs text-primary-foreground">Campaign</TableHead>
                 <TableHead className="text-xs text-primary-foreground">Brand</TableHead>
-                <TableHead className="text-xs text-primary-foreground">State</TableHead>
-                <TableHead className="text-xs text-primary-foreground">Subcategory</TableHead>
                 <TableHead className="text-xs text-primary-foreground">Sender</TableHead>
                 <TableHead className="text-xs text-primary-foreground">Publish Date</TableHead>
                 <TableHead className="text-right text-xs text-primary-foreground">Sent</TableHead>
@@ -214,7 +330,7 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
             <TableBody>
               {d.emails.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={13} className="py-8 text-center text-sm text-muted-foreground">
+                  <TableCell colSpan={11} className="py-8 text-center text-sm text-muted-foreground">
                     No emails found for "{d.brandName}" in selected date range.
                   </TableCell>
                 </TableRow>
@@ -223,15 +339,6 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
                   <TableRow key={`${row.name}-${idx}`}>
                     <TableCell className="max-w-[260px] truncate text-sm font-medium">{row.name}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{row.brandName || d.brandName}</TableCell>
-                    <TableCell className="text-sm">
-                      <span className={cn(
-                        "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase",
-                        row.state === "AUTOMATED" ? "bg-brand-blue/10 text-brand-blue" : "bg-brand-green/10 text-brand-green",
-                      )}>
-                        {row.state || "PUBLISHED"}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{row.subcategory || "—"}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{row.sender || ""}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{row.publishDate}</TableCell>
                     <TableCell className="text-right tabular-nums text-sm">{row.sent.toLocaleString()}</TableCell>
@@ -249,58 +356,60 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
         </div>
       </section>
 
-      {/* ═══ SECTION 4 — Distribution Charts (donuts) ═══ */}
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-        {d.stateDistribution && d.stateDistribution.length > 0 && (
+      {/* ═══ SECTION 4 — High & Low Performing Emails ═══ */}
+      {d.emails.length > 0 && (
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+          {/* High performing */}
           <section className="rounded-lg border border-border bg-card p-6 shadow-card">
-            <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Breakdown by State</h3>
-            <ResponsiveContainer width="100%" height={240}>
-              <PieChart>
-                <Pie data={d.stateDistribution} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={55} outerRadius={90} paddingAngle={2}>
-                  {d.stateDistribution.map((_: any, i: number) => (
-                    <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="mt-2 flex flex-wrap justify-center gap-4">
-              {d.stateDistribution.map((item: any, i: number) => (
-                <div key={item.name} className="flex items-center gap-1.5 text-xs">
-                  <div className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
-                  <span className="text-muted-foreground">{item.name}</span>
-                  <span className="font-medium">{item.value}</span>
+            <h3 className="text-sm font-semibold text-foreground">High performing emails</h3>
+            <p className="mb-4 text-xs text-muted-foreground">These emails scored well in all deliverability metrics.</p>
+            <div className="space-y-4">
+              {highPerf.map((email: any, i: number) => (
+                <div key={i} className="flex gap-3">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-green/10 text-xs font-bold text-brand-green">{i + 1}</span>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-brand-blue">{email.name}</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Published {email.publishDate}. Sent to {email.sent.toLocaleString()}.
+                    </p>
+                    {email.sender && (
+                      <p className="text-[11px] text-muted-foreground">Published by: {email.sender}</p>
+                    )}
+                    <p className="text-[11px] text-muted-foreground">
+                      {email.clickRate}% clicks, {email.openRate}% opens, {email.bounceRate}% hard bounces, {email.unsubscribeRate}% unsubscribes.
+                    </p>
+                  </div>
                 </div>
               ))}
             </div>
           </section>
-        )}
 
-        {d.subcategoryDistribution && d.subcategoryDistribution.length > 0 && (
+          {/* Low performing */}
           <section className="rounded-lg border border-border bg-card p-6 shadow-card">
-            <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Breakdown by Subcategory</h3>
-            <ResponsiveContainer width="100%" height={240}>
-              <PieChart>
-                <Pie data={d.subcategoryDistribution} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={55} outerRadius={90} paddingAngle={2}>
-                  {d.subcategoryDistribution.map((_: any, i: number) => (
-                    <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="mt-2 flex flex-wrap justify-center gap-4">
-              {d.subcategoryDistribution.map((item: any, i: number) => (
-                <div key={item.name} className="flex items-center gap-1.5 text-xs">
-                  <div className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
-                  <span className="text-muted-foreground">{item.name}</span>
-                  <span className="font-medium">{item.value}</span>
+            <h3 className="text-sm font-semibold text-foreground">Low performing emails</h3>
+            <p className="mb-4 text-xs text-muted-foreground">These emails scored poorly in at least one deliverability metric.</p>
+            <div className="space-y-4">
+              {lowPerf.map((email: any, i: number) => (
+                <div key={i} className="flex gap-3">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-red/10 text-xs font-bold text-brand-red">{i + 1}</span>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-brand-blue">{email.name}</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Published {email.publishDate}. Sent to {email.sent.toLocaleString()}.
+                    </p>
+                    {email.sender && (
+                      <p className="text-[11px] text-muted-foreground">Published by: {email.sender}</p>
+                    )}
+                    <p className="text-[11px] text-muted-foreground">
+                      {email.clickRate}% clicks, {email.openRate}% opens, {email.bounceRate}% hard bounces, {email.unsubscribeRate}% unsubscribes.
+                    </p>
+                  </div>
                 </div>
               ))}
             </div>
           </section>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* ═══ SECTION 5 — Lifecycle Stage Breakdown ═══ */}
       <section className="rounded-lg border border-border bg-card p-6 shadow-card">
