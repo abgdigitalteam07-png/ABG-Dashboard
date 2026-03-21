@@ -101,7 +101,7 @@ async function fetchAllEmails(token: string): Promise<any[]> {
   let page = 0;
 
   while (page < 50) {
-    let url = "/marketing/v3/emails?limit=100&orderBy=-publishDate&isPublished=true&property=hs_publish_date&property=hs_published_by_name";
+    let url = "/marketing/v3/emails?limit=100&orderBy=-publishDate&isPublished=true&property=hs_publish_date&property=hs_published_by_name&property=brand";
     if (after) url += `&after=${after}`;
 
     try {
