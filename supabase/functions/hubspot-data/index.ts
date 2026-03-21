@@ -227,29 +227,35 @@ Deno.serve(async (req) => {
       }),
     );
 
-    // ── Filter emails by businessUnitId ONLY ──
+    // ── Filter emails by brand property directly from email object ──
     const allRawEmails = await fetchAllEmails(token);
     console.log(`Total emails before filter: ${allRawEmails.length}`);
 
-    const buIds = BRAND_TO_BU[brandName];
+    // Log first 3 emails to discover brand field location
+    for (let dbg = 0; dbg < Math.min(3, allRawEmails.length); dbg++) {
+      const e = allRawEmails[dbg];
+      console.log(`DEBUG email[${dbg}]: name="${e?.name}" brand="${e?.brand}" businessUnitId="${e?.businessUnitId}" properties.brand="${e?.properties?.brand}" properties.hs_brand="${e?.properties?.hs_brand}"`);
+    }
+
     const brandFiltered: any[] = [];
+    const brandLower = brandName.toLowerCase().trim();
 
     for (const email of allRawEmails) {
-      const emailBuId = String(email.businessUnitId ?? "0");
-      if (buIds && buIds.includes(emailBuId)) {
+      // Try multiple locations for the brand property
+      const emailBrand = (
+        email?.brand ||
+        email?.properties?.brand ||
+        email?.properties?.hs_brand ||
+        ""
+      ).trim().toLowerCase();
+
+      if (emailBrand === brandLower) {
         brandFiltered.push(email);
-      } else if (!buIds) {
-        // Brand not in map — try exact match on email.brand property (case-insensitive)
-        const emailBrand = (email?.brand || "").trim().toLowerCase();
-        if (emailBrand === brandName.toLowerCase()) {
-          brandFiltered.push(email);
-        }
       }
     }
 
-    console.log(`Total emails after brand filter (BU only): ${brandFiltered.length}`);
-    console.log(`Matched emails: ${JSON.stringify(brandFiltered.map((e: any) => `${e?.name} (BU:${e.businessUnitId})`))}`);
-
+    console.log(`Total emails after brand filter: ${brandFiltered.length}`);
+    console.log(`Matched emails: ${JSON.stringify(brandFiltered.map((e: any) => `${e?.name} (brand:${e?.brand || e?.properties?.brand || "?"})`))}`);
     // ── Date filter by hs_publish_date ──
     const dateFiltered = brandFiltered.filter((email) => {
       const dateStr = extractPublishDate(email);
