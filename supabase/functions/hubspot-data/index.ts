@@ -17,11 +17,15 @@ interface EmailRecord {
   subject: string;
   sender: string;
   publishDate: string;
+  state: string;
+  subcategory: string;
   sent: number;
   delivered: number;
   opens: number;
   clicks: number;
   bounce: number;
+  hardBounce: number;
+  softBounce: number;
   unsubscribe: number;
   spam: number;
   openRate: number;
@@ -84,7 +88,6 @@ function extractPublishDate(email: any): string | null {
 }
 
 // ─── Brand → businessUnitId mapping ───
-// IMI = 1982890 (was incorrectly under ABG Hospitality before)
 
 const BRAND_TO_BU: Record<string, string[]> = {
   "Bootz":              ["1982886"],
@@ -107,7 +110,6 @@ const BRAND_TO_BU: Record<string, string[]> = {
   "IMI":                ["1982890"],
 };
 
-// Reverse map: businessUnitId → brand name (for Brand column display)
 const BU_TO_BRAND: Record<string, string> = {};
 for (const [brand, ids] of Object.entries(BRAND_TO_BU)) {
   for (const id of ids) BU_TO_BRAND[id] = brand;
@@ -121,7 +123,7 @@ async function fetchAllEmails(token: string): Promise<any[]> {
   let page = 0;
 
   while (page < 50) {
-    let url = "/marketing/v3/emails?limit=100&orderBy=-publishDate&isPublished=true&property=hs_publish_date&property=hs_published_by_name&property=brand";
+    let url = "/marketing/v3/emails?limit=100&orderBy=-publishDate&isPublished=true&property=hs_publish_date&property=hs_published_by_name&property=brand&property=state&property=subcategory";
     if (after) url += `&after=${after}`;
 
     try {
@@ -248,7 +250,6 @@ Deno.serve(async (req) => {
     }
 
     console.log(`Total emails after brand filter: ${brandFiltered.length}`);
-    console.log(`Matched emails: ${JSON.stringify(brandFiltered.map((e: any) => `${e?.name} (BU:${e.businessUnitId})`))}`);
 
     // ── Date filter by hs_publish_date ──
     const dateFiltered = brandFiltered.filter((email) => {
@@ -261,8 +262,11 @@ Deno.serve(async (req) => {
 
     // ── Stats via campaigns API ──
     let totalSent = 0, totalDelivered = 0, totalOpens = 0, totalClicks = 0;
-    let totalBounce = 0, totalUnsub = 0, totalSpam = 0;
+    let totalBounce = 0, totalHardBounce = 0, totalSoftBounce = 0;
+    let totalUnsub = 0, totalSpam = 0, totalPending = 0;
     const emails: EmailRecord[] = [];
+    // For delivery over time chart
+    const deliveryByDate: Record<string, number> = {};
 
     for (let i = 0; i < dateFiltered.length; i += 10) {
       const batch = dateFiltered.slice(i, i + 10);
@@ -280,14 +284,20 @@ Deno.serve(async (req) => {
           const opens = counters.open || 0;
           const clicks = counters.click || 0;
           const bounce = counters.bounce || 0;
+          const hardbounced = counters.hardbounced || 0;
+          const softbounced = counters.softbounced || 0;
           const unsubscribe = counters.unsubscribed || 0;
           const spam = counters.spamreport || 0;
+          const pending = counters.pending || Math.max(0, sent - delivered - bounce);
 
           const publishDate = extractPublishDate(email) ?? "";
           const sender = email?.publishedByName || "";
-          // Brand name from BU mapping for display
           const emailBuId = String(email.businessUnitId ?? "0");
           const displayBrand = BU_TO_BRAND[emailBuId] || brandName;
+          
+          // State and subcategory from email object
+          const state = email?.state || email?.properties?.state || "PUBLISHED";
+          const subcategory = email?.subcategory || email?.properties?.subcategory || "marketing_email";
 
           const openRate = delivered > 0 ? parseFloat(((opens / delivered) * 100).toFixed(1)) : 0;
           const clickRate = delivered > 0 ? parseFloat(((clicks / delivered) * 100).toFixed(1)) : 0;
@@ -296,15 +306,24 @@ Deno.serve(async (req) => {
           const bounceRate = sent > 0 ? parseFloat(((bounce / sent) * 100).toFixed(2)) : 0;
           const spamRate = sent > 0 ? parseFloat(((spam / sent) * 100).toFixed(2)) : 0;
 
+          // Accumulate delivery by date
+          if (publishDate) {
+            deliveryByDate[publishDate] = (deliveryByDate[publishDate] || 0) + delivered;
+          }
+
           return {
             name: email?.name || "Untitled",
             brandName: displayBrand,
             subject: email?.subject || "",
             sender,
             publishDate,
-            sent, delivered, opens, clicks, bounce, unsubscribe, spam,
+            state,
+            subcategory,
+            sent, delivered, opens, clicks,
+            bounce, hardBounce: hardbounced, softBounce: softbounced,
+            unsubscribe, spam, pending,
             openRate, clickRate, deliveredRate, unsubscribeRate, bounceRate, spamRate,
-          } as EmailRecord;
+          } as EmailRecord & { pending: number };
         }),
       );
 
@@ -315,40 +334,67 @@ Deno.serve(async (req) => {
         totalOpens += record.opens;
         totalClicks += record.clicks;
         totalBounce += record.bounce;
+        totalHardBounce += record.hardBounce;
+        totalSoftBounce += record.softBounce;
         totalUnsub += record.unsubscribe;
         totalSpam += record.spam;
-        console.log(`Email stats: sent=${record.sent} opens=${record.opens} clicks=${record.clicks} — "${record.name}"`);
+        totalPending += (record as any).pending || 0;
         emails.push(record);
       }
     }
 
-    console.log(`Final stats: sent=${totalSent} opens=${totalOpens} delivered=${totalDelivered} clicks=${totalClicks}`);
+    console.log(`Final stats: sent=${totalSent} delivered=${totalDelivered} opens=${totalOpens} clicks=${totalClicks}`);
 
     const openRate = totalDelivered > 0 ? parseFloat(((totalOpens / totalDelivered) * 100).toFixed(1)) : 0;
     const clickRate = totalDelivered > 0 ? parseFloat(((totalClicks / totalDelivered) * 100).toFixed(1)) : 0;
     const bounceRate = totalSent > 0 ? parseFloat(((totalBounce / totalSent) * 100).toFixed(2)) : 0;
     const unsubscribeRate = totalSent > 0 ? parseFloat(((totalUnsub / totalSent) * 100).toFixed(2)) : 0;
     const deliveredRate = totalSent > 0 ? parseFloat(((totalDelivered / totalSent) * 100).toFixed(1)) : 0;
+    const pendingRate = totalSent > 0 ? parseFloat(((totalPending / totalSent) * 100).toFixed(2)) : 0;
+    const hardBounceRate = totalSent > 0 ? parseFloat(((totalHardBounce / totalSent) * 100).toFixed(2)) : 0;
+    const softBounceRate = totalSent > 0 ? parseFloat(((totalSoftBounce / totalSent) * 100).toFixed(2)) : 0;
+    const spamRate = totalSent > 0 ? parseFloat(((totalSpam / totalSent) * 100).toFixed(2)) : 0;
 
     const healthScore = Math.min(
       10,
       Math.max(1, parseFloat((openRate / 5 + clickRate / 2 - bounceRate * 2 - unsubscribeRate * 5 + 2).toFixed(1))),
     );
 
+    // Build delivery over time series sorted by date
+    const deliveryOverTime = Object.entries(deliveryByDate)
+      .map(([date, count]) => ({ date, delivered: count }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    // Distribution by state and subcategory
+    const stateDistribution: Record<string, number> = {};
+    const subcategoryDistribution: Record<string, number> = {};
+    for (const e of emails) {
+      const st = e.state || "PUBLISHED";
+      const sub = e.subcategory || "marketing_email";
+      stateDistribution[st] = (stateDistribution[st] || 0) + 1;
+      subcategoryDistribution[sub] = (subcategoryDistribution[sub] || 0) + 1;
+    }
+
     const result = {
       totalContacts, healthScore, openRate,
       openRateLabel: getBenchmarkLabel("openRate", openRate),
       clickRate,
       clickRateLabel: getBenchmarkLabel("clickRate", clickRate),
-      bounceRate,
+      bounceRate, hardBounceRate, softBounceRate,
       bounceRateLabel: getBenchmarkLabel("bounceRate", bounceRate),
       unsubscribeRate,
       unsubscribeRateLabel: getBenchmarkLabel("unsubscribeRate", unsubscribeRate),
       spamReports: totalSpam,
+      spamRate,
       totalEmailsSent: totalSent,
       totalEmails: emails.length,
-      totalOpens, totalClicks, deliveredRate,
+      totalOpens, totalClicks, totalDelivered, totalBounce,
+      totalHardBounce, totalSoftBounce, totalUnsub, totalPending,
+      pendingRate, deliveredRate,
       lifecycleStages, emails,
+      deliveryOverTime,
+      stateDistribution: Object.entries(stateDistribution).map(([name, value]) => ({ name, value })),
+      subcategoryDistribution: Object.entries(subcategoryDistribution).map(([name, value]) => ({ name, value })),
       totalFetched: allRawEmails.length,
       brandFilteredCount: brandFiltered.length,
       businessUnitId: null,
