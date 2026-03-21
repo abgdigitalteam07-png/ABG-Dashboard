@@ -303,7 +303,7 @@ Deno.serve(async (req) => {
 
           return {
             name: email?.name || "Untitled",
-            brandName: brandName,
+            brandName: email?.brand || email?.properties?.brand || brandName,
             subject: email?.subject || "",
             sender,
             publishDate,
