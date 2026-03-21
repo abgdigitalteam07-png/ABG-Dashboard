@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
+  LineChart, Line, PieChart, Pie,
 } from "recharts";
 import { fetchHubSpotData } from "@/lib/api-client";
 import { Brand } from "@/lib/brands";
@@ -8,7 +9,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { Loader2 } from "lucide-react";
+import { Loader2, ArrowRight, ArrowDown } from "lucide-react";
 
 interface HubSpotTabProps {
   brand: Brand;
@@ -16,62 +17,58 @@ interface HubSpotTabProps {
   dateTo: Date;
 }
 
-const LIFECYCLE_COLORS = [
-  "hsl(215 16% 65%)",
-  "hsl(217 91% 60%)",
-  "hsl(262 83% 58%)",
-  "hsl(38 92% 50%)",
-  "hsl(24 95% 53%)",
-  "hsl(158 64% 52%)",
-];
-
-function formatNumber(n: number): string {
-  if (n >= 1000000) return (n / 1000000).toFixed(1) + "M";
-  if (n >= 1000) return (n / 1000).toFixed(1) + "K";
+function fmt(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + "K";
   return n.toLocaleString();
 }
 
-function BenchmarkBadge({ label }: { label: string }) {
-  const color = label === "Excellent" ? "text-brand-green bg-brand-green/10" :
-    label === "Good" ? "text-brand-blue bg-brand-blue/10" :
-    "text-brand-red bg-brand-red/10";
+/* ── KPI Funnel Card ── */
+function FunnelCard({
+  label, value, sub, variant = "positive",
+}: {
+  label: string; value: string; sub?: string;
+  variant?: "positive" | "pending" | "negative";
+}) {
+  const bg = variant === "pending"
+    ? "bg-funnel-pending text-funnel-pending-foreground"
+    : variant === "negative"
+    ? "bg-funnel-negative text-funnel-negative-foreground"
+    : "bg-card text-card-foreground";
   return (
-    <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase", color)}>
-      {label}
-    </span>
-  );
-}
-
-function HealthGauge({ score }: { score: number }) {
-  const pct = (score / 10) * 100;
-  const color = score >= 7 ? "hsl(var(--brand-green))" : score >= 4 ? "hsl(var(--brand-orange))" : "hsl(var(--brand-red))";
-  return (
-    <div className="flex flex-col items-center gap-2">
-      <div className="relative h-28 w-28">
-        <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90">
-          <circle cx="50" cy="50" r="42" fill="none" stroke="hsl(var(--border))" strokeWidth="8" />
-          <circle cx="50" cy="50" r="42" fill="none" stroke={color} strokeWidth="8" strokeDasharray={`${pct * 2.64} 264`} strokeLinecap="round" />
-        </svg>
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-2xl font-bold tabular-nums text-card-foreground">{score.toFixed(1)}</span>
-          <span className="text-[10px] text-muted-foreground">/10</span>
-        </div>
-      </div>
-      <span className="text-xs font-medium text-muted-foreground">Health Score</span>
+    <div className={cn("rounded-lg border border-border p-4 shadow-card", bg)}>
+      <p className="text-[11px] font-medium uppercase tracking-wider opacity-70">{label}</p>
+      <p className="mt-1 text-xl font-bold tabular-nums">{value}</p>
+      {sub && <p className="mt-0.5 text-[11px] opacity-60">{sub}</p>}
     </div>
   );
 }
 
-function MetricCard({ label, value, sub, benchmark }: { label: string; value: string; sub?: string; benchmark?: string }) {
+/* ── SVG Arrow connectors ── */
+function HArrow() {
   return (
-    <div className="rounded-lg border border-border bg-card p-4 shadow-card">
-      <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
-      <p className="mt-1 text-xl font-semibold tabular-nums">{value}</p>
-      {sub && <p className="mt-0.5 text-[11px] text-muted-foreground">{sub}</p>}
-      {benchmark && <div className="mt-1"><BenchmarkBadge label={benchmark} /></div>}
+    <div className="hidden items-center lg:flex">
+      <ArrowRight className="h-5 w-5 text-muted-foreground" />
     </div>
   );
 }
+function VArrow() {
+  return (
+    <div className="flex justify-center py-1">
+      <ArrowDown className="h-4 w-4 text-muted-foreground" />
+    </div>
+  );
+}
+
+const PIE_COLORS = [
+  "hsl(217, 91%, 60%)", "hsl(24, 95%, 53%)", "hsl(142, 71%, 45%)",
+  "hsl(262, 83%, 58%)", "hsl(38, 92%, 50%)", "hsl(215, 16%, 65%)",
+];
+
+const LIFECYCLE_COLORS = [
+  "hsl(215 16% 65%)", "hsl(217 91% 60%)", "hsl(262 83% 58%)",
+  "hsl(38 92% 50%)", "hsl(24 95% 53%)", "hsl(158 64% 52%)",
+];
 
 export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
   const [data, setData] = useState<any>(null);
@@ -81,14 +78,9 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
     let cancelled = false;
     setLoading(true);
     fetchHubSpotData(brand, dateFrom, dateTo).then((result) => {
-      if (!cancelled) {
-        setData(result);
-        setLoading(false);
-      }
+      if (!cancelled) { setData(result); setLoading(false); }
     });
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [brand.id, dateFrom.getTime(), dateTo.getTime()]);
 
   const d = useMemo(() => {
@@ -103,60 +95,205 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
       </div>
     );
   }
-
   if (!d) return null;
 
-  const emailCount = d.totalEmails ?? d.emails?.length ?? 0;
   const ctr = d.totalOpens > 0
-    ? parseFloat(((d.totalClicks ?? 0) / d.totalOpens * 100).toFixed(2))
-    : (d.clickRate && d.openRate && d.openRate > 0 ? parseFloat((d.clickRate / d.openRate * 100).toFixed(2)) : 0);
+    ? parseFloat(((d.totalClicks / d.totalOpens) * 100).toFixed(2))
+    : 0;
 
   return (
     <div className="space-y-6 p-6">
-      {/* SECTION 1 — Email Health Score (only one six-card metrics block exists here) */}
+      {/* ═══ SECTION 1 — KPI Funnel ═══ */}
       <section>
-        <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Email Health Score</h2>
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[auto_1fr]">
-          <div className="flex items-center justify-center rounded-lg border border-border bg-card p-6 shadow-card">
-            <HealthGauge score={d.healthScore} />
-          </div>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-            <MetricCard label="Open Rate" value={`${d.openRate}%`} benchmark={d.openRateLabel} />
-            <MetricCard label="Click-Through Rate" value={`${ctr}%`} benchmark={d.clickRateLabel} />
-            <MetricCard label="Hard Bounces" value={`${d.bounceRate}%`} benchmark={d.bounceRateLabel} />
-            <MetricCard label="Unsubscribes" value={`${d.unsubscribeRate}%`} benchmark={d.unsubscribeRateLabel} />
-            <MetricCard label="Spam Reports" value={String(d.spamReports)} />
-            <MetricCard label="Total Emails Sent" value={formatNumber(d.totalEmailsSent)} />
-          </div>
+        <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Email Funnel</h2>
+
+        {/* Row 1 — Core metrics with arrows */}
+        <div className="grid grid-cols-2 gap-3 lg:flex lg:items-center lg:gap-0">
+          <div className="lg:flex-1"><FunnelCard label="Sent" value={fmt(d.totalEmailsSent)} sub={`${d.totalEmails} emails`} /></div>
+          <HArrow />
+          <div className="lg:flex-1"><FunnelCard label="Delivered" value={fmt(d.totalDelivered ?? 0)} /></div>
+          <HArrow />
+          <div className="lg:flex-1"><FunnelCard label="Opens" value={fmt(d.totalOpens)} /></div>
+          <HArrow />
+          <div className="lg:flex-1"><FunnelCard label="Clicks" value={fmt(d.totalClicks)} /></div>
+        </div>
+
+        <VArrow />
+
+        {/* Row 2 — Ratio metrics */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <FunnelCard label="Pending" value={fmt(d.totalPending ?? 0)} sub={`${d.pendingRate ?? 0}%`} variant="pending" />
+          <FunnelCard label="Delivered Ratio" value={`${d.deliveredRate}%`} />
+          <FunnelCard label="Open Ratio" value={`${d.openRate}%`} />
+          <FunnelCard label="Click Ratio" value={`${d.clickRate}%`} />
+        </div>
+
+        <VArrow />
+
+        {/* Row 3 — Negative metrics */}
+        <div className="grid grid-cols-2 gap-3">
+          <FunnelCard label="Bounce" value={fmt(d.totalBounce ?? 0)} sub={`${d.bounceRate}%`} variant="negative" />
+          <FunnelCard label="Unsubscribed" value={fmt(d.totalUnsub ?? 0)} sub={`${d.unsubscribeRate}%`} variant="negative" />
+        </div>
+
+        <VArrow />
+
+        {/* Row 4 — Deep negative metrics */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <FunnelCard label="Hard Bounce" value={fmt(d.totalHardBounce ?? 0)} sub={`${d.hardBounceRate ?? 0}%`} variant="negative" />
+          <FunnelCard label="Soft Bounce" value={fmt(d.totalSoftBounce ?? 0)} sub={`${d.softBounceRate ?? 0}%`} variant="negative" />
+          <FunnelCard label="Spam Report" value={String(d.spamReports)} sub={`${d.spamRate ?? 0}%`} variant="negative" />
         </div>
       </section>
 
-      {/* SECTION 2 — Recipient Engagement */}
-      <section>
-        <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Recipient Engagement</h2>
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <MetricCard label="Sent" value={formatNumber(d.totalEmailsSent)} sub={`${emailCount} emails`} />
-          <MetricCard label="Open Rate" value={`${d.openRate}%`} />
-          <MetricCard label="Click Rate" value={`${d.clickRate}%`} />
-          <MetricCard label="Click-Through Rate" value={`${ctr}%`} sub="clicks / opens" />
+      {/* ═══ SECTION 2 — Performance Over Time ═══ */}
+      {d.deliveryOverTime && d.deliveryOverTime.length > 0 && (
+        <section className="rounded-lg border border-border bg-card p-6 shadow-card">
+          <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Marketing Email Delivered Over Time</h3>
+          <ResponsiveContainer width="100%" height={260}>
+            <LineChart data={d.deliveryOverTime}>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+              <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+              <YAxis tick={{ fontSize: 11 }} />
+              <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+              <Line type="monotone" dataKey="delivered" stroke="hsl(var(--brand-blue))" strokeWidth={2} dot={{ r: 3 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        </section>
+      )}
+
+      {/* ═══ SECTION 3 — Email Performance Table ═══ */}
+      <section className="rounded-lg border border-border bg-card shadow-card overflow-hidden">
+        <div className="p-6 pb-3">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Email Performance</h3>
+        </div>
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-table-header">
+                <TableHead className="text-xs text-primary-foreground">Campaign</TableHead>
+                <TableHead className="text-xs text-primary-foreground">Brand</TableHead>
+                <TableHead className="text-xs text-primary-foreground">State</TableHead>
+                <TableHead className="text-xs text-primary-foreground">Subcategory</TableHead>
+                <TableHead className="text-xs text-primary-foreground">Sender</TableHead>
+                <TableHead className="text-xs text-primary-foreground">Publish Date</TableHead>
+                <TableHead className="text-right text-xs text-primary-foreground">Sent</TableHead>
+                <TableHead className="text-right text-xs text-primary-foreground">Delivered</TableHead>
+                <TableHead className="text-right text-xs text-primary-foreground">Open Rate</TableHead>
+                <TableHead className="text-right text-xs text-primary-foreground">Click Rate</TableHead>
+                <TableHead className="text-right text-xs text-primary-foreground">Hard Bounce</TableHead>
+                <TableHead className="text-right text-xs text-primary-foreground">Unsub Rate</TableHead>
+                <TableHead className="text-right text-xs text-primary-foreground">Spam Rate</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {d.emails.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={13} className="py-8 text-center text-sm text-muted-foreground">
+                    No emails found for "{d.brandName}" in selected date range.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                d.emails.map((row: any, idx: number) => (
+                  <TableRow key={`${row.name}-${idx}`}>
+                    <TableCell className="max-w-[260px] truncate text-sm font-medium">{row.name}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{row.brandName || d.brandName}</TableCell>
+                    <TableCell className="text-sm">
+                      <span className={cn(
+                        "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase",
+                        row.state === "AUTOMATED" ? "bg-brand-blue/10 text-brand-blue" : "bg-brand-green/10 text-brand-green",
+                      )}>
+                        {row.state || "PUBLISHED"}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{row.subcategory || "—"}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{row.sender || ""}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{row.publishDate}</TableCell>
+                    <TableCell className="text-right tabular-nums text-sm">{row.sent.toLocaleString()}</TableCell>
+                    <TableCell className="text-right tabular-nums text-sm">{row.delivered.toLocaleString()}</TableCell>
+                    <TableCell className="text-right tabular-nums text-sm">{row.openRate}%</TableCell>
+                    <TableCell className="text-right tabular-nums text-sm">{row.clickRate}%</TableCell>
+                    <TableCell className="text-right tabular-nums text-sm">{row.bounceRate}%</TableCell>
+                    <TableCell className="text-right tabular-nums text-sm">{row.unsubscribeRate}%</TableCell>
+                    <TableCell className="text-right tabular-nums text-sm">{row.spamRate}%</TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
         </div>
       </section>
 
-      {/* SECTION 3 — Delivery */}
-      <section>
-        <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Delivery</h2>
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <MetricCard label="Delivery Rate" value={`${d.deliveredRate}%`} />
-          <MetricCard label="Hard Bounce Rate" value={`${d.bounceRate}%`} />
-          <MetricCard label="Unsubscribe Rate" value={`${d.unsubscribeRate}%`} />
-          <MetricCard
-            label="Spam Report Rate"
-            value={`${d.spamReports > 0 && d.totalEmailsSent > 0 ? (d.spamReports / d.totalEmailsSent * 100).toFixed(2) : "0"}%`}
-          />
-        </div>
-      </section>
+      {/* ═══ SECTION 4 — Distribution Charts (donuts) ═══ */}
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+        {/* State distribution */}
+        {d.stateDistribution && d.stateDistribution.length > 0 && (
+          <section className="rounded-lg border border-border bg-card p-6 shadow-card">
+            <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Breakdown by State</h3>
+            <ResponsiveContainer width="100%" height={240}>
+              <PieChart>
+                <Pie
+                  data={d.stateDistribution}
+                  dataKey="value"
+                  nameKey="name"
+                  cx="50%" cy="50%"
+                  innerRadius={55} outerRadius={90}
+                  paddingAngle={2}
+                >
+                  {d.stateDistribution.map((_: any, i: number) => (
+                    <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="mt-2 flex flex-wrap justify-center gap-4">
+              {d.stateDistribution.map((item: any, i: number) => (
+                <div key={item.name} className="flex items-center gap-1.5 text-xs">
+                  <div className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
+                  <span className="text-muted-foreground">{item.name}</span>
+                  <span className="font-medium">{item.value}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
-      {/* SECTION 4 — Lifecycle Stage Breakdown */}
+        {/* Subcategory distribution */}
+        {d.subcategoryDistribution && d.subcategoryDistribution.length > 0 && (
+          <section className="rounded-lg border border-border bg-card p-6 shadow-card">
+            <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Breakdown by Subcategory</h3>
+            <ResponsiveContainer width="100%" height={240}>
+              <PieChart>
+                <Pie
+                  data={d.subcategoryDistribution}
+                  dataKey="value"
+                  nameKey="name"
+                  cx="50%" cy="50%"
+                  innerRadius={55} outerRadius={90}
+                  paddingAngle={2}
+                >
+                  {d.subcategoryDistribution.map((_: any, i: number) => (
+                    <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="mt-2 flex flex-wrap justify-center gap-4">
+              {d.subcategoryDistribution.map((item: any, i: number) => (
+                <div key={item.name} className="flex items-center gap-1.5 text-xs">
+                  <div className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
+                  <span className="text-muted-foreground">{item.name}</span>
+                  <span className="font-medium">{item.value}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+      </div>
+
+      {/* ═══ SECTION 5 — Lifecycle Stage Breakdown ═══ */}
       <section className="rounded-lg border border-border bg-card p-6 shadow-card">
         <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Lifecycle Stage Breakdown</h3>
         <ResponsiveContainer width="100%" height={280}>
@@ -174,61 +311,9 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
         </ResponsiveContainer>
       </section>
 
-      {/* SECTION 5 — Email Performance Table */}
-      <section className="rounded-lg border border-border bg-card shadow-card">
-        <div className="p-6 pb-3">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Email Performance</h3>
-        </div>
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="text-xs">Email Name</TableHead>
-                <TableHead className="text-xs">Brand</TableHead>
-                <TableHead className="text-xs">Sender</TableHead>
-                <TableHead className="text-xs">Publish Date</TableHead>
-                <TableHead className="text-right text-xs">Sent</TableHead>
-                <TableHead className="text-right text-xs">Delivered</TableHead>
-                <TableHead className="text-right text-xs">Open Rate</TableHead>
-                <TableHead className="text-right text-xs">Click Rate</TableHead>
-                <TableHead className="text-right text-xs">Hard Bounce</TableHead>
-                <TableHead className="text-right text-xs">Unsub Rate</TableHead>
-                <TableHead className="text-right text-xs">Spam Rate</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {d.emails.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={11} className="py-8 text-center text-sm text-muted-foreground">
-                    No emails found for "{d.brandName}" in selected date range.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                d.emails.map((row: any, idx: number) => (
-                  <TableRow key={`${row.name}-${idx}`}>
-                    <TableCell className="max-w-[260px] truncate text-sm font-medium">{row.name}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{row.brandName || d.brandName}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{row.sender || "Unknown"}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{row.publishDate}</TableCell>
-                    <TableCell className="text-right tabular-nums text-sm">{row.sent.toLocaleString()}</TableCell>
-                    <TableCell className="text-right tabular-nums text-sm">{row.delivered.toLocaleString()}</TableCell>
-                    <TableCell className="text-right tabular-nums text-sm">{row.openRate}%</TableCell>
-                    <TableCell className="text-right tabular-nums text-sm">{row.clickRate}%</TableCell>
-                    <TableCell className="text-right tabular-nums text-sm">{row.bounceRate}%</TableCell>
-                    <TableCell className="text-right tabular-nums text-sm">{row.unsubscribeRate}%</TableCell>
-                    <TableCell className="text-right tabular-nums text-sm">{row.spamRate}%</TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </div>
-      </section>
-
       <p className="px-1 text-xs text-muted-foreground">
-        {emailCount} emails for "{d.brandName}"
+        {d.totalEmails} emails for "{d.brandName}"
         {d.totalFetched != null && ` · ${d.totalFetched} total in account`}
-        {d.businessUnitId && ` · BU: ${d.businessUnitId}`}
       </p>
     </div>
   );
