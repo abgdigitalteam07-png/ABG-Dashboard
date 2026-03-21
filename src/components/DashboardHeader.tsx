@@ -19,7 +19,7 @@ export function DashboardHeader({
   onDateChange,
 }: DashboardHeaderProps) {
   return (
-    <header className="sticky top-0 z-50 flex h-16 items-center justify-between bg-primary px-6">
+    <header className="sticky top-0 z-50 flex h-16 items-center justify-between bg-primary px-6 relative">
       <div className="flex items-center gap-6">
         <img src={abgLogo} className="h-8 w-auto" alt="American Bath Group" />
         <div className="h-6 w-px bg-primary-foreground/20" />
