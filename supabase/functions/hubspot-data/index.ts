@@ -89,27 +89,9 @@ function extractPublishDate(email: any): string | null {
   return null;
 }
 
-// ─── Brand → businessUnitId mapping (ONLY filter — no text matching) ───
-
-const BRAND_TO_BU: Record<string, string[]> = {
-  "Bootz":              ["1982886"],
-  "Swan":               ["843133"],
-  "Neptune":            ["1690061"],
-  "MAAX":               ["1982891"],
-  "Hamilton":           ["1982889"],
-  "Comfort Designs":    ["1982888"],
-  "Maidstone":          ["1982892"],
-  "Florestone":         ["1690060"],
-  "Laurel Mountain":    ["1982879"],
-  "ABG Hospitality":    ["1982882", "1982890"],
-  "Aquarius":           ["1982883"],
-  "Aquatic":            ["1982884"],
-  "Clarion":            ["1982887"],
-  "RBS":                ["1982893"],
-  "American Bath Group":["0"],
-  "DreamLine":          ["1690059"],
-  "Aker":               ["1982881"],
-};
+// ─── Brand name mapping for hubspotName → exact match on email brand property ───
+// Brand filtering now uses the "brand" property directly from each email object.
+// No businessUnitId mapping needed.
 
 // ─── fetch all published emails ───
 
