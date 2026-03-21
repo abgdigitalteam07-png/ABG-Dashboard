@@ -187,7 +187,7 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
 
   const renderChart = () => {
     const commonProps = { data: chartData };
-    const xAxis = <XAxis dataKey="date" tick={{ fontSize: 10 }} />;
+    const xAxis = <XAxis dataKey="date" tick={{ fontSize: 10 }} tickFormatter={(v: string) => { try { const d = parseISO(v); return format(d, "M/d/yyyy"); } catch { return v; } }} interval="preserveStartEnd" />;
     const yAxis = <YAxis tick={{ fontSize: 10 }} domain={[0, 125]} tickFormatter={(v: number) => `${v}%`} />;
     const grid = <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />;
     const tooltip = <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} formatter={(v: number) => `${v}%`} />;
