@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { Loader2, ArrowRight, ArrowDown, TrendingUp, TrendingDown } from "lucide-react";
-import { format, startOfWeek, startOfMonth, parseISO } from "date-fns";
+import { format, startOfWeek, startOfMonth, startOfDay, parseISO, addDays, addWeeks, addMonths, isBefore, isEqual } from "date-fns";
 
 interface HubSpotTabProps {
   brand: Brand;
