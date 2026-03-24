@@ -90,24 +90,26 @@ function extractPublishDate(email: any): string | null {
 // ─── Brand → businessUnitId mapping ───
 
 const BRAND_TO_BU: Record<string, string[]> = {
-  "Bootz":              ["1982886"],
-  "Swan":               ["843133"],
-  "Neptune":            ["1690061"],
-  "MAAX":               ["1982891"],
-  "Hamilton":           ["1982889"],
-  "Comfort Designs":    ["1982888"],
-  "Maidstone":          ["1982892"],
-  "Florestone":         ["1690060"],
-  "Laurel Mountain":    ["1982879"],
   "ABG Hospitality":    ["1982882"],
+  "Accessible Home Store": ["2625978"],
+  "Aker":               ["1982881"],
   "Aquarius":           ["1982883"],
   "Aquatic":            ["1982884"],
+  "Bootz":              ["1982886"],
   "Clarion":            ["1982887"],
-  "RBS":                ["1982893"],
-  "American Bath Group":["0"],
+  "Comfort Designs":    ["1982888"],
   "DreamLine":          ["1690059"],
-  "Aker":               ["1982881"],
+  "Florestone":         ["1690060"],
+  "Hamilton":           ["1982889"],
   "IMI":                ["1982890"],
+  "Laurel Mountain":    ["1982879"],
+  "MAAX":               ["1982891"],
+  "Maidstone":          ["1982892"],
+  "Neptune":            ["1690061"],
+  "RBS":                ["1982893"],
+  "Swan":               ["843133"],
+  "Vintage.ca":         ["2659249"],
+  "American Bath Group":["0"],
 };
 
 const BU_TO_BRAND: Record<string, string> = {};

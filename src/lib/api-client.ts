@@ -51,12 +51,12 @@ export async function fetchGSCData(brand: Brand, dateFrom: Date, dateTo: Date) {
 }
 
 export async function fetchHubSpotData(brand: Brand, dateFrom: Date, dateTo: Date) {
-  if (!brand.hasHubSpot || !brand.hubspotName) return null;
+  if (!brand.hasHubSpot) return null;
 
   try {
     const { data, error } = await supabase.functions.invoke("hubspot-data", {
       body: {
-        brandName: brand.hubspotName,
+        brandName: brand.name,
         startDate: formatDate(dateFrom),
         endDate: formatDate(dateTo),
       },
