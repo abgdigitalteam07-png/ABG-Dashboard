@@ -89,6 +89,43 @@ Deno.serve(async (req) => {
               break;
             }
           }
+          // Fallback A: Extract from layoutSections (drag-and-drop emails)
+          if (!htmlContent && data.layoutSections) {
+            console.log('[email-preview] Trying layoutSections extraction');
+            const allHtml: string[] = [];
+            for (const sectionKey of Object.keys(data.layoutSections)) {
+              const section = data.layoutSections[sectionKey];
+              if (section?.rows) {
+                for (const row of section.rows) {
+                  if (row?.columns) {
+                    for (const col of row.columns) {
+                      if (col?.widgets) {
+                        for (const widget of col.widgets) {
+                          if (widget?.body?.html) allHtml.push(widget.body.html);
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+            if (allHtml.length > 0) {
+              htmlContent = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;padding:0;font-family:Arial,sans-serif;-webkit-font-smoothing:antialiased;}img{max-width:100%;height:auto;}table{border-collapse:collapse;}td{padding:0;}</style></head><body>${allHtml.join('')}</body></html>`;
+              console.log(`[email-preview] Assembled ${allHtml.length} widgets from layoutSections: ${htmlContent.length} chars`);
+            }
+          }
+          // Fallback B: Extract from top-level widgets object (older email format)
+          if (!htmlContent && data.widgets) {
+            console.log('[email-preview] Trying widgets extraction');
+            const allHtml: string[] = [];
+            for (const key of Object.keys(data.widgets)) {
+              if (data.widgets[key]?.body?.html) allHtml.push(data.widgets[key].body.html);
+            }
+            if (allHtml.length > 0) {
+              htmlContent = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;padding:0;font-family:Arial,sans-serif;-webkit-font-smoothing:antialiased;}img{max-width:100%;height:auto;}table{border-collapse:collapse;}td{padding:0;}</style></head><body>${allHtml.join('')}</body></html>`;
+              console.log(`[email-preview] Assembled ${allHtml.length} widgets from widgets object: ${htmlContent.length} chars`);
+            }
+          }
           // Check for preview URLs
           if (!previewUrl) {
             for (const field of ["publicAccessUrl", "publishedUrl", "previewUrl", "url", "webversion"]) {
