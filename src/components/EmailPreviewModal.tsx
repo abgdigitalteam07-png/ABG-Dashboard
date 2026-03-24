@@ -95,10 +95,9 @@ export function EmailPreviewModal({ open, onClose, email }: EmailPreviewModalPro
 </html>`
     : "";
 
-  // Determine what to render: prefer HTML (srcDoc) over previewUrl
+  // Always use srcDoc HTML — never load external URLs in iframe
   const showHtml = !!fullHtmlDoc;
-  const showUrl = !showHtml && !!previewUrl && !iframeError;
-  const showError = error || (!showHtml && !showUrl && !loading);
+  const showError = error || (!showHtml && !loading);
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
