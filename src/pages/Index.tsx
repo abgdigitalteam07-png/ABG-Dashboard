@@ -4,6 +4,7 @@ import { DashboardHeader } from "@/components/DashboardHeader";
 import { TabNav } from "@/components/TabNav";
 import { PerformanceTab } from "@/components/PerformanceTab";
 import { HubSpotTab } from "@/components/HubSpotTab";
+import { ReadMeTab } from "@/components/ReadMeTab";
 
 const Index = () => {
   const [selectedBrand, setSelectedBrand] = useState(brands[0]);
@@ -32,6 +33,10 @@ const Index = () => {
       label: "CRM & Email",
       disabled: !selectedBrand.hasHubSpot,
       tooltip: "No HubSpot data for this brand.",
+    },
+    {
+      id: "readme",
+      label: "Read Me",
     },
   ];
 
@@ -64,6 +69,7 @@ const Index = () => {
         {effectiveTab === "hubspot" && (
           <HubSpotTab brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />
         )}
+        {effectiveTab === "readme" && <ReadMeTab />}
       </main>
     </div>
   );
