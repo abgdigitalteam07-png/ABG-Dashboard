@@ -21,46 +21,100 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Try rendered preview first
+    console.log(`[email-preview] Fetching preview for emailId: ${emailId}`);
+
     let htmlContent = "";
+
+    // Attempt 1: POST to draft/render
     try {
-      const renderRes = await fetch(
-        `https://api.hubapi.com/marketing/v3/emails/${emailId}/draft/render`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({}),
+      const renderUrl = `https://api.hubapi.com/marketing/v3/emails/${emailId}/draft/render`;
+      console.log(`[email-preview] Attempt 1: POST ${renderUrl}`);
+      const renderRes = await fetch(renderUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
         },
-      );
+        body: JSON.stringify({}),
+      });
+      const renderText = await renderRes.text();
+      console.log(`[email-preview] Attempt 1 status: ${renderRes.status}, body length: ${renderText.length}, preview: ${renderText.slice(0, 200)}`);
       if (renderRes.ok) {
-        const renderData = await renderRes.json();
-        htmlContent = renderData?.html || "";
+        try {
+          const renderData = JSON.parse(renderText);
+          htmlContent = renderData?.html || "";
+        } catch {
+          // Response might be raw HTML
+          if (renderText.includes("<")) {
+            htmlContent = renderText;
+          }
+        }
       }
-    } catch {
-      console.log("Render endpoint failed, falling back to email body");
+    } catch (e) {
+      console.log(`[email-preview] Attempt 1 failed:`, e);
     }
 
-    // Fallback: get email object and extract body
+    // Attempt 2: GET the email object and extract content
     if (!htmlContent) {
-      const emailRes = await fetch(
-        `https://api.hubapi.com/marketing/v3/emails/${emailId}`,
-        {
+      try {
+        const emailUrl = `https://api.hubapi.com/marketing/v3/emails/${emailId}`;
+        console.log(`[email-preview] Attempt 2: GET ${emailUrl}`);
+        const emailRes = await fetch(emailUrl, {
           headers: {
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
           },
-        },
-      );
-      if (!emailRes.ok) {
-        const err = await emailRes.text();
-        throw new Error(`HubSpot API error: ${emailRes.status} ${err.slice(0, 200)}`);
+        });
+        const emailText = await emailRes.text();
+        console.log(`[email-preview] Attempt 2 status: ${emailRes.status}, body length: ${emailText.length}`);
+        if (emailRes.ok) {
+          const emailData = JSON.parse(emailText);
+          // Try multiple fields where HTML content could live
+          htmlContent =
+            emailData?.content?.widgets?.module?.body?.html ||
+            emailData?.content?.body ||
+            emailData?.layoutSections?.dnd_area?.rows?.[0]?.columns?.[0]?.widgets?.[0]?.body?.html ||
+            emailData?.body?.html ||
+            emailData?.body ||
+            "";
+          console.log(`[email-preview] Attempt 2 extracted html length: ${htmlContent.length}`);
+          // Log available top-level keys for debugging
+          console.log(`[email-preview] Email object keys: ${Object.keys(emailData).join(", ")}`);
+          if (emailData.content) {
+            console.log(`[email-preview] content keys: ${Object.keys(emailData.content).join(", ")}`);
+          }
+        } else {
+          console.log(`[email-preview] Attempt 2 error response: ${emailText.slice(0, 300)}`);
+        }
+      } catch (e) {
+        console.log(`[email-preview] Attempt 2 failed:`, e);
       }
-      const emailData = await emailRes.json();
-      htmlContent = emailData?.content?.body || emailData?.body || "";
     }
+
+    // Attempt 3: Try the v1 content API as fallback
+    if (!htmlContent) {
+      try {
+        const v1Url = `https://api.hubapi.com/marketing-emails/v1/emails/${emailId}`;
+        console.log(`[email-preview] Attempt 3: GET ${v1Url}`);
+        const v1Res = await fetch(v1Url, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const v1Text = await v1Res.text();
+        console.log(`[email-preview] Attempt 3 status: ${v1Res.status}, body length: ${v1Text.length}`);
+        if (v1Res.ok) {
+          const v1Data = JSON.parse(v1Text);
+          htmlContent = v1Data?.publishedEmailBody || v1Data?.emailBody || "";
+          console.log(`[email-preview] Attempt 3 extracted html length: ${htmlContent.length}`);
+          if (!htmlContent) {
+            console.log(`[email-preview] v1 keys: ${Object.keys(v1Data).join(", ")}`);
+          }
+        }
+      } catch (e) {
+        console.log(`[email-preview] Attempt 3 failed:`, e);
+      }
+    }
+
+    console.log(`[email-preview] Final html length: ${htmlContent.length}`);
 
     return new Response(
       JSON.stringify({ html: htmlContent }),
