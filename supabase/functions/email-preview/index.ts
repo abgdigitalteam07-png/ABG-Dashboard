@@ -4,30 +4,6 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// Collect ALL html snippets from nested widget structures
-function collectAllHtml(obj: unknown, results: string[] = []): string[] {
-  if (!obj || typeof obj !== "object") return results;
-  const record = obj as Record<string, unknown>;
-
-  if (typeof record.html === "string" && record.html.trim().length > 0) {
-    results.push(record.html);
-  }
-  if (record.body && typeof record.body === "object") {
-    const body = record.body as Record<string, unknown>;
-    if (typeof body.html === "string" && body.html.trim().length > 0) {
-      results.push(body.html);
-    }
-  }
-  for (const key of Object.keys(record)) {
-    if (key === "html") continue; // already handled
-    const val = record[key];
-    if (val && typeof val === "object") {
-      collectAllHtml(val, results);
-    }
-  }
-  return results;
-}
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -46,111 +22,144 @@ Deno.serve(async (req) => {
     }
 
     console.log(`[email-preview] Fetching preview for emailId: ${emailId}`);
+    const authHeaders = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 
+    let previewUrl = "";
     let htmlContent = "";
 
-    // Step 1: GET the email object
-    let emailData: Record<string, unknown> | null = null;
+    // Step 1: GET the v3 email object — check for previewUrl, publicAccessUrl, or full HTML
     try {
-      const emailUrl = `https://api.hubapi.com/marketing/v3/emails/${emailId}`;
-      const emailRes = await fetch(emailUrl, {
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      const emailRes = await fetch(`https://api.hubapi.com/marketing/v3/emails/${emailId}`, {
+        headers: authHeaders,
       });
       if (emailRes.ok) {
-        emailData = await emailRes.json();
+        const data = await emailRes.json();
+        // Check for preview/public URLs
+        for (const field of ["publicAccessUrl", "publishedUrl", "previewUrl", "url", "webversion"]) {
+          const val = data[field];
+          if (typeof val === "string" && val.startsWith("http")) {
+            previewUrl = val;
+            console.log(`[email-preview] Found ${field}: ${previewUrl}`);
+            break;
+          }
+        }
+        // Check for full HTML body
+        if (!previewUrl) {
+          for (const field of ["htmlBody", "html", "body"]) {
+            const val = data[field];
+            if (typeof val === "string" && val.includes("<") && val.length > 200) {
+              htmlContent = val;
+              console.log(`[email-preview] Found full HTML in v3 field '${field}': ${val.length} chars`);
+              break;
+            }
+          }
+        }
       } else {
-        const errText = await emailRes.text();
-        console.log(`[email-preview] GET email error: ${emailRes.status} ${errText.slice(0, 200)}`);
+        const t = await emailRes.text();
+        console.log(`[email-preview] v3 GET status: ${emailRes.status}, ${t.slice(0, 200)}`);
       }
     } catch (e) {
-      console.log(`[email-preview] GET email failed:`, e);
+      console.log(`[email-preview] v3 GET failed:`, e);
     }
 
-    // Step 2: Try webversion URL if available
-    if (emailData && typeof emailData.webversion === "string" && emailData.webversion) {
+    // Step 2: If we have a previewUrl, fetch it to get the full rendered HTML
+    if (previewUrl && !htmlContent) {
       try {
-        console.log(`[email-preview] Trying webversion: ${emailData.webversion}`);
-        const wvRes = await fetch(emailData.webversion as string);
-        if (wvRes.ok) {
-          htmlContent = await wvRes.text();
-          console.log(`[email-preview] Webversion HTML: ${htmlContent.length} chars`);
+        console.log(`[email-preview] Fetching previewUrl HTML`);
+        const res = await fetch(previewUrl);
+        if (res.ok) {
+          const text = await res.text();
+          if (text.includes("<") && text.length > 100) {
+            htmlContent = text;
+            console.log(`[email-preview] Got full HTML from previewUrl: ${text.length} chars`);
+          }
         } else {
-          await wvRes.text();
-          console.log(`[email-preview] Webversion status: ${wvRes.status}`);
+          await res.text();
+          console.log(`[email-preview] previewUrl status: ${res.status}`);
         }
       } catch (e) {
-        console.log(`[email-preview] Webversion fetch failed:`, e);
+        console.log(`[email-preview] previewUrl fetch failed:`, e);
       }
     }
 
-    // Step 3: Try POST /render (published emails)
+    // Step 3: Try the older Content API v2
     if (!htmlContent) {
       try {
-        const renderUrl = `https://api.hubapi.com/marketing/v3/emails/${emailId}/render`;
-        console.log(`[email-preview] Trying POST /render`);
-        const renderRes = await fetch(renderUrl, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-          body: JSON.stringify({}),
-        });
-        const renderText = await renderRes.text();
-        console.log(`[email-preview] /render status: ${renderRes.status}, length: ${renderText.length}`);
-        if (renderRes.ok) {
-          try {
-            const renderData = JSON.parse(renderText);
-            htmlContent = renderData?.html || "";
-          } catch {
-            if (renderText.includes("<")) htmlContent = renderText;
+        const v2Url = `https://api.hubapi.com/content/api/v2/emails/${emailId}`;
+        console.log(`[email-preview] Trying Content API v2`);
+        const v2Res = await fetch(v2Url, { headers: authHeaders });
+        if (v2Res.ok) {
+          const v2Data = await v2Res.json();
+          // v2 often has full html
+          if (typeof v2Data.html === "string" && v2Data.html.length > 200) {
+            htmlContent = v2Data.html;
+            console.log(`[email-preview] Got full HTML from v2 API: ${htmlContent.length} chars`);
           }
+          // Also check for preview URL in v2
+          if (!htmlContent && !previewUrl) {
+            for (const field of ["publicAccessUrl", "publishedUrl", "previewUrl", "url"]) {
+              const val = v2Data[field];
+              if (typeof val === "string" && val.startsWith("http")) {
+                previewUrl = val;
+                console.log(`[email-preview] Found ${field} in v2: ${previewUrl}`);
+                break;
+              }
+            }
+          }
+        } else {
+          const t = await v2Res.text();
+          console.log(`[email-preview] v2 API status: ${v2Res.status}, ${t.slice(0, 200)}`);
         }
       } catch (e) {
-        console.log(`[email-preview] /render failed:`, e);
+        console.log(`[email-preview] v2 API failed:`, e);
       }
     }
 
-    // Step 4: Try POST /draft/render
-    if (!htmlContent) {
+    // Step 4: If we got a previewUrl from v2 but still no HTML, fetch it
+    if (previewUrl && !htmlContent) {
       try {
-        const draftUrl = `https://api.hubapi.com/marketing/v3/emails/${emailId}/draft/render`;
-        console.log(`[email-preview] Trying POST /draft/render`);
-        const draftRes = await fetch(draftUrl, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-          body: JSON.stringify({}),
-        });
-        const draftText = await draftRes.text();
-        console.log(`[email-preview] /draft/render status: ${draftRes.status}, length: ${draftText.length}`);
-        if (draftRes.ok) {
-          try {
-            const draftData = JSON.parse(draftText);
-            htmlContent = draftData?.html || "";
-          } catch {
-            if (draftText.includes("<")) htmlContent = draftText;
+        const res = await fetch(previewUrl);
+        if (res.ok) {
+          const text = await res.text();
+          if (text.includes("<") && text.length > 100) {
+            htmlContent = text;
+            console.log(`[email-preview] Got HTML from v2 previewUrl: ${text.length} chars`);
           }
+        } else {
+          await res.text();
         }
       } catch (e) {
-        console.log(`[email-preview] /draft/render failed:`, e);
+        console.log(`[email-preview] v2 previewUrl fetch failed:`, e);
       }
     }
 
-    // Step 5: Fallback — assemble from all widget HTML snippets
-    if (!htmlContent && emailData) {
-      const content = emailData.content as Record<string, unknown> | undefined;
-      if (content) {
-        const snippets: string[] = [];
-        if (content.widgets) collectAllHtml(content.widgets, snippets);
-        if (content.flexAreas) collectAllHtml(content.flexAreas, snippets);
-        if (snippets.length > 0) {
-          htmlContent = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;padding:20px;font-family:Arial,sans-serif;">${snippets.join("\n")}</body></html>`;
-          console.log(`[email-preview] Assembled from ${snippets.length} widget snippets, total: ${htmlContent.length} chars`);
+    // Step 5: Try POST /render and /draft/render as fallback
+    if (!htmlContent) {
+      for (const path of [`/render`, `/draft/render`]) {
+        try {
+          const url = `https://api.hubapi.com/marketing/v3/emails/${emailId}${path}`;
+          console.log(`[email-preview] Trying POST ${path}`);
+          const res = await fetch(url, { method: "POST", headers: authHeaders, body: "{}" });
+          const text = await res.text();
+          console.log(`[email-preview] ${path} status: ${res.status}, length: ${text.length}`);
+          if (res.ok) {
+            try {
+              const d = JSON.parse(text);
+              if (d?.html) { htmlContent = d.html; break; }
+            } catch {
+              if (text.includes("<") && text.length > 200) { htmlContent = text; break; }
+            }
+          }
+        } catch (e) {
+          console.log(`[email-preview] ${path} failed:`, e);
         }
       }
     }
 
-    console.log(`[email-preview] Final html length: ${htmlContent.length}`);
+    console.log(`[email-preview] Final: html=${htmlContent.length} chars, previewUrl=${previewUrl ? "yes" : "no"}`);
 
     return new Response(
-      JSON.stringify({ html: htmlContent }),
+      JSON.stringify({ html: htmlContent, previewUrl: previewUrl || null }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (error) {
