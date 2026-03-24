@@ -23,6 +23,10 @@ const Index = () => {
 
   const tabs = [
     {
+      id: "readme",
+      label: "Read Me",
+    },
+    {
       id: "performance",
       label: "Google Analytics & Search Console",
       disabled: !selectedBrand.hasGA4 && !selectedBrand.hasGSC,
@@ -33,10 +37,6 @@ const Index = () => {
       label: "CRM & Email",
       disabled: !selectedBrand.hasHubSpot,
       tooltip: "No HubSpot data for this brand.",
-    },
-    {
-      id: "readme",
-      label: "Read Me",
     },
   ];
 
