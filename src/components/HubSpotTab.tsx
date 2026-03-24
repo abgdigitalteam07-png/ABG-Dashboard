@@ -107,7 +107,7 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
 
   const d = useMemo(() => {
     if (!data) return null;
-    return { ...data, brandName: brand.hubspotName || brand.name };
+    return { ...data, brandName: brand.name };
   }, [data, brand]);
 
   /* ── Aggregate chart data by interval ── */
