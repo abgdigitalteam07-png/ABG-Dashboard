@@ -69,6 +69,7 @@ const Index = () => {
         {effectiveTab === "hubspot" && (
           <HubSpotTab brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />
         )}
+        {effectiveTab === "readme" && <ReadMeTab />}
       </main>
     </div>
   );
