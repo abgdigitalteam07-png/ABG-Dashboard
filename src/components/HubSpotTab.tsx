@@ -11,6 +11,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Loader2, ArrowRight, ArrowDown, TrendingUp, TrendingDown } from "lucide-react";
 import { format, startOfWeek, startOfMonth, startOfDay, parseISO, addDays, addWeeks, addMonths, isBefore, isEqual } from "date-fns";
+import { EmailPreviewModal } from "@/components/EmailPreviewModal";
 
 interface HubSpotTabProps {
   brand: Brand;
@@ -90,11 +91,30 @@ function emailScore(e: any): number {
   return (e.openRate || 0) * 2 + (e.clickRate || 0) * 3 - (e.bounceRate || 0) * 4 - (e.unsubscribeRate || 0) * 5;
 }
 
+/* ── Clickable email name ── */
+function EmailNameLink({ email, onClick }: { email: any; onClick: (email: any) => void }) {
+  return (
+    <button
+      onClick={() => onClick(email)}
+      className="text-left truncate text-sm font-medium text-[#2563eb] hover:underline cursor-pointer"
+    >
+      {email.name}
+    </button>
+  );
+}
+
 export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [chartType, setChartType] = useState<ChartType>("line");
   const [interval, setInterval] = useState<TimeInterval>("weekly");
+  const [previewEmail, setPreviewEmail] = useState<any>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+
+  const openPreview = (email: any) => {
+    setPreviewEmail(email);
+    setPreviewOpen(true);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -114,7 +134,6 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
   const chartData = useMemo(() => {
     if (!d) return [];
 
-    // Build buckets from emails
     const buckets: Record<string, { opens: number; delivered: number; clicks: number }> = {};
     for (const email of d.emails || []) {
       if (!email.publishDate) continue;
@@ -133,7 +152,6 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
       buckets[key].clicks += email.clicks || 0;
     }
 
-    // Generate ALL time slots in the date range (fill gaps with 0)
     const slots: string[] = [];
     let cursor = interval === "daily"
       ? startOfDay(dateFrom)
@@ -142,10 +160,10 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
         : startOfMonth(dateFrom);
     const end = dateTo;
     const advance = interval === "daily" ? addDays : interval === "weekly" ? addWeeks : addMonths;
-    const fmt = interval === "monthly" ? "yyyy-MM" : "yyyy-MM-dd";
+    const fmtStr = interval === "monthly" ? "yyyy-MM" : "yyyy-MM-dd";
 
     while (isBefore(cursor, end) || isEqual(cursor, end)) {
-      slots.push(format(cursor, fmt));
+      slots.push(format(cursor, fmtStr));
       cursor = advance(cursor, 1);
     }
 
@@ -220,7 +238,6 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
         </BarChart>
       );
     }
-    // Default: line
     return (
       <LineChart {...commonProps}>
         {grid}{xAxis}{yAxis}{tooltip}{legend}
@@ -244,6 +261,13 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
 
   return (
     <div className="space-y-6 p-6">
+      {/* Email Preview Modal */}
+      <EmailPreviewModal
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        email={previewEmail}
+      />
+
       {/* ═══ SECTION 1 — KPI Funnel ═══ */}
       <section>
         <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Email Funnel</h2>
@@ -276,7 +300,7 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
         </div>
       </section>
 
-      {/* ═══ SECTION 2 — Performance Over Time (Open Rate + CTR) ═══ */}
+      {/* ═══ SECTION 2 — Performance Over Time ═══ */}
       <section className="rounded-lg border border-border bg-card p-6 shadow-card">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <div>
@@ -332,7 +356,7 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
           <Table>
             <TableHeader>
               <TableRow className="bg-table-header">
-                <TableHead className="text-xs text-primary-foreground">Campaign</TableHead>
+                <TableHead className="text-xs text-primary-foreground">Email Name</TableHead>
                 <TableHead className="text-xs text-primary-foreground">Brand</TableHead>
                 <TableHead className="text-xs text-primary-foreground">Sender</TableHead>
                 <TableHead className="text-xs text-primary-foreground">Publish Date</TableHead>
@@ -355,7 +379,9 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
               ) : (
                 d.emails.map((row: any, idx: number) => (
                   <TableRow key={`${row.name}-${idx}`}>
-                    <TableCell className="max-w-[260px] truncate text-sm font-medium">{row.name}</TableCell>
+                    <TableCell className="max-w-[260px]">
+                      <EmailNameLink email={{ ...row, brandName: row.brandName || d.brandName }} onClick={openPreview} />
+                    </TableCell>
                     <TableCell className="text-sm text-muted-foreground">{row.brandName || d.brandName}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{row.sender || ""}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">{row.publishDate}</TableCell>
@@ -386,7 +412,7 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
                 <div key={i} className="flex gap-3">
                   <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-green/10 text-xs font-bold text-brand-green">{i + 1}</span>
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-brand-blue">{email.name}</p>
+                    <EmailNameLink email={{ ...email, brandName: email.brandName || d.brandName }} onClick={openPreview} />
                     <p className="text-[11px] text-muted-foreground">
                       Published {email.publishDate}. Sent to {email.sent.toLocaleString()}.
                     </p>
@@ -411,7 +437,7 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
                 <div key={i} className="flex gap-3">
                   <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-red/10 text-xs font-bold text-brand-red">{i + 1}</span>
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-brand-blue">{email.name}</p>
+                    <EmailNameLink email={{ ...email, brandName: email.brandName || d.brandName }} onClick={openPreview} />
                     <p className="text-[11px] text-muted-foreground">
                       Published {email.publishDate}. Sent to {email.sent.toLocaleString()}.
                     </p>
