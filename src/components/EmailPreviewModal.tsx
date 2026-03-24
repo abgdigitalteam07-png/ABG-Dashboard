@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -26,17 +26,20 @@ export function EmailPreviewModal({ open, onClose, email }: EmailPreviewModalPro
   const [previewUrl, setPreviewUrl] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
+  const [iframeError, setIframeError] = useState(false);
 
   useEffect(() => {
     if (!open || !email?.id) {
       setHtml("");
       setPreviewUrl("");
       setError(false);
+      setIframeError(false);
       return;
     }
 
     setLoading(true);
     setError(false);
+    setIframeError(false);
 
     supabase.functions
       .invoke("email-preview", { body: { emailId: email.id } })
@@ -44,14 +47,30 @@ export function EmailPreviewModal({ open, onClose, email }: EmailPreviewModalPro
         if (fnErr || data?.error) {
           setError(true);
         } else {
-          setPreviewUrl(data?.previewUrl || "");
           setHtml(data?.html || "");
-          if (!data?.previewUrl && !data?.html) setError(true);
+          setPreviewUrl(data?.previewUrl || "");
+          if (!data?.html && !data?.previewUrl) setError(true);
         }
       })
       .catch(() => setError(true))
       .finally(() => setLoading(false));
   }, [open, email?.id]);
+
+  const handleIframeLoad = useCallback((e: React.SyntheticEvent<HTMLIFrameElement>) => {
+    try {
+      const iframeDoc = (e.target as HTMLIFrameElement).contentDocument;
+      if (iframeDoc) {
+        const title = iframeDoc.title?.toLowerCase() || "";
+        const bodyText = iframeDoc.body?.innerText?.toLowerCase() || "";
+        if (title.includes("not found") || title.includes("404") ||
+            bodyText.includes("page not found") || bodyText.includes("404")) {
+          setIframeError(true);
+        }
+      }
+    } catch {
+      // Cross-origin — can't check, likely loaded fine
+    }
+  }, []);
 
   if (!email) return null;
 
@@ -59,7 +78,7 @@ export function EmailPreviewModal({ open, onClose, email }: EmailPreviewModalPro
     ? `https://app.hubspot.com/email/24202603/details/${email.id}`
     : null;
 
-  // Wrap raw HTML in a proper document with base styling
+  // Wrap raw HTML in a proper document
   const fullHtmlDoc = html
     ? `<!DOCTYPE html>
 <html>
@@ -76,19 +95,25 @@ export function EmailPreviewModal({ open, onClose, email }: EmailPreviewModalPro
 </html>`
     : "";
 
+  // Determine what to render: prefer HTML (srcDoc) over previewUrl
+  const showHtml = !!fullHtmlDoc;
+  const showUrl = !showHtml && !!previewUrl && !iframeError;
+  const showError = error || (!showHtml && !showUrl && !loading);
+
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent aria-describedby={undefined} className="max-w-[800px] max-h-[85vh] flex flex-col gap-0 p-0 rounded-xl overflow-hidden sm:max-w-[800px]">
-        <DialogHeader className="p-6 pb-4 space-y-3 border-b border-border">
-          <DialogTitle className="text-base font-semibold text-foreground">
+      <DialogContent
+        aria-describedby={undefined}
+        className="max-w-[1000px] w-[95vw] max-h-[92vh] flex flex-col gap-0 p-0 rounded-xl overflow-hidden sm:max-w-[1000px]"
+      >
+        <DialogHeader className="px-6 py-4 space-y-2 border-b border-border">
+          <DialogTitle className="text-base font-semibold text-foreground leading-tight">
             Email Name: {email.name}
           </DialogTitle>
-          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-[13px] text-muted-foreground">
             {email.brandName && <span>Brand: {email.brandName}</span>}
             {email.sender && <span>Sender: {email.sender}</span>}
             {email.publishDate && <span>{email.publishDate}</span>}
-          </div>
-          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
             {email.sent != null && <span>Sent: {email.sent.toLocaleString()}</span>}
             {email.delivered != null && <span>Delivered: {email.delivered.toLocaleString()}</span>}
             {email.openRate != null && <span>Open Rate: {email.openRate}%</span>}
@@ -96,7 +121,7 @@ export function EmailPreviewModal({ open, onClose, email }: EmailPreviewModalPro
           </div>
         </DialogHeader>
 
-        <div className="flex-1 overflow-auto bg-white" style={{ maxHeight: "60vh" }}>
+        <div className="flex-1 overflow-auto bg-white" style={{ maxHeight: "75vh" }}>
           {loading ? (
             <div className="p-6 space-y-3">
               <Skeleton className="h-6 w-3/4" />
@@ -104,34 +129,41 @@ export function EmailPreviewModal({ open, onClose, email }: EmailPreviewModalPro
               <Skeleton className="h-6 w-1/2" />
               <Skeleton className="h-24 w-full" />
             </div>
-          ) : error ? (
-            <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
-              Email preview unavailable
-            </div>
-          ) : previewUrl ? (
-            <iframe
-              src={previewUrl}
-              sandbox="allow-same-origin"
-              className="w-full border-0"
-              style={{ minHeight: "500px", height: "60vh", background: "white" }}
-              title="Email Preview"
-            />
-          ) : fullHtmlDoc ? (
+          ) : showHtml ? (
             <iframe
               srcDoc={fullHtmlDoc}
               sandbox="allow-same-origin"
               className="w-full border-0"
-              style={{ minHeight: "500px", height: "60vh", background: "white" }}
+              style={{ minHeight: "600px", height: "70vh", background: "white" }}
               title="Email Preview"
             />
-          ) : (
-            <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
-              No preview content available
+          ) : showUrl ? (
+            <iframe
+              src={previewUrl}
+              sandbox="allow-same-origin"
+              className="w-full border-0"
+              style={{ minHeight: "600px", height: "70vh", background: "white" }}
+              title="Email Preview"
+              onLoad={handleIframeLoad}
+              onError={() => setIframeError(true)}
+            />
+          ) : showError ? (
+            <div className="flex flex-col items-center justify-center py-16 gap-3">
+              <p className="text-sm text-muted-foreground">
+                Email preview unavailable.
+              </p>
+              {hubspotUrl && (
+                <Button variant="outline" size="sm" asChild>
+                  <a href={hubspotUrl} target="_blank" rel="noopener noreferrer">
+                    Open in HubSpot <ExternalLink className="ml-1.5 h-3.5 w-3.5" />
+                  </a>
+                </Button>
+              )}
             </div>
-          )}
+          ) : null}
         </div>
 
-        {hubspotUrl && (
+        {hubspotUrl && !showError && (
           <div className="flex justify-end p-4 border-t border-border">
             <Button variant="outline" size="sm" asChild>
               <a href={hubspotUrl} target="_blank" rel="noopener noreferrer">
