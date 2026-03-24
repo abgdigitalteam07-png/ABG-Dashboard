@@ -23,8 +23,9 @@ export function DashboardHeader({
   return (
     <header className="sticky top-0 z-50 flex h-16 items-center justify-between bg-primary px-6 relative">
       <div className="flex items-center gap-6">
-        <button onClick={onLogoClick} className="transition-opacity hover:opacity-80" title="Go to Read Me">
+        <button onClick={onLogoClick} className="flex items-center gap-3 transition-opacity hover:opacity-80" title="Go to Read Me">
           <img src={abgLogo} className="h-8 w-auto" alt="American Bath Group" />
+          <span className="text-sm font-semibold text-primary-foreground hidden sm:inline">Read Me</span>
         </button>
         <div className="h-6 w-px bg-primary-foreground/20" />
         <BrandSwitcher selectedBrand={selectedBrand} onSelect={onBrandChange} />
