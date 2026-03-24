@@ -136,16 +136,6 @@ export function EmailPreviewModal({ open, onClose, email }: EmailPreviewModalPro
               style={{ minHeight: "600px", height: "70vh", background: "white" }}
               title="Email Preview"
             />
-          ) : showUrl ? (
-            <iframe
-              src={previewUrl}
-              sandbox="allow-same-origin"
-              className="w-full border-0"
-              style={{ minHeight: "600px", height: "70vh", background: "white" }}
-              title="Email Preview"
-              onLoad={handleIframeLoad}
-              onError={() => setIframeError(true)}
-            />
           ) : showError ? (
             <div className="flex flex-col items-center justify-center py-16 gap-3">
               <p className="text-sm text-muted-foreground">
