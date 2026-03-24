@@ -34,6 +34,10 @@ const Index = () => {
       disabled: !selectedBrand.hasHubSpot,
       tooltip: "No HubSpot data for this brand.",
     },
+    {
+      id: "readme",
+      label: "Read Me",
+    },
   ];
 
   const effectiveTab =
