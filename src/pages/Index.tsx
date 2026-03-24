@@ -53,6 +53,7 @@ const Index = () => {
         dateFrom={dateFrom}
         dateTo={dateTo}
         onDateChange={handleDateChange}
+        onLogoClick={() => setActiveTab("readme")}
       />
       <TabNav tabs={tabs} activeTab={effectiveTab} onTabChange={setActiveTab} />
 

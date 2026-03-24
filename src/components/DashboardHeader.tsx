@@ -9,6 +9,7 @@ interface DashboardHeaderProps {
   dateFrom: Date;
   dateTo: Date;
   onDateChange: (from: Date, to: Date) => void;
+  onLogoClick?: () => void;
 }
 
 export function DashboardHeader({
@@ -17,11 +18,14 @@ export function DashboardHeader({
   dateFrom,
   dateTo,
   onDateChange,
+  onLogoClick,
 }: DashboardHeaderProps) {
   return (
     <header className="sticky top-0 z-50 flex h-16 items-center justify-between bg-primary px-6 relative">
       <div className="flex items-center gap-6">
-        <img src={abgLogo} className="h-8 w-auto" alt="American Bath Group" />
+        <button onClick={onLogoClick} className="transition-opacity hover:opacity-80" title="Go to Read Me">
+          <img src={abgLogo} className="h-8 w-auto" alt="American Bath Group" />
+        </button>
         <div className="h-6 w-px bg-primary-foreground/20" />
         <BrandSwitcher selectedBrand={selectedBrand} onSelect={onBrandChange} />
       </div>
