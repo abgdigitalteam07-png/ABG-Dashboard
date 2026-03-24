@@ -10,7 +10,6 @@ export interface Brand {
 }
 
 export const brands: Brand[] = [
-  { id: "a2bath", name: "A2Bath", ga4PropertyIds: ["392092744"], hasGA4: true, hasGSC: false, hasHubSpot: false },
   { id: "abg-home-services", name: "ABG Home Services", ga4PropertyIds: ["411738217"], hasGA4: true, hasGSC: false, hasHubSpot: false },
   { id: "abg-hospitality", name: "ABG Hospitality", ga4PropertyIds: ["360388805"], gscSiteUrl: "https://abghospitality.com/", hubspotBusinessUnitId: "1982882", hasGA4: true, hasGSC: true, hasHubSpot: true },
   { id: "accessible-home-store", name: "Accessible Home Store", hubspotBusinessUnitId: "2625978", hasGA4: false, hasGSC: false, hasHubSpot: true },
