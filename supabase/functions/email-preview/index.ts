@@ -27,118 +27,109 @@ Deno.serve(async (req) => {
     let previewUrl = "";
     let htmlContent = "";
 
-    // Step 1: GET the v3 email object — check for previewUrl, publicAccessUrl, or full HTML
+    // Step 1: Try Content API v2 first — most reliable for full rendered HTML
     try {
-      const emailRes = await fetch(`https://api.hubapi.com/marketing/v3/emails/${emailId}`, {
-        headers: authHeaders,
-      });
-      if (emailRes.ok) {
-        const data = await emailRes.json();
-        // Check for preview/public URLs
-        for (const field of ["publicAccessUrl", "publishedUrl", "previewUrl", "url", "webversion"]) {
-          const val = data[field];
+      const v2Url = `https://api.hubapi.com/content/api/v2/emails/${emailId}`;
+      console.log(`[email-preview] Step 1: Trying Content API v2`);
+      const v2Res = await fetch(v2Url, { headers: authHeaders });
+      if (v2Res.ok) {
+        const v2Data = await v2Res.json();
+        // Get full HTML
+        if (typeof v2Data.html === "string" && v2Data.html.length > 200) {
+          htmlContent = v2Data.html;
+          console.log(`[email-preview] Got full HTML from v2: ${htmlContent.length} chars`);
+        }
+        // Also grab any preview URL
+        for (const field of ["publicAccessUrl", "publishedUrl", "previewUrl", "url"]) {
+          const val = v2Data[field];
           if (typeof val === "string" && val.startsWith("http")) {
             previewUrl = val;
-            console.log(`[email-preview] Found ${field}: ${previewUrl}`);
+            console.log(`[email-preview] Found ${field} in v2: ${previewUrl}`);
             break;
           }
         }
-        // Check for full HTML body
-        if (!previewUrl) {
+        // If we have a URL but no HTML yet, fetch HTML from the URL
+        if (!htmlContent && previewUrl) {
+          try {
+            const res = await fetch(previewUrl);
+            if (res.ok) {
+              const text = await res.text();
+              if (text.includes("<") && text.length > 200 && !text.toLowerCase().includes("page not found") && !text.toLowerCase().includes("404")) {
+                htmlContent = text;
+                console.log(`[email-preview] Got HTML from v2 previewUrl: ${text.length} chars`);
+              }
+            }
+          } catch (e) {
+            console.log(`[email-preview] v2 previewUrl fetch failed:`, e);
+          }
+        }
+      } else {
+        const t = await v2Res.text();
+        console.log(`[email-preview] v2 API status: ${v2Res.status}, ${t.slice(0, 200)}`);
+      }
+    } catch (e) {
+      console.log(`[email-preview] v2 API failed:`, e);
+    }
+
+    // Step 2: Try v3 API for URL fields and htmlBody
+    if (!htmlContent) {
+      try {
+        console.log(`[email-preview] Step 2: Trying v3 API`);
+        const emailRes = await fetch(`https://api.hubapi.com/marketing/v3/emails/${emailId}`, {
+          headers: authHeaders,
+        });
+        if (emailRes.ok) {
+          const data = await emailRes.json();
+          // Check for HTML body fields
           for (const field of ["htmlBody", "html", "body"]) {
             const val = data[field];
             if (typeof val === "string" && val.includes("<") && val.length > 200) {
               htmlContent = val;
-              console.log(`[email-preview] Found full HTML in v3 field '${field}': ${val.length} chars`);
+              console.log(`[email-preview] Found HTML in v3 field '${field}': ${val.length} chars`);
               break;
             }
           }
-        }
-      } else {
-        const t = await emailRes.text();
-        console.log(`[email-preview] v3 GET status: ${emailRes.status}, ${t.slice(0, 200)}`);
-      }
-    } catch (e) {
-      console.log(`[email-preview] v3 GET failed:`, e);
-    }
-
-    // Step 2: If we have a previewUrl, fetch it to get the full rendered HTML
-    if (previewUrl && !htmlContent) {
-      try {
-        console.log(`[email-preview] Fetching previewUrl HTML`);
-        const res = await fetch(previewUrl);
-        if (res.ok) {
-          const text = await res.text();
-          if (text.includes("<") && text.length > 100) {
-            htmlContent = text;
-            console.log(`[email-preview] Got full HTML from previewUrl: ${text.length} chars`);
-          }
-        } else {
-          await res.text();
-          console.log(`[email-preview] previewUrl status: ${res.status}`);
-        }
-      } catch (e) {
-        console.log(`[email-preview] previewUrl fetch failed:`, e);
-      }
-    }
-
-    // Step 3: Try the older Content API v2
-    if (!htmlContent) {
-      try {
-        const v2Url = `https://api.hubapi.com/content/api/v2/emails/${emailId}`;
-        console.log(`[email-preview] Trying Content API v2`);
-        const v2Res = await fetch(v2Url, { headers: authHeaders });
-        if (v2Res.ok) {
-          const v2Data = await v2Res.json();
-          // v2 often has full html
-          if (typeof v2Data.html === "string" && v2Data.html.length > 200) {
-            htmlContent = v2Data.html;
-            console.log(`[email-preview] Got full HTML from v2 API: ${htmlContent.length} chars`);
-          }
-          // Also check for preview URL in v2
-          if (!htmlContent && !previewUrl) {
-            for (const field of ["publicAccessUrl", "publishedUrl", "previewUrl", "url"]) {
-              const val = v2Data[field];
+          // Check for preview URLs
+          if (!previewUrl) {
+            for (const field of ["publicAccessUrl", "publishedUrl", "previewUrl", "url", "webversion"]) {
+              const val = data[field];
               if (typeof val === "string" && val.startsWith("http")) {
                 previewUrl = val;
-                console.log(`[email-preview] Found ${field} in v2: ${previewUrl}`);
+                console.log(`[email-preview] Found ${field} in v3: ${previewUrl}`);
                 break;
               }
             }
           }
-        } else {
-          const t = await v2Res.text();
-          console.log(`[email-preview] v2 API status: ${v2Res.status}, ${t.slice(0, 200)}`);
-        }
-      } catch (e) {
-        console.log(`[email-preview] v2 API failed:`, e);
-      }
-    }
-
-    // Step 4: If we got a previewUrl from v2 but still no HTML, fetch it
-    if (previewUrl && !htmlContent) {
-      try {
-        const res = await fetch(previewUrl);
-        if (res.ok) {
-          const text = await res.text();
-          if (text.includes("<") && text.length > 100) {
-            htmlContent = text;
-            console.log(`[email-preview] Got HTML from v2 previewUrl: ${text.length} chars`);
+          // If we have a URL but still no HTML, fetch it
+          if (!htmlContent && previewUrl) {
+            try {
+              const res = await fetch(previewUrl);
+              if (res.ok) {
+                const text = await res.text();
+                if (text.includes("<") && text.length > 200 && !text.toLowerCase().includes("page not found") && !text.toLowerCase().includes("404")) {
+                  htmlContent = text;
+                  console.log(`[email-preview] Got HTML from v3 previewUrl: ${text.length} chars`);
+                }
+              }
+            } catch (e) {
+              console.log(`[email-preview] v3 previewUrl fetch failed:`, e);
+            }
           }
         } else {
-          await res.text();
+          const t = await emailRes.text();
+          console.log(`[email-preview] v3 GET status: ${emailRes.status}, ${t.slice(0, 200)}`);
         }
       } catch (e) {
-        console.log(`[email-preview] v2 previewUrl fetch failed:`, e);
+        console.log(`[email-preview] v3 GET failed:`, e);
       }
     }
 
-    // Step 5: Try POST /render and /draft/render as fallback
+    // Step 3: Try POST /render and /draft/render as last resort
     if (!htmlContent) {
       for (const path of [`/render`, `/draft/render`]) {
         try {
           const url = `https://api.hubapi.com/marketing/v3/emails/${emailId}${path}`;
-          console.log(`[email-preview] Trying POST ${path}`);
+          console.log(`[email-preview] Step 3: Trying POST ${path}`);
           const res = await fetch(url, { method: "POST", headers: authHeaders, body: "{}" });
           const text = await res.text();
           console.log(`[email-preview] ${path} status: ${res.status}, length: ${text.length}`);
@@ -159,7 +150,7 @@ Deno.serve(async (req) => {
     console.log(`[email-preview] Final: html=${htmlContent.length} chars, previewUrl=${previewUrl ? "yes" : "no"}`);
 
     return new Response(
-      JSON.stringify({ html: htmlContent, previewUrl: previewUrl || null }),
+      JSON.stringify({ html: htmlContent || null, previewUrl: previewUrl || null }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (error) {
