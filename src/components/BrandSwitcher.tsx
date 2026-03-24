@@ -32,7 +32,7 @@ export function BrandSwitcher({ selectedBrand, onSelect }: BrandSwitcherProps) {
           <ChevronDown className="h-3.5 w-3.5 opacity-70" />
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-64 p-0" align="start">
+      <PopoverContent className="w-80 p-0" align="start">
         <div className="flex items-center gap-2 border-b px-3 py-2">
           <Search className="h-3.5 w-3.5 text-muted-foreground" />
           <input
