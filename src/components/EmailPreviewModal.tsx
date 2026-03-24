@@ -57,7 +57,7 @@ export function EmailPreviewModal({ open, onClose, email }: EmailPreviewModalPro
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-[800px] max-h-[85vh] flex flex-col gap-0 p-0 rounded-xl overflow-hidden sm:max-w-[800px]">
+      <DialogContent aria-describedby={undefined} className="max-w-[800px] max-h-[85vh] flex flex-col gap-0 p-0 rounded-xl overflow-hidden sm:max-w-[800px]">
         <DialogHeader className="p-6 pb-4 space-y-3 border-b border-border">
           <DialogTitle className="text-base font-semibold text-foreground">
             Email Name: {email.name}
