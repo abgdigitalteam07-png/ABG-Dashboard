@@ -4,31 +4,28 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// Recursively extract HTML from nested widget/module structures
-function extractHtmlFromWidgets(obj: unknown): string {
-  if (!obj || typeof obj !== "object") return "";
+// Collect ALL html snippets from nested widget structures
+function collectAllHtml(obj: unknown, results: string[] = []): string[] {
+  if (!obj || typeof obj !== "object") return results;
   const record = obj as Record<string, unknown>;
-  
-  // Check for direct html field
-  if (typeof record.html === "string" && record.html.length > 0) {
-    return record.html;
+
+  if (typeof record.html === "string" && record.html.trim().length > 0) {
+    results.push(record.html);
   }
-  // Check for body.html
   if (record.body && typeof record.body === "object") {
     const body = record.body as Record<string, unknown>;
-    if (typeof body.html === "string" && body.html.length > 0) {
-      return body.html;
+    if (typeof body.html === "string" && body.html.trim().length > 0) {
+      results.push(body.html);
     }
   }
-  // Recurse into child objects
   for (const key of Object.keys(record)) {
+    if (key === "html") continue; // already handled
     const val = record[key];
     if (val && typeof val === "object") {
-      const found = extractHtmlFromWidgets(val);
-      if (found) return found;
+      collectAllHtml(val, results);
     }
   }
-  return "";
+  return results;
 }
 
 Deno.serve(async (req) => {
@@ -52,70 +49,52 @@ Deno.serve(async (req) => {
 
     let htmlContent = "";
 
-    // Attempt 1: GET the email object — extract content + webversion
+    // Step 1: GET the email object
+    let emailData: Record<string, unknown> | null = null;
     try {
       const emailUrl = `https://api.hubapi.com/marketing/v3/emails/${emailId}`;
-      console.log(`[email-preview] Attempt 1: GET ${emailUrl}`);
       const emailRes = await fetch(emailUrl, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       });
       if (emailRes.ok) {
-        const emailData = await emailRes.json();
-        
-        // Try extracting HTML from widgets
-        if (emailData.content?.widgets) {
-          htmlContent = extractHtmlFromWidgets(emailData.content.widgets);
-          console.log(`[email-preview] Extracted from widgets: ${htmlContent.length} chars`);
-        }
-        
-        // Try flexAreas
-        if (!htmlContent && emailData.content?.flexAreas) {
-          htmlContent = extractHtmlFromWidgets(emailData.content.flexAreas);
-          console.log(`[email-preview] Extracted from flexAreas: ${htmlContent.length} chars`);
-        }
-
-        // If we have a previewKey, construct webversion URL
-        if (!htmlContent && emailData.previewKey && emailData.activeDomain) {
-          const webVersionUrl = `https://${emailData.activeDomain}/-temporary-slug-${emailData.previewKey}`;
-          console.log(`[email-preview] Trying webversion fetch: ${webVersionUrl}`);
-          try {
-            const wvRes = await fetch(webVersionUrl);
-            if (wvRes.ok) {
-              htmlContent = await wvRes.text();
-              console.log(`[email-preview] Got webversion HTML: ${htmlContent.length} chars`);
-            } else {
-              await wvRes.text(); // consume
-            }
-          } catch (e) {
-            console.log(`[email-preview] Webversion fetch failed:`, e);
-          }
-        }
+        emailData = await emailRes.json();
       } else {
         const errText = await emailRes.text();
-        console.log(`[email-preview] Attempt 1 error: ${emailRes.status} ${errText.slice(0, 200)}`);
+        console.log(`[email-preview] GET email error: ${emailRes.status} ${errText.slice(0, 200)}`);
       }
     } catch (e) {
-      console.log(`[email-preview] Attempt 1 failed:`, e);
+      console.log(`[email-preview] GET email failed:`, e);
     }
 
-    // Attempt 2: POST to render (non-draft, for published emails)
+    // Step 2: Try webversion URL if available
+    if (emailData && typeof emailData.webversion === "string" && emailData.webversion) {
+      try {
+        console.log(`[email-preview] Trying webversion: ${emailData.webversion}`);
+        const wvRes = await fetch(emailData.webversion as string);
+        if (wvRes.ok) {
+          htmlContent = await wvRes.text();
+          console.log(`[email-preview] Webversion HTML: ${htmlContent.length} chars`);
+        } else {
+          await wvRes.text();
+          console.log(`[email-preview] Webversion status: ${wvRes.status}`);
+        }
+      } catch (e) {
+        console.log(`[email-preview] Webversion fetch failed:`, e);
+      }
+    }
+
+    // Step 3: Try POST /render (published emails)
     if (!htmlContent) {
       try {
         const renderUrl = `https://api.hubapi.com/marketing/v3/emails/${emailId}/render`;
-        console.log(`[email-preview] Attempt 2: POST ${renderUrl}`);
+        console.log(`[email-preview] Trying POST /render`);
         const renderRes = await fetch(renderUrl, {
           method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
           body: JSON.stringify({}),
         });
         const renderText = await renderRes.text();
-        console.log(`[email-preview] Attempt 2 status: ${renderRes.status}, length: ${renderText.length}`);
+        console.log(`[email-preview] /render status: ${renderRes.status}, length: ${renderText.length}`);
         if (renderRes.ok) {
           try {
             const renderData = JSON.parse(renderText);
@@ -125,25 +104,22 @@ Deno.serve(async (req) => {
           }
         }
       } catch (e) {
-        console.log(`[email-preview] Attempt 2 failed:`, e);
+        console.log(`[email-preview] /render failed:`, e);
       }
     }
 
-    // Attempt 3: Draft render (for draft emails)
+    // Step 4: Try POST /draft/render
     if (!htmlContent) {
       try {
         const draftUrl = `https://api.hubapi.com/marketing/v3/emails/${emailId}/draft/render`;
-        console.log(`[email-preview] Attempt 3: POST ${draftUrl}`);
+        console.log(`[email-preview] Trying POST /draft/render`);
         const draftRes = await fetch(draftUrl, {
           method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
           body: JSON.stringify({}),
         });
         const draftText = await draftRes.text();
-        console.log(`[email-preview] Attempt 3 status: ${draftRes.status}, length: ${draftText.length}`);
+        console.log(`[email-preview] /draft/render status: ${draftRes.status}, length: ${draftText.length}`);
         if (draftRes.ok) {
           try {
             const draftData = JSON.parse(draftText);
@@ -153,7 +129,21 @@ Deno.serve(async (req) => {
           }
         }
       } catch (e) {
-        console.log(`[email-preview] Attempt 3 failed:`, e);
+        console.log(`[email-preview] /draft/render failed:`, e);
+      }
+    }
+
+    // Step 5: Fallback — assemble from all widget HTML snippets
+    if (!htmlContent && emailData) {
+      const content = emailData.content as Record<string, unknown> | undefined;
+      if (content) {
+        const snippets: string[] = [];
+        if (content.widgets) collectAllHtml(content.widgets, snippets);
+        if (content.flexAreas) collectAllHtml(content.flexAreas, snippets);
+        if (snippets.length > 0) {
+          htmlContent = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;padding:20px;font-family:Arial,sans-serif;">${snippets.join("\n")}</body></html>`;
+          console.log(`[email-preview] Assembled from ${snippets.length} widget snippets, total: ${htmlContent.length} chars`);
+        }
       }
     }
 
