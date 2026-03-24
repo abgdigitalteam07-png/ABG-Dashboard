@@ -23,9 +23,8 @@ export function DashboardHeader({
   onLogoClick,
 }: DashboardHeaderProps) {
   return (
-    <header className="sticky top-0 z-50 bg-primary px-6 relative">
-      {/* Side controls row */}
-      <div className="flex items-center justify-between py-5">
+    <header className="sticky top-0 z-50 bg-primary px-6 relative" style={{ padding: '24px 24px 20px 24px', minHeight: '120px' }}>
+      <div className="flex items-center justify-between h-full">
         <div className="flex items-center gap-6">
           <button onClick={onLogoClick} className="flex items-center gap-3 transition-opacity hover:opacity-80" title="Go to Read Me">
             <span className="text-sm font-semibold text-primary-foreground hidden sm:inline">Read Me</span>
@@ -35,10 +34,10 @@ export function DashboardHeader({
         </div>
 
         {/* Center logo + title */}
-        <div className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center gap-3 pointer-events-none">
+        <div className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 pointer-events-none">
           <img
             src={ABG_LOGO_URL}
-            className="w-[120px] sm:w-[150px] h-auto"
+            className="w-[120px] sm:w-[160px] md:w-[220px] h-auto"
             alt="American Bath Group"
           />
           <h1 className="text-sm font-bold tracking-wide text-primary-foreground lg:text-lg whitespace-nowrap">
