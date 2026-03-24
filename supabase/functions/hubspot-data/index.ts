@@ -377,7 +377,7 @@ Deno.serve(async (req) => {
     const allRawEmails = await fetchAllEmails(token);
     console.log(`Total emails before filter: ${allRawEmails.length}`);
 
-    const buIds = BRAND_TO_BU[brandName];
+    // buIds already defined above for lifecycle filtering
     const brandFiltered: any[] = [];
 
     for (const email of allRawEmails) {
