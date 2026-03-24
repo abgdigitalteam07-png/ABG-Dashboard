@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.hubspot-data]
 verify_jwt = false
+
+[functions.email-preview]
+verify_jwt = false

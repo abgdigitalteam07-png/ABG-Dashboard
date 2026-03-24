@@ -228,6 +228,7 @@ async function computeStats(
         }
 
         return {
+          id: email?.id || null,
           name: email?.name || "Untitled",
           brandName: displayBrand,
           subject: email?.subject || "",
@@ -236,7 +237,7 @@ async function computeStats(
           bounce, hardBounce: hardbounced, softBounce: softbounced,
           unsubscribe, spam, pending,
           openRate, clickRate, deliveredRate, unsubscribeRate, bounceRate, spamRate,
-        } as EmailRecord & { pending: number };
+        } as EmailRecord & { pending: number; id: string | null };
       }),
     );
 
