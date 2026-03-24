@@ -23,12 +23,14 @@ interface EmailPreviewModalProps {
 
 export function EmailPreviewModal({ open, onClose, email }: EmailPreviewModalProps) {
   const [html, setHtml] = useState<string>("");
+  const [previewUrl, setPreviewUrl] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
 
   useEffect(() => {
     if (!open || !email?.id) {
       setHtml("");
+      setPreviewUrl("");
       setError(false);
       return;
     }
@@ -39,10 +41,12 @@ export function EmailPreviewModal({ open, onClose, email }: EmailPreviewModalPro
     supabase.functions
       .invoke("email-preview", { body: { emailId: email.id } })
       .then(({ data, error: fnErr }) => {
-        if (fnErr || data?.error || !data?.html) {
+        if (fnErr || data?.error) {
           setError(true);
         } else {
-          setHtml(data.html);
+          setPreviewUrl(data?.previewUrl || "");
+          setHtml(data?.html || "");
+          if (!data?.previewUrl && !data?.html) setError(true);
         }
       })
       .catch(() => setError(true))
@@ -54,6 +58,23 @@ export function EmailPreviewModal({ open, onClose, email }: EmailPreviewModalPro
   const hubspotUrl = email.id
     ? `https://app.hubspot.com/email/24202603/details/${email.id}`
     : null;
+
+  // Wrap raw HTML in a proper document with base styling
+  const fullHtmlDoc = html
+    ? `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { margin: 0; padding: 0; font-family: Arial, sans-serif; background: #ffffff; }
+    img { max-width: 100%; height: auto; }
+    a { color: inherit; }
+  </style>
+</head>
+<body>${html}</body>
+</html>`
+    : "";
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
@@ -87,12 +108,20 @@ export function EmailPreviewModal({ open, onClose, email }: EmailPreviewModalPro
             <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
               Email preview unavailable
             </div>
-          ) : html ? (
+          ) : previewUrl ? (
             <iframe
-              srcDoc={html}
+              src={previewUrl}
               sandbox="allow-same-origin"
               className="w-full border-0"
-              style={{ minHeight: "400px", height: "60vh" }}
+              style={{ minHeight: "500px", height: "60vh", background: "white" }}
+              title="Email Preview"
+            />
+          ) : fullHtmlDoc ? (
+            <iframe
+              srcDoc={fullHtmlDoc}
+              sandbox="allow-same-origin"
+              className="w-full border-0"
+              style={{ minHeight: "500px", height: "60vh", background: "white" }}
               title="Email Preview"
             />
           ) : (
