@@ -9,6 +9,7 @@ interface DashboardHeaderProps {
   dateFrom: Date;
   dateTo: Date;
   onDateChange: (from: Date, to: Date) => void;
+  onLogoClick?: () => void;
 }
 
 export function DashboardHeader({
