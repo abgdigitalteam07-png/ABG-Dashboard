@@ -333,10 +333,17 @@ Deno.serve(async (req) => {
 
     console.log(`Fetching HubSpot data for brand="${brandName}", ${startDate} to ${endDate}`);
 
-    // ── Contacts / lifecycle ──
+    // ── Contacts / lifecycle (filtered by brand business unit) ──
+    const buIds = BRAND_TO_BU[brandName];
+    const brandBuId = buIds ? buIds[0] : null;
+
     let totalContacts = 0;
     try {
-      const res = await hubspotPost("/crm/v3/objects/contacts/search", token, { limit: 0 });
+      const searchBody: any = { limit: 0 };
+      if (brandBuId && brandBuId !== "0") {
+        searchBody.filterGroups = [{ filters: [{ propertyName: "hs_all_assigned_business_unit_ids", operator: "CONTAINS_TOKEN", value: brandBuId }] }];
+      }
+      const res = await hubspotPost("/crm/v3/objects/contacts/search", token, searchBody);
       totalContacts = res.total || 0;
     } catch { /* ignore */ }
 
@@ -351,8 +358,14 @@ Deno.serve(async (req) => {
     await Promise.all(
       lifecycleStages.map(async (ls) => {
         try {
+          const filters: any[] = [
+            { propertyName: "lifecyclestage", operator: "EQ", value: ls.stage.toLowerCase().replace(/ /g, "") },
+          ];
+          if (brandBuId && brandBuId !== "0") {
+            filters.push({ propertyName: "hs_all_assigned_business_unit_ids", operator: "CONTAINS_TOKEN", value: brandBuId });
+          }
           const data = await hubspotPost("/crm/v3/objects/contacts/search", token, {
-            filterGroups: [{ filters: [{ propertyName: "lifecyclestage", operator: "EQ", value: ls.stage.toLowerCase().replace(/ /g, "") }] }],
+            filterGroups: [{ filters }],
             limit: 0,
           });
           ls.count = data.total || 0;
@@ -364,7 +377,7 @@ Deno.serve(async (req) => {
     const allRawEmails = await fetchAllEmails(token);
     console.log(`Total emails before filter: ${allRawEmails.length}`);
 
-    const buIds = BRAND_TO_BU[brandName];
+    // buIds already defined above for lifecycle filtering
     const brandFiltered: any[] = [];
 
     for (const email of allRawEmails) {
