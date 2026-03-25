@@ -63,10 +63,10 @@ async function hubspotPost(path: string, token: string, body: unknown) {
 }
 
 function getBenchmarkLabel(metric: string, value: number): string {
-  if (metric === "openRate") return value >= 25 ? "Excellent" : value >= 18 ? "Good" : "Needs work";
+  if (metric === "openRate") return value >= 25 ? "Excellent" : value >= 20 ? "Good" : "Needs work";
   if (metric === "clickRate") return value >= 4 ? "Excellent" : value >= 2.5 ? "Good" : "Needs work";
-  if (metric === "bounceRate") return value <= 0.5 ? "Excellent" : value <= 1.5 ? "Good" : "Needs work";
-  if (metric === "unsubscribeRate") return value <= 0.2 ? "Excellent" : value <= 0.5 ? "Good" : "Needs work";
+  if (metric === "bounceRate") return value <= 0.5 ? "Excellent" : value <= 0.15 ? "Good" : "Needs work";
+  if (metric === "unsubscribeRate") return value <= 0.2 ? "Excellent" : value <= 0.45 ? "Good" : "Needs work";
   return "Good";
 }
 
@@ -90,26 +90,26 @@ function extractPublishDate(email: any): string | null {
 // ─── Brand → businessUnitId mapping ───
 
 const BRAND_TO_BU: Record<string, string[]> = {
-  "ABG Hospitality":    ["1982882"],
+  "ABG Hospitality": ["1982882"],
   "Accessible Home Store": ["2625978"],
-  "Aker":               ["1982881"],
-  "Aquarius":           ["1982883"],
-  "Aquatic":            ["1982884"],
-  "Bootz":              ["1982886"],
-  "Clarion":            ["1982887"],
-  "Comfort Designs":    ["1982888"],
-  "DreamLine":          ["1690059"],
-  "Florestone":         ["1690060"],
-  "Hamilton":           ["1982889"],
-  "IMI":                ["1982890"],
-  "Laurel Mountain":    ["1982879"],
-  "MAAX":               ["1982891"],
-  "Maidstone":          ["1982892"],
-  "Neptune":            ["1690061"],
-  "RBS":                ["1982893"],
-  "Swan":               ["843133"],
-  "Vintage.ca":         ["2659249"],
-  "American Bath Group":["0"],
+  Aker: ["1982881"],
+  Aquarius: ["1982883"],
+  Aquatic: ["1982884"],
+  Bootz: ["1982886"],
+  Clarion: ["1982887"],
+  "Comfort Designs": ["1982888"],
+  DreamLine: ["1690059"],
+  Florestone: ["1690060"],
+  Hamilton: ["1982889"],
+  IMI: ["1982890"],
+  "Laurel Mountain": ["1982879"],
+  MAAX: ["1982891"],
+  Maidstone: ["1982892"],
+  Neptune: ["1690061"],
+  RBS: ["1982893"],
+  Swan: ["843133"],
+  "Vintage.ca": ["2659249"],
+  "American Bath Group": ["0"],
 };
 
 const BU_TO_BRAND: Record<string, string> = {};
@@ -125,7 +125,8 @@ async function fetchAllEmails(token: string): Promise<any[]> {
   let page = 0;
 
   while (page < 50) {
-    let url = "/marketing/v3/emails?limit=100&orderBy=-publishDate&isPublished=true&property=hs_publish_date&property=hs_published_by_name&property=brand&property=state&property=subcategory";
+    let url =
+      "/marketing/v3/emails?limit=100&orderBy=-publishDate&isPublished=true&property=hs_publish_date&property=hs_published_by_name&property=brand&property=state&property=subcategory";
     if (after) url += `&after=${after}`;
 
     try {
@@ -177,11 +178,23 @@ async function computeStats(
   filteredEmails: any[],
   token: string,
   brandName: string,
-): Promise<{ stats: PeriodStats; emails: (EmailRecord & { pending: number })[]; deliveryByDate: Record<string, number> }> {
+): Promise<{
+  stats: PeriodStats;
+  emails: (EmailRecord & { pending: number })[];
+  deliveryByDate: Record<string, number>;
+}> {
   const stats: PeriodStats = {
-    totalSent: 0, totalDelivered: 0, totalOpens: 0, totalClicks: 0,
-    totalBounce: 0, totalHardBounce: 0, totalSoftBounce: 0,
-    totalUnsub: 0, totalSpam: 0, totalPending: 0, totalEmails: 0,
+    totalSent: 0,
+    totalDelivered: 0,
+    totalOpens: 0,
+    totalClicks: 0,
+    totalBounce: 0,
+    totalHardBounce: 0,
+    totalSoftBounce: 0,
+    totalUnsub: 0,
+    totalSpam: 0,
+    totalPending: 0,
+    totalEmails: 0,
   };
   const emails: (EmailRecord & { pending: number })[] = [];
   const deliveryByDate: Record<string, number> = {};
@@ -232,11 +245,26 @@ async function computeStats(
           name: email?.name || "Untitled",
           brandName: displayBrand,
           subject: email?.subject || "",
-          sender, publishDate, state, subcategory,
-          sent, delivered, opens, clicks,
-          bounce, hardBounce: hardbounced, softBounce: softbounced,
-          unsubscribe, spam, pending,
-          openRate, clickRate, deliveredRate, unsubscribeRate, bounceRate, spamRate,
+          sender,
+          publishDate,
+          state,
+          subcategory,
+          sent,
+          delivered,
+          opens,
+          clicks,
+          bounce,
+          hardBounce: hardbounced,
+          softBounce: softbounced,
+          unsubscribe,
+          spam,
+          pending,
+          openRate,
+          clickRate,
+          deliveredRate,
+          unsubscribeRate,
+          bounceRate,
+          spamRate,
         } as EmailRecord & { pending: number; id: string | null };
       }),
     );
@@ -318,10 +346,9 @@ Deno.serve(async (req) => {
         sampleEmails: data.names,
       }));
 
-      return new Response(
-        JSON.stringify({ debug: true, businessUnits, buSummary }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
+      return new Response(JSON.stringify({ debug: true, businessUnits, buSummary }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const { brandName, startDate, endDate } = body;
@@ -342,11 +369,19 @@ Deno.serve(async (req) => {
     try {
       const searchBody: any = { limit: 0 };
       if (brandBuId && brandBuId !== "0") {
-        searchBody.filterGroups = [{ filters: [{ propertyName: "hs_all_assigned_business_unit_ids", operator: "CONTAINS_TOKEN", value: brandBuId }] }];
+        searchBody.filterGroups = [
+          {
+            filters: [
+              { propertyName: "hs_all_assigned_business_unit_ids", operator: "CONTAINS_TOKEN", value: brandBuId },
+            ],
+          },
+        ];
       }
       const res = await hubspotPost("/crm/v3/objects/contacts/search", token, searchBody);
       totalContacts = res.total || 0;
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
 
     const lifecycleStages = [
       { stage: "Subscriber", count: 0 },
@@ -363,14 +398,20 @@ Deno.serve(async (req) => {
             { propertyName: "lifecyclestage", operator: "EQ", value: ls.stage.toLowerCase().replace(/ /g, "") },
           ];
           if (brandBuId && brandBuId !== "0") {
-            filters.push({ propertyName: "hs_all_assigned_business_unit_ids", operator: "CONTAINS_TOKEN", value: brandBuId });
+            filters.push({
+              propertyName: "hs_all_assigned_business_unit_ids",
+              operator: "CONTAINS_TOKEN",
+              value: brandBuId,
+            });
           }
           const data = await hubspotPost("/crm/v3/objects/contacts/search", token, {
             filterGroups: [{ filters }],
             limit: 0,
           });
           ls.count = data.total || 0;
-        } catch { /* skip */ }
+        } catch {
+          /* skip */
+        }
       }),
     );
 
@@ -416,7 +457,9 @@ Deno.serve(async (req) => {
     const s = current.stats;
     const p = prev.stats;
 
-    console.log(`Final stats: sent=${s.totalSent} delivered=${s.totalDelivered} opens=${s.totalOpens} clicks=${s.totalClicks}`);
+    console.log(
+      `Final stats: sent=${s.totalSent} delivered=${s.totalDelivered} opens=${s.totalOpens} clicks=${s.totalClicks}`,
+    );
 
     const openRate = s.totalDelivered > 0 ? parseFloat(((s.totalOpens / s.totalDelivered) * 100).toFixed(1)) : 0;
     const clickRate = s.totalDelivered > 0 ? parseFloat(((s.totalClicks / s.totalDelivered) * 100).toFixed(1)) : 0;
@@ -457,11 +500,15 @@ Deno.serve(async (req) => {
     }
 
     const result = {
-      totalContacts, healthScore, openRate,
+      totalContacts,
+      healthScore,
+      openRate,
       openRateLabel: getBenchmarkLabel("openRate", openRate),
       clickRate,
       clickRateLabel: getBenchmarkLabel("clickRate", clickRate),
-      bounceRate, hardBounceRate, softBounceRate,
+      bounceRate,
+      hardBounceRate,
+      softBounceRate,
       bounceRateLabel: getBenchmarkLabel("bounceRate", bounceRate),
       unsubscribeRate,
       unsubscribeRateLabel: getBenchmarkLabel("unsubscribeRate", unsubscribeRate),
@@ -469,12 +516,18 @@ Deno.serve(async (req) => {
       spamRate,
       totalEmailsSent: s.totalSent,
       totalEmails: current.emails.length,
-      totalOpens: s.totalOpens, totalClicks: s.totalClicks,
-      totalDelivered: s.totalDelivered, totalBounce: s.totalBounce,
-      totalHardBounce: s.totalHardBounce, totalSoftBounce: s.totalSoftBounce,
-      totalUnsub: s.totalUnsub, totalPending: s.totalPending,
-      pendingRate, deliveredRate,
-      lifecycleStages, emails: current.emails,
+      totalOpens: s.totalOpens,
+      totalClicks: s.totalClicks,
+      totalDelivered: s.totalDelivered,
+      totalBounce: s.totalBounce,
+      totalHardBounce: s.totalHardBounce,
+      totalSoftBounce: s.totalSoftBounce,
+      totalUnsub: s.totalUnsub,
+      totalPending: s.totalPending,
+      pendingRate,
+      deliveredRate,
+      lifecycleStages,
+      emails: current.emails,
       deliveryOverTime,
       stateDistribution: Object.entries(stateDistribution).map(([name, value]) => ({ name, value })),
       subcategoryDistribution: Object.entries(subcategoryDistribution).map(([name, value]) => ({ name, value })),
@@ -509,9 +562,9 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     console.error("HubSpot proxy error:", error);
-    return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
+    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 });
