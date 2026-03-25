@@ -144,12 +144,11 @@ Deno.serve(async (req) => {
         c.engagedSessions += parseInt(v[1].value) || 0;
         c.totalUsers += parseInt(v[5].value) || 0;
         c.newUsers += parseInt(v[6].value) || 0;
-        c.userEngagementDuration += parseFloat(v[7].value) || 0;
+        c.userEngagementDuration += parseFloat(v[8].value) || 0;
         // Weighted averages
         c.engagementRate += (parseFloat(v[2].value) || 0) * sessions;
         c.avgSessionDuration += (parseFloat(v[3].value) || 0) * sessions;
         c.eventsPerSession += (parseFloat(v[4].value) || 0) * sessions;
-        c.engagedSessionsPerUser += (parseFloat(v[8].value) || 0) * sessions;
         c._weightSessions += sessions;
       }
     }
