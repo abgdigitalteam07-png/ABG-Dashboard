@@ -120,11 +120,12 @@ Deno.serve(async (req) => {
 
       if (!res.ok) {
         const err = await res.text();
-        console.error(`GA4 channel report error for ${pid}: ${err}`);
+        console.error(`[ga4-channel-data] API error for ${pid}: ${err}`);
         continue;
       }
 
       const data = await res.json();
+      console.log(`[ga4-channel-data] Response for ${pid}: ${(data.rows || []).length} rows`);
       for (const row of data.rows || []) {
         const channel = row.dimensionValues[0].value;
         const v = row.metricValues;
