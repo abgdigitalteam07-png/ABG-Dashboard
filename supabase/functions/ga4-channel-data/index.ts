@@ -83,8 +83,8 @@ Deno.serve(async (req) => {
       "eventsPerSession",
       "totalUsers",
       "newUsers",
+      "activeUsers",
       "userEngagementDuration",
-      "engagedSessionsPerUser",
     ];
 
     const channelMap: Record<string, {
