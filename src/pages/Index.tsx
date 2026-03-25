@@ -12,7 +12,7 @@ const Index = () => {
 
   const now = new Date();
   const thirtyDaysAgo = new Date(now);
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 365);
   const [dateFrom, setDateFrom] = useState(thirtyDaysAgo);
   const [dateTo, setDateTo] = useState(now);
 
@@ -41,9 +41,7 @@ const Index = () => {
   ];
 
   const effectiveTab =
-    activeTab === "performance" && !selectedBrand.hasGA4 && !selectedBrand.hasGSC
-      ? "hubspot"
-      : activeTab;
+    activeTab === "performance" && !selectedBrand.hasGA4 && !selectedBrand.hasGSC ? "hubspot" : activeTab;
 
   return (
     <div className="min-h-screen bg-background">
@@ -59,17 +57,11 @@ const Index = () => {
 
       <main className="mx-auto max-w-[1400px]">
         <div className="px-2 pt-2">
-          <h1 className="px-4 pt-4 text-lg font-semibold text-foreground">
-            {selectedBrand.name} Performance Overview
-          </h1>
+          <h1 className="px-4 pt-4 text-lg font-semibold text-foreground">{selectedBrand.name} Performance Overview</h1>
         </div>
 
-        {effectiveTab === "performance" && (
-          <PerformanceTab brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />
-        )}
-        {effectiveTab === "hubspot" && (
-          <HubSpotTab brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />
-        )}
+        {effectiveTab === "performance" && <PerformanceTab brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />}
+        {effectiveTab === "hubspot" && <HubSpotTab brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />}
         {effectiveTab === "readme" && <ReadMeTab />}
       </main>
     </div>
