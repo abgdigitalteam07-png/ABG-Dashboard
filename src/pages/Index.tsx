@@ -34,7 +34,7 @@ const Index = () => {
     },
     {
       id: "hubspot",
-      label: "CRM & Email",
+      label: "HubSpot & Emails",
       disabled: !selectedBrand.hasHubSpot,
       tooltip: "No HubSpot data for this brand.",
     },
