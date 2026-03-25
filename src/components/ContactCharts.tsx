@@ -61,6 +61,7 @@ export function ContactCharts({ brand, dateFrom, dateTo }: ContactChartsProps) {
           setError(err?.message || data?.error || "Failed to load");
         } else {
           setContactsOverTime(data?.contactsOverTime || []);
+          setTotalContacts(data?.totalContacts || 0);
           setJobTitles(data?.jobTitles || []);
         }
         setLoading(false);
