@@ -135,7 +135,7 @@ Deno.serve(async (req) => {
           channelMap[channel] = {
             sessions: 0, engagedSessions: 0, engagementRate: 0,
             avgSessionDuration: 0, eventsPerSession: 0, totalUsers: 0,
-            newUsers: 0, userEngagementDuration: 0, engagedSessionsPerUser: 0,
+            newUsers: 0, userEngagementDuration: 0,
             _weightSessions: 0,
           };
         }
