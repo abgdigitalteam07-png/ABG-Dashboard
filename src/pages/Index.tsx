@@ -57,7 +57,7 @@ const Index = () => {
 
       <main className="mx-auto max-w-[1400px]">
         <div className="px-2 pt-2">
-          <h1 className="px-4 pt-4 text-lg font-semibold text-foreground">{selectedBrand.name} Performance Overview</h1>
+          <h1 className="px-4 pt-4 text-lg font-semibold text-foreground">{selectedBrand.name} {effectiveTab === "hubspot" ? "Emails " : ""}Performance Overview</h1>
         </div>
 
         {effectiveTab === "performance" && <PerformanceTab brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />}

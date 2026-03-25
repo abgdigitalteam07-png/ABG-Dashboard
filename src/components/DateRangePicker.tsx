@@ -144,7 +144,7 @@ export function DateRangePicker({ from, to, onChange }: DateRangePickerProps) {
     }
   };
 
-  const presetLabel = presets.find((p) => p.id === selectedPreset)?.label ?? "Last 30 days";
+  const presetLabel = presets.find((p) => p.id === selectedPreset)?.label ?? "Last 365 days";
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
