@@ -474,6 +474,9 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
         </ResponsiveContainer>
       </section>
 
+      {/* ═══ SECTION 6 — Contact Charts ═══ */}
+      <ContactCharts brand={brand} dateFrom={dateFrom} dateTo={dateTo} />
+
       <p className="px-1 text-xs text-muted-foreground">
         {d.totalEmails} emails for "{d.brandName}"
         {d.totalFetched != null && ` · ${d.totalFetched} total in account`}

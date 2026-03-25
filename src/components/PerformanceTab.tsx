@@ -129,6 +129,7 @@ export function PerformanceTab({ brand, dateFrom, dateTo }: PerformanceTabProps)
               </TableBody>
             </Table>
           </div>
+          <TrafficAcquisitionTable brand={brand} dateFrom={dateFrom} dateTo={dateTo} />
         </>
       )}
 
