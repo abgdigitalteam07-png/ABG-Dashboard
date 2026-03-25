@@ -121,6 +121,13 @@ export function ContactCharts({ brand, dateFrom, dateTo }: ContactChartsProps) {
       {/* ── Separator ── */}
       <div className="border-t border-border" />
 
+      {/* ── Total Contacts Card ── */}
+      <section className="rounded-lg border border-border bg-card p-4 shadow-card">
+        <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Total Contacts Created</p>
+        <p className="mt-1 text-2xl font-bold tabular-nums">{totalContacts.toLocaleString()}</p>
+        <p className="mt-0.5 text-[11px] text-muted-foreground">In selected date range</p>
+      </section>
+
       {/* ── New Contacts Over Time ── */}
       <section className="rounded-lg border border-border bg-card p-6 shadow-card">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
