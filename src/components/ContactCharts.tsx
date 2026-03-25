@@ -31,6 +31,7 @@ interface JobTitle {
 
 export function ContactCharts({ brand, dateFrom, dateTo }: ContactChartsProps) {
   const [contactsOverTime, setContactsOverTime] = useState<DayData[]>([]);
+  const [totalContacts, setTotalContacts] = useState(0);
   const [jobTitles, setJobTitles] = useState<JobTitle[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -60,6 +61,7 @@ export function ContactCharts({ brand, dateFrom, dateTo }: ContactChartsProps) {
           setError(err?.message || data?.error || "Failed to load");
         } else {
           setContactsOverTime(data?.contactsOverTime || []);
+          setTotalContacts(data?.totalContacts || 0);
           setJobTitles(data?.jobTitles || []);
         }
         setLoading(false);
@@ -118,6 +120,13 @@ export function ContactCharts({ brand, dateFrom, dateTo }: ContactChartsProps) {
     <>
       {/* ── Separator ── */}
       <div className="border-t border-border" />
+
+      {/* ── Total Contacts Card ── */}
+      <section className="rounded-lg border border-border bg-card p-4 shadow-card">
+        <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Total Contacts Created</p>
+        <p className="mt-1 text-2xl font-bold tabular-nums">{totalContacts.toLocaleString()}</p>
+        <p className="mt-0.5 text-[11px] text-muted-foreground">In selected date range</p>
+      </section>
 
       {/* ── New Contacts Over Time ── */}
       <section className="rounded-lg border border-border bg-card p-6 shadow-card">

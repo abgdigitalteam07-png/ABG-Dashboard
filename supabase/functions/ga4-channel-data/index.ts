@@ -83,8 +83,8 @@ Deno.serve(async (req) => {
       "eventsPerSession",
       "totalUsers",
       "newUsers",
+      "activeUsers",
       "userEngagementDuration",
-      "engagedSessionsPerUser",
     ];
 
     const channelMap: Record<string, {
@@ -96,7 +96,6 @@ Deno.serve(async (req) => {
       totalUsers: number;
       newUsers: number;
       userEngagementDuration: number;
-      engagedSessionsPerUser: number;
       _weightSessions: number;
     }> = {};
 
@@ -108,6 +107,7 @@ Deno.serve(async (req) => {
         metrics: metrics.map((m) => ({ name: m })),
         limit: 50,
       };
+      console.log(`[ga4-channel-data] Request for ${pid}:`, JSON.stringify(body));
 
       const res = await fetch(url, {
         method: "POST",
@@ -120,11 +120,12 @@ Deno.serve(async (req) => {
 
       if (!res.ok) {
         const err = await res.text();
-        console.error(`GA4 channel report error for ${pid}: ${err}`);
+        console.error(`[ga4-channel-data] API error for ${pid}: ${err}`);
         continue;
       }
 
       const data = await res.json();
+      console.log(`[ga4-channel-data] Response for ${pid}: ${(data.rows || []).length} rows`);
       for (const row of data.rows || []) {
         const channel = row.dimensionValues[0].value;
         const v = row.metricValues;
@@ -134,7 +135,7 @@ Deno.serve(async (req) => {
           channelMap[channel] = {
             sessions: 0, engagedSessions: 0, engagementRate: 0,
             avgSessionDuration: 0, eventsPerSession: 0, totalUsers: 0,
-            newUsers: 0, userEngagementDuration: 0, engagedSessionsPerUser: 0,
+            newUsers: 0, userEngagementDuration: 0,
             _weightSessions: 0,
           };
         }
@@ -143,12 +144,11 @@ Deno.serve(async (req) => {
         c.engagedSessions += parseInt(v[1].value) || 0;
         c.totalUsers += parseInt(v[5].value) || 0;
         c.newUsers += parseInt(v[6].value) || 0;
-        c.userEngagementDuration += parseFloat(v[7].value) || 0;
+        c.userEngagementDuration += parseFloat(v[8].value) || 0;
         // Weighted averages
         c.engagementRate += (parseFloat(v[2].value) || 0) * sessions;
         c.avgSessionDuration += (parseFloat(v[3].value) || 0) * sessions;
         c.eventsPerSession += (parseFloat(v[4].value) || 0) * sessions;
-        c.engagedSessionsPerUser += (parseFloat(v[8].value) || 0) * sessions;
         c._weightSessions += sessions;
       }
     }
@@ -158,6 +158,7 @@ Deno.serve(async (req) => {
         const w = c._weightSessions || 1;
         const returningUsers = Math.max(0, c.totalUsers - c.newUsers);
         const avgEngagementTimePerUser = c.totalUsers > 0 ? c.userEngagementDuration / c.totalUsers : 0;
+        const engagedSessionsPerUser = c.totalUsers > 0 ? c.engagedSessions / c.totalUsers : 0;
         return {
           channel,
           sessions: c.sessions,
@@ -169,7 +170,7 @@ Deno.serve(async (req) => {
           newUsers: c.newUsers,
           returningUsers,
           avgEngagementTimePerUser: parseFloat(avgEngagementTimePerUser.toFixed(1)),
-          engagedSessionsPerUser: parseFloat((c.engagedSessionsPerUser / w).toFixed(2)),
+          engagedSessionsPerUser: parseFloat(engagedSessionsPerUser.toFixed(2)),
         };
       })
       .sort((a, b) => b.sessions - a.sessions);

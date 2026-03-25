@@ -97,7 +97,7 @@ function EmailNameLink({ email, onClick }: { email: any; onClick: (email: any) =
   return (
     <button
       onClick={() => onClick(email)}
-      className="text-left truncate text-sm font-medium text-[#2563eb] hover:underline cursor-pointer"
+      className="text-left text-sm font-medium text-[#2563eb] hover:underline cursor-pointer whitespace-normal break-words"
     >
       {email.name}
     </button>
@@ -380,7 +380,7 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
               ) : (
                 d.emails.map((row: any, idx: number) => (
                   <TableRow key={`${row.name}-${idx}`}>
-                    <TableCell className="max-w-[260px]">
+                    <TableCell className="max-w-[300px] whitespace-normal break-words" style={{ overflowWrap: "break-word", wordWrap: "break-word", lineHeight: 1.4 }}>
                       <EmailNameLink email={{ ...row, brandName: row.brandName || d.brandName }} onClick={openPreview} />
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">{row.brandName || d.brandName}</TableCell>
