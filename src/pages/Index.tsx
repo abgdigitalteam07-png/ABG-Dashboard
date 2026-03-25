@@ -11,9 +11,9 @@ const Index = () => {
   const [activeTab, setActiveTab] = useState("performance");
 
   const now = new Date();
-  const yearAgo = new Date(now);
-  yearAgo.setDate(yearAgo.getDate() - 365);
-  const [dateFrom, setDateFrom] = useState(yearAgo);
+  const start365 = new Date(now);
+  start365.setDate(start365.getDate() - 365);
+  const [dateFrom, setDateFrom] = useState(start365);
   const [dateTo, setDateTo] = useState(now);
 
   const handleDateChange = useCallback((from: Date, to: Date) => {
