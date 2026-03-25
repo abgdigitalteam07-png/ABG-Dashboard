@@ -9,6 +9,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import { Loader2 } from "lucide-react";
+import { TrafficAcquisitionTable } from "./TrafficAcquisitionTable";
 
 interface PerformanceTabProps {
   brand: Brand;
