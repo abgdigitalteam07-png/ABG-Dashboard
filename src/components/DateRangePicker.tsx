@@ -128,7 +128,7 @@ function getPresetRange(id: PresetId): { from: Date; to: Date } | null {
 
 export function DateRangePicker({ from, to, onChange }: DateRangePickerProps) {
   const [open, setOpen] = useState(false);
-  const [selectedPreset, setSelectedPreset] = useState<PresetId>("last30");
+  const [selectedPreset, setSelectedPreset] = useState<PresetId>("last365");
   const [range, setRange] = useState<{ from: Date; to?: Date }>({ from, to });
 
   useEffect(() => {
@@ -144,7 +144,7 @@ export function DateRangePicker({ from, to, onChange }: DateRangePickerProps) {
     }
   };
 
-  const presetLabel = presets.find((p) => p.id === selectedPreset)?.label ?? "Last 30 days";
+  const presetLabel = presets.find((p) => p.id === selectedPreset)?.label ?? "Last 365 days";
 
   return (
     <Popover open={open} onOpenChange={setOpen}>

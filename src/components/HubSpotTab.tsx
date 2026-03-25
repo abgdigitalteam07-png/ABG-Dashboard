@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { Loader2, ArrowRight, ArrowDown, TrendingUp, TrendingDown } from "lucide-react";
 import { format, startOfWeek, startOfMonth, startOfDay, parseISO, addDays, addWeeks, addMonths, isBefore, isEqual } from "date-fns";
 import { EmailPreviewModal } from "@/components/EmailPreviewModal";
+import { ContactCharts } from "@/components/ContactCharts";
 
 interface HubSpotTabProps {
   brand: Brand;
@@ -472,6 +473,9 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
           </BarChart>
         </ResponsiveContainer>
       </section>
+
+      {/* ═══ SECTION 6 — Contact Charts ═══ */}
+      <ContactCharts brand={brand} dateFrom={dateFrom} dateTo={dateTo} />
 
       <p className="px-1 text-xs text-muted-foreground">
         {d.totalEmails} emails for "{d.brandName}"

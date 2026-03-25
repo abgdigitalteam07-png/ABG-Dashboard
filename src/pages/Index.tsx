@@ -11,9 +11,9 @@ const Index = () => {
   const [activeTab, setActiveTab] = useState("performance");
 
   const now = new Date();
-  const yearAgo = new Date(now);
-  yearAgo.setDate(yearAgo.getDate() - 365);
-  const [dateFrom, setDateFrom] = useState(yearAgo);
+  const start365 = new Date(now);
+  start365.setDate(start365.getDate() - 365);
+  const [dateFrom, setDateFrom] = useState(start365);
   const [dateTo, setDateTo] = useState(now);
 
   const handleDateChange = useCallback((from: Date, to: Date) => {
@@ -34,7 +34,7 @@ const Index = () => {
     },
     {
       id: "hubspot",
-      label: "CRM & Email",
+      label: "HubSpot & Emails",
       disabled: !selectedBrand.hasHubSpot,
       tooltip: "No HubSpot data for this brand.",
     },
@@ -57,7 +57,7 @@ const Index = () => {
 
       <main className="mx-auto max-w-[1400px]">
         <div className="px-2 pt-2">
-          <h1 className="px-4 pt-4 text-lg font-semibold text-foreground">{selectedBrand.name} Performance Overview</h1>
+          <h1 className="px-4 pt-4 text-lg font-semibold text-foreground">{selectedBrand.name} {effectiveTab === "hubspot" ? "Emails " : ""}Performance Overview</h1>
         </div>
 
         {effectiveTab === "performance" && <PerformanceTab brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />}
