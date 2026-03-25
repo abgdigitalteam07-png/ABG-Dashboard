@@ -96,7 +96,6 @@ Deno.serve(async (req) => {
       totalUsers: number;
       newUsers: number;
       userEngagementDuration: number;
-      engagedSessionsPerUser: number;
       _weightSessions: number;
     }> = {};
 
