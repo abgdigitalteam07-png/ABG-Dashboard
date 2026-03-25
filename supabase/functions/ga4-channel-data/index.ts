@@ -158,6 +158,7 @@ Deno.serve(async (req) => {
         const w = c._weightSessions || 1;
         const returningUsers = Math.max(0, c.totalUsers - c.newUsers);
         const avgEngagementTimePerUser = c.totalUsers > 0 ? c.userEngagementDuration / c.totalUsers : 0;
+        const engagedSessionsPerUser = c.totalUsers > 0 ? c.engagedSessions / c.totalUsers : 0;
         return {
           channel,
           sessions: c.sessions,
@@ -169,7 +170,7 @@ Deno.serve(async (req) => {
           newUsers: c.newUsers,
           returningUsers,
           avgEngagementTimePerUser: parseFloat(avgEngagementTimePerUser.toFixed(1)),
-          engagedSessionsPerUser: parseFloat((c.engagedSessionsPerUser / w).toFixed(2)),
+          engagedSessionsPerUser: parseFloat(engagedSessionsPerUser.toFixed(2)),
         };
       })
       .sort((a, b) => b.sessions - a.sessions);
