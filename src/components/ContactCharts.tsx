@@ -31,6 +31,7 @@ interface JobTitle {
 
 export function ContactCharts({ brand, dateFrom, dateTo }: ContactChartsProps) {
   const [contactsOverTime, setContactsOverTime] = useState<DayData[]>([]);
+  const [totalContacts, setTotalContacts] = useState(0);
   const [jobTitles, setJobTitles] = useState<JobTitle[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
