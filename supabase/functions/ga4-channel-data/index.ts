@@ -107,6 +107,7 @@ Deno.serve(async (req) => {
         metrics: metrics.map((m) => ({ name: m })),
         limit: 50,
       };
+      console.log(`[ga4-channel-data] Request for ${pid}:`, JSON.stringify(body));
 
       const res = await fetch(url, {
         method: "POST",
