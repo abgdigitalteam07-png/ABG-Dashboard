@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
@@ -6,7 +6,7 @@ import { ScoreCard } from "./ScoreCard";
 import { fetchGA4Data, fetchGSCData } from "@/lib/api-client";
 import { Brand } from "@/lib/brands";
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter,
 } from "@/components/ui/table";
 import { Loader2 } from "lucide-react";
 import { TrafficAcquisitionTable } from "./TrafficAcquisitionTable";
@@ -45,6 +45,41 @@ export function PerformanceTab({ brand, dateFrom, dateTo }: PerformanceTabProps)
 
     return () => { cancelled = true; };
   }, [brand.id, dateFrom.getTime(), dateTo.getTime()]);
+
+  const topPagesTotals = useMemo(() => {
+    if (!ga4?.topPages?.length) return null;
+    const pages = ga4.topPages;
+    return {
+      sessions: pages.reduce((s: number, r: any) => s + (r.sessions || 0), 0),
+      views: pages.reduce((s: number, r: any) => s + (r.views || 0), 0),
+      avgDuration: pages[0]?.avgDuration
+        ? (() => {
+            const durations = pages.map((r: any) => {
+              const parts = (r.avgDuration || "0s").match(/(\d+)m\s*(\d+)s|(\d+)s/);
+              if (!parts) return 0;
+              if (parts[3]) return parseInt(parts[3]);
+              return parseInt(parts[1] || "0") * 60 + parseInt(parts[2] || "0");
+            });
+            const avg = durations.reduce((a: number, b: number) => a + b, 0) / durations.length;
+            const m = Math.floor(avg / 60);
+            const s = Math.round(avg % 60);
+            return m > 0 ? `${m}m ${s.toString().padStart(2, "0")}s` : `${s}s`;
+          })()
+        : "0s",
+    };
+  }, [ga4]);
+
+  const topQueriesTotals = useMemo(() => {
+    if (!gsc?.topQueries?.length) return null;
+    const queries = gsc.topQueries;
+    const len = queries.length;
+    return {
+      clicks: queries.reduce((s: number, r: any) => s + (r.clicks || 0), 0),
+      impressions: queries.reduce((s: number, r: any) => s + (r.impressions || 0), 0),
+      ctr: (queries.reduce((s: number, r: any) => s + (parseFloat(r.ctr) || 0), 0) / len).toFixed(1),
+      position: (queries.reduce((s: number, r: any) => s + (r.position || 0), 0) / len).toFixed(1),
+    };
+  }, [gsc]);
 
   if (!brand.hasGA4 && !brand.hasGSC) {
     return (
@@ -104,7 +139,7 @@ export function PerformanceTab({ brand, dateFrom, dateTo }: PerformanceTabProps)
               </ResponsiveContainer>
             </div>
           </div>
-          <div className="rounded-lg border border-border bg-card shadow-card">
+          <div className="rounded-lg border border-border bg-card shadow-card overflow-hidden">
             <div className="p-6 pb-3">
               <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Top Pages</h3>
             </div>
@@ -119,7 +154,7 @@ export function PerformanceTab({ brand, dateFrom, dateTo }: PerformanceTabProps)
               </TableHeader>
               <TableBody>
                 {ga4.topPages.map((row: any) => (
-                  <TableRow key={row.page}>
+                  <TableRow key={row.page} className="hover:bg-muted/60">
                     <TableCell className="font-mono text-xs">{row.page}</TableCell>
                     <TableCell className="text-right tabular-nums text-sm">{row.sessions.toLocaleString()}</TableCell>
                     <TableCell className="text-right tabular-nums text-sm">{row.views.toLocaleString()}</TableCell>
@@ -127,6 +162,16 @@ export function PerformanceTab({ brand, dateFrom, dateTo }: PerformanceTabProps)
                   </TableRow>
                 ))}
               </TableBody>
+              {topPagesTotals && (
+                <TableFooter>
+                  <TableRow className="bg-muted/80 font-semibold sticky bottom-0">
+                    <TableCell className="text-sm">Total</TableCell>
+                    <TableCell className="text-right tabular-nums text-sm">{topPagesTotals.sessions.toLocaleString()}</TableCell>
+                    <TableCell className="text-right tabular-nums text-sm">{topPagesTotals.views.toLocaleString()}</TableCell>
+                    <TableCell className="text-right tabular-nums text-sm">{topPagesTotals.avgDuration}</TableCell>
+                  </TableRow>
+                </TableFooter>
+              )}
             </Table>
           </div>
           <TrafficAcquisitionTable brand={brand} dateFrom={dateFrom} dateTo={dateTo} />
@@ -159,7 +204,7 @@ export function PerformanceTab({ brand, dateFrom, dateTo }: PerformanceTabProps)
               </LineChart>
             </ResponsiveContainer>
           </div>
-          <div className="rounded-lg border border-border bg-card shadow-card">
+          <div className="rounded-lg border border-border bg-card shadow-card overflow-hidden">
             <div className="p-6 pb-3">
               <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Top Queries</h3>
             </div>
@@ -175,7 +220,7 @@ export function PerformanceTab({ brand, dateFrom, dateTo }: PerformanceTabProps)
               </TableHeader>
               <TableBody>
                 {gsc.topQueries.map((row: any) => (
-                  <TableRow key={row.query}>
+                  <TableRow key={row.query} className="hover:bg-muted/60">
                     <TableCell className="text-sm">{row.query}</TableCell>
                     <TableCell className="text-right tabular-nums text-sm">{row.clicks.toLocaleString()}</TableCell>
                     <TableCell className="text-right tabular-nums text-sm">{row.impressions.toLocaleString()}</TableCell>
@@ -184,6 +229,17 @@ export function PerformanceTab({ brand, dateFrom, dateTo }: PerformanceTabProps)
                   </TableRow>
                 ))}
               </TableBody>
+              {topQueriesTotals && (
+                <TableFooter>
+                  <TableRow className="bg-muted/80 font-semibold sticky bottom-0">
+                    <TableCell className="text-sm">Total / Average</TableCell>
+                    <TableCell className="text-right tabular-nums text-sm">{topQueriesTotals.clicks.toLocaleString()}</TableCell>
+                    <TableCell className="text-right tabular-nums text-sm">{topQueriesTotals.impressions.toLocaleString()}</TableCell>
+                    <TableCell className="text-right tabular-nums text-sm">{topQueriesTotals.ctr}%</TableCell>
+                    <TableCell className="text-right tabular-nums text-sm">{topQueriesTotals.position}</TableCell>
+                  </TableRow>
+                </TableFooter>
+              )}
             </Table>
           </div>
         </>

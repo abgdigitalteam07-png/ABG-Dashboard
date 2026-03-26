@@ -27,17 +27,26 @@ const BRAND_TO_BU: Record<string, string> = {
   "American Bath Group": "0",
 };
 
-async function hubspotPost(path: string, token: string, body: unknown) {
-  const res = await fetch(`https://api.hubapi.com${path}`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`HubSpot API error (${path}): ${res.status} ${err.slice(0, 300)}`);
+async function hubspotPostWithRetry(path: string, token: string, body: unknown, maxRetries = 3): Promise<any> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const res = await fetch(`https://api.hubapi.com${path}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (res.status === 429) {
+      const wait = Math.min(2000 * Math.pow(2, attempt), 10000);
+      console.log(`[hubspot-contacts] Rate limited, retrying in ${wait}ms (attempt ${attempt + 1}/${maxRetries})`);
+      await new Promise((r) => setTimeout(r, wait));
+      continue;
+    }
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`HubSpot API error (${path}): ${res.status} ${err.slice(0, 300)}`);
+    }
+    return res.json();
   }
-  return res.json();
+  throw new Error(`HubSpot API rate limit exceeded after ${maxRetries} retries`);
 }
 
 interface ContactsRequest {
@@ -68,6 +77,7 @@ Deno.serve(async (req) => {
     const endMs = new Date(endDate + "T23:59:59Z").getTime();
 
     console.log(`Fetching contacts for brand="${brandName}" buId="${buId}" from ${startDate} to ${endDate}`);
+    console.log(`Date range in ms: ${startMs} to ${endMs}`);
 
     // ── 1. New contacts over time ──
     const contactsByDate: Record<string, { total: number; hubspot: number; salesforce: number }> = {};
@@ -105,7 +115,12 @@ Deno.serve(async (req) => {
       };
       if (after) searchBody.after = after;
 
-      const res = await hubspotPost("/crm/v3/objects/contacts/search", token, searchBody);
+      // Add delay between pages to avoid rate limits
+      if (page > 0) {
+        await new Promise((r) => setTimeout(r, 150));
+      }
+
+      const res = await hubspotPostWithRetry("/crm/v3/objects/contacts/search", token, searchBody);
       const results = res.results || [];
       totalFetched += results.length;
 
@@ -145,11 +160,6 @@ Deno.serve(async (req) => {
         const title = (props.jobtitle || "").trim();
         const normalizedTitle = title || "Not specified";
         jobTitleCounts[normalizedTitle] = (jobTitleCounts[normalizedTitle] || 0) + 1;
-
-        // Log first few for debugging
-        if (totalFetched <= 5) {
-          console.log(`[debug] Contact source: objSource=${objSource} detail=${objSourceDetail} analytics=${analyticsSource} analyticsData=${analyticsSourceData} jobtitle=${title}`);
-        }
       }
 
       if (res.paging?.next?.after) {

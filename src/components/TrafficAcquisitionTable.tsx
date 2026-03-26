@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Brand } from "@/lib/brands";
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter,
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowUpDown } from "lucide-react";
@@ -86,6 +86,23 @@ export function TrafficAcquisitionTable({ brand, dateFrom, dateTo }: TrafficAcqu
     });
   }, [data, sortKey, sortAsc]);
 
+  const totals = useMemo(() => {
+    if (!data.length) return null;
+    const len = data.length;
+    return {
+      sessions: data.reduce((s, r) => s + r.sessions, 0),
+      engagedSessions: data.reduce((s, r) => s + r.engagedSessions, 0),
+      engagementRate: parseFloat((data.reduce((s, r) => s + r.engagementRate, 0) / len).toFixed(1)),
+      avgSessionDuration: parseFloat((data.reduce((s, r) => s + r.avgSessionDuration, 0) / len).toFixed(1)),
+      eventsPerSession: parseFloat((data.reduce((s, r) => s + r.eventsPerSession, 0) / len).toFixed(2)),
+      totalUsers: data.reduce((s, r) => s + r.totalUsers, 0),
+      newUsers: data.reduce((s, r) => s + r.newUsers, 0),
+      returningUsers: data.reduce((s, r) => s + r.returningUsers, 0),
+      avgEngagementTimePerUser: parseFloat((data.reduce((s, r) => s + r.avgEngagementTimePerUser, 0) / len).toFixed(1)),
+      engagedSessionsPerUser: parseFloat((data.reduce((s, r) => s + r.engagedSessionsPerUser, 0) / len).toFixed(2)),
+    };
+  }, [data]);
+
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) {
       setSortAsc(!sortAsc);
@@ -152,7 +169,7 @@ export function TrafficAcquisitionTable({ brand, dateFrom, dateTo }: TrafficAcqu
             </TableHeader>
             <TableBody>
               {sorted.map((row) => (
-                <TableRow key={row.channel}>
+                <TableRow key={row.channel} className="hover:bg-muted/60">
                   <TableCell className="text-sm font-medium">{row.channel}</TableCell>
                   <TableCell className="text-right tabular-nums text-sm">{row.sessions.toLocaleString()}</TableCell>
                   <TableCell className="text-right tabular-nums text-sm">{row.engagedSessions.toLocaleString()}</TableCell>
@@ -167,6 +184,23 @@ export function TrafficAcquisitionTable({ brand, dateFrom, dateTo }: TrafficAcqu
                 </TableRow>
               ))}
             </TableBody>
+            {totals && (
+              <TableFooter>
+                <TableRow className="bg-muted/80 font-semibold sticky bottom-0">
+                  <TableCell className="text-sm">Total</TableCell>
+                  <TableCell className="text-right tabular-nums text-sm">{totals.sessions.toLocaleString()}</TableCell>
+                  <TableCell className="text-right tabular-nums text-sm">{totals.engagedSessions.toLocaleString()}</TableCell>
+                  <TableCell className="text-right tabular-nums text-sm">{totals.engagementRate}%</TableCell>
+                  <TableCell className="text-right tabular-nums text-sm">{formatDuration(totals.avgSessionDuration)}</TableCell>
+                  <TableCell className="text-right tabular-nums text-sm">{totals.eventsPerSession}</TableCell>
+                  <TableCell className="text-right tabular-nums text-sm">{totals.totalUsers.toLocaleString()}</TableCell>
+                  <TableCell className="text-right tabular-nums text-sm">{totals.newUsers.toLocaleString()}</TableCell>
+                  <TableCell className="text-right tabular-nums text-sm">{totals.returningUsers.toLocaleString()}</TableCell>
+                  <TableCell className="text-right tabular-nums text-sm">{formatDuration(totals.avgEngagementTimePerUser)}</TableCell>
+                  <TableCell className="text-right tabular-nums text-sm">{totals.engagedSessionsPerUser}</TableCell>
+                </TableRow>
+              </TableFooter>
+            )}
           </Table>
         </div>
       )}

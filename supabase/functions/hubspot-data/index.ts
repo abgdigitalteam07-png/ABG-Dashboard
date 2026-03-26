@@ -383,6 +383,9 @@ Deno.serve(async (req) => {
       /* ignore */
     }
 
+    const startMs = new Date(startDate + "T00:00:00Z").getTime();
+    const endMs = new Date(endDate + "T23:59:59Z").getTime();
+
     const lifecycleStages = [
       { stage: "Subscriber", count: 0 },
       { stage: "Lead", count: 0 },
@@ -396,6 +399,8 @@ Deno.serve(async (req) => {
         try {
           const filters: any[] = [
             { propertyName: "lifecyclestage", operator: "EQ", value: ls.stage.toLowerCase().replace(/ /g, "") },
+            { propertyName: "createdate", operator: "GTE", value: String(startMs) },
+            { propertyName: "createdate", operator: "LTE", value: String(endMs) },
           ];
           if (brandBuId && brandBuId !== "0") {
             filters.push({
@@ -409,8 +414,9 @@ Deno.serve(async (req) => {
             limit: 0,
           });
           ls.count = data.total || 0;
-        } catch {
-          /* skip */
+          console.log(`Lifecycle ${ls.stage}: ${ls.count} contacts`);
+        } catch (e) {
+          console.error(`Lifecycle ${ls.stage} error:`, e);
         }
       }),
     );

@@ -6,13 +6,14 @@ import {
 import { fetchHubSpotData } from "@/lib/api-client";
 import { Brand } from "@/lib/brands";
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { Loader2, ArrowRight, ArrowDown, TrendingUp, TrendingDown } from "lucide-react";
+import { Loader2, ArrowRight, ArrowDown, TrendingUp, TrendingDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { format, startOfWeek, startOfMonth, startOfDay, parseISO, addDays, addWeeks, addMonths, isBefore, isEqual } from "date-fns";
 import { EmailPreviewModal } from "@/components/EmailPreviewModal";
 import { ContactCharts } from "@/components/ContactCharts";
+import { Button } from "@/components/ui/button";
 
 interface HubSpotTabProps {
   brand: Brand;
@@ -104,6 +105,8 @@ function EmailNameLink({ email, onClick }: { email: any; onClick: (email: any) =
   );
 }
 
+const PAGE_SIZE = 10;
+
 export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -111,6 +114,8 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
   const [interval, setInterval] = useState<TimeInterval>("weekly");
   const [previewEmail, setPreviewEmail] = useState<any>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [showAll, setShowAll] = useState(false);
 
   const openPreview = (email: any) => {
     setPreviewEmail(email);
@@ -120,6 +125,8 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setCurrentPage(1);
+    setShowAll(false);
     fetchHubSpotData(brand, dateFrom, dateTo).then((result) => {
       if (!cancelled) { setData(result); setLoading(false); }
     });
@@ -187,6 +194,33 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
       lowPerf: sorted.slice(-4).reverse(),
     };
   }, [d]);
+
+  /* ── Email table totals ── */
+  const emailTotals = useMemo(() => {
+    if (!d?.emails?.length) return null;
+    const emails = d.emails;
+    const totalSent = emails.reduce((s: number, e: any) => s + (e.sent || 0), 0);
+    const totalDelivered = emails.reduce((s: number, e: any) => s + (e.delivered || 0), 0);
+    const avgOpen = (emails.reduce((s: number, e: any) => s + (e.openRate || 0), 0) / emails.length).toFixed(1);
+    const avgClick = (emails.reduce((s: number, e: any) => s + (e.clickRate || 0), 0) / emails.length).toFixed(1);
+    const avgBounce = (emails.reduce((s: number, e: any) => s + (e.bounceRate || 0), 0) / emails.length).toFixed(2);
+    const avgUnsub = (emails.reduce((s: number, e: any) => s + (e.unsubscribeRate || 0), 0) / emails.length).toFixed(2);
+    const avgSpam = (emails.reduce((s: number, e: any) => s + (e.spamRate || 0), 0) / emails.length).toFixed(2);
+    return { totalSent, totalDelivered, avgOpen, avgClick, avgBounce, avgUnsub, avgSpam };
+  }, [d]);
+
+  /* ── Pagination ── */
+  const totalPages = useMemo(() => {
+    if (!d?.emails?.length) return 1;
+    return Math.ceil(d.emails.length / PAGE_SIZE);
+  }, [d]);
+
+  const paginatedEmails = useMemo(() => {
+    if (!d?.emails?.length) return [];
+    if (showAll) return d.emails;
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return d.emails.slice(start, start + PAGE_SIZE);
+  }, [d, currentPage, showAll]);
 
   if (loading) {
     return (
@@ -378,8 +412,8 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
                   </TableCell>
                 </TableRow>
               ) : (
-                d.emails.map((row: any, idx: number) => (
-                  <TableRow key={`${row.name}-${idx}`}>
+                paginatedEmails.map((row: any, idx: number) => (
+                  <TableRow key={`${row.name}-${idx}`} className="hover:bg-muted/60">
                     <TableCell className="max-w-[300px] whitespace-normal break-words" style={{ overflowWrap: "break-word", wordWrap: "break-word", lineHeight: 1.4 }}>
                       <EmailNameLink email={{ ...row, brandName: row.brandName || d.brandName }} onClick={openPreview} />
                     </TableCell>
@@ -397,8 +431,61 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
                 ))
               )}
             </TableBody>
+            {emailTotals && (
+              <TableFooter>
+                <TableRow className="bg-muted/80 font-semibold sticky bottom-0">
+                  <TableCell className="text-sm">Totals / Averages</TableCell>
+                  <TableCell />
+                  <TableCell />
+                  <TableCell />
+                  <TableCell className="text-right tabular-nums text-sm">{emailTotals.totalSent.toLocaleString()}</TableCell>
+                  <TableCell className="text-right tabular-nums text-sm">{emailTotals.totalDelivered.toLocaleString()}</TableCell>
+                  <TableCell className="text-right tabular-nums text-sm">{emailTotals.avgOpen}%</TableCell>
+                  <TableCell className="text-right tabular-nums text-sm">{emailTotals.avgClick}%</TableCell>
+                  <TableCell className="text-right tabular-nums text-sm">{emailTotals.avgBounce}%</TableCell>
+                  <TableCell className="text-right tabular-nums text-sm">{emailTotals.avgUnsub}%</TableCell>
+                  <TableCell className="text-right tabular-nums text-sm">{emailTotals.avgSpam}%</TableCell>
+                </TableRow>
+              </TableFooter>
+            )}
           </Table>
         </div>
+        {/* Pagination */}
+        {d.emails.length > PAGE_SIZE && (
+          <div className="flex items-center justify-between border-t border-border px-6 py-3">
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={showAll || currentPage === 1}
+                className="h-8 text-xs"
+              >
+                <ChevronLeft className="h-3.5 w-3.5 mr-1" /> Previous
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={showAll || currentPage === totalPages}
+                className="h-8 text-xs"
+              >
+                Next <ChevronRight className="h-3.5 w-3.5 ml-1" />
+              </Button>
+            </div>
+            <span className="text-xs text-muted-foreground">
+              {showAll ? `Showing all ${d.emails.length} emails` : `Page ${currentPage} of ${totalPages}`}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => { setShowAll(!showAll); setCurrentPage(1); }}
+              className="h-8 text-xs"
+            >
+              {showAll ? "Paginate" : "Show All"}
+            </Button>
+          </div>
+        )}
       </section>
 
       {/* ═══ SECTION 4 — High & Low Performing Emails ═══ */}
