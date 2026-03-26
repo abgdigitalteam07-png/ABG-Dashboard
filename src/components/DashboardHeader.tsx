@@ -23,10 +23,17 @@ export function DashboardHeader({
   onLogoClick,
 }: DashboardHeaderProps) {
   return (
-    <header className="sticky top-0 z-50 bg-primary px-6 relative" style={{ padding: '24px 24px 20px 24px', minHeight: '120px' }}>
+    <header
+      className="sticky top-0 z-50 bg-primary px-6 relative"
+      style={{ padding: "24px 24px 20px 24px", minHeight: "120px" }}
+    >
       <div className="flex items-center justify-between h-full">
         <div className="flex items-center gap-6">
-          <button onClick={onLogoClick} className="flex items-center gap-3 transition-opacity hover:opacity-80" title="Go to Read Me">
+          <button
+            onClick={onLogoClick}
+            className="flex items-center gap-3 transition-opacity hover:opacity-80"
+            title="Go to Read Me"
+          >
             <span className="text-sm font-semibold text-primary-foreground hidden sm:inline">Read Me</span>
           </button>
           <div className="h-6 w-px bg-primary-foreground/20" />
@@ -35,11 +42,7 @@ export function DashboardHeader({
 
         {/* Center logo + title */}
         <div className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 pointer-events-none">
-          <img
-            src={ABG_LOGO_URL}
-            className="w-[120px] sm:w-[160px] md:w-[220px] h-auto"
-            alt="American Bath Group"
-          />
+          <img src={ABG_LOGO_URL} className="w-[200px] sm:w-[280px] md:w-[350px] h-auto" alt="American Bath Group" />
           <h1 className="text-sm font-bold tracking-wide text-primary-foreground lg:text-lg whitespace-nowrap">
             US WHOLESALE DIGITAL DASHBOARD
           </h1>
