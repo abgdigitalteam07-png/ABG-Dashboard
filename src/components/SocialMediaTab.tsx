@@ -108,6 +108,18 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
   const totalPages = Math.ceil(sortedPosts.length / pageSize);
   const paginatedPosts = sortedPosts.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
+  const postTotals = useMemo(() => {
+    if (!sortedPosts.length) return null;
+    const len = sortedPosts.length;
+    return {
+      reach: sortedPosts.reduce((s, p) => s + p.reach, 0),
+      impressions: sortedPosts.reduce((s, p) => s + p.impressions, 0),
+      engagements: sortedPosts.reduce((s, p) => s + p.likes + p.comments + p.shares + p.saves, 0),
+      avgEngRate: parseFloat((sortedPosts.reduce((s, p) => s + p.engagementRate, 0) / len).toFixed(1)),
+      clicks: sortedPosts.reduce((s, p) => s + p.clicks, 0),
+    };
+  }, [sortedPosts]);
+
   const handleSort = (key: string) => {
     if (sortKey === key) setSortDir(d => d === "asc" ? "desc" : "asc");
     else { setSortKey(key); setSortDir("desc"); }
@@ -160,18 +172,6 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
     "Carousel": "hsl(var(--brand-green))",
     "Story": "hsl(var(--chart-views))",
   };
-
-  const postTotals = useMemo(() => {
-    if (!sortedPosts.length) return null;
-    const len = sortedPosts.length;
-    return {
-      reach: sortedPosts.reduce((s, p) => s + p.reach, 0),
-      impressions: sortedPosts.reduce((s, p) => s + p.impressions, 0),
-      engagements: sortedPosts.reduce((s, p) => s + p.likes + p.comments + p.shares + p.saves, 0),
-      avgEngRate: parseFloat((sortedPosts.reduce((s, p) => s + p.engagementRate, 0) / len).toFixed(1)),
-      clicks: sortedPosts.reduce((s, p) => s + p.clicks, 0),
-    };
-  }, [sortedPosts]);
 
   return (
     <div className="space-y-6 p-6">
