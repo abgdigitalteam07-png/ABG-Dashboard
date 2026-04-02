@@ -11,6 +11,8 @@ import {
 } from "@/components/ui/table";
 import { Loader2, Users, Eye, BarChart3, Heart, UserCheck, ExternalLink, Facebook, Instagram, ChevronDown, ChevronUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { AIRecommendations } from "./AIRecommendations";
+import { format } from "date-fns";
 
 interface SocialMediaTabProps {
   brand: Brand;
