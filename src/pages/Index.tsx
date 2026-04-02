@@ -4,6 +4,7 @@ import { DashboardHeader } from "@/components/DashboardHeader";
 import { TabNav } from "@/components/TabNav";
 import { PerformanceTab } from "@/components/PerformanceTab";
 import { HubSpotTab } from "@/components/HubSpotTab";
+import { SocialMediaTab } from "@/components/SocialMediaTab";
 import { ReadMeTab } from "@/components/ReadMeTab";
 
 const Index = () => {
