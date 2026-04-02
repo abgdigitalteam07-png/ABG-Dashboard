@@ -10,6 +10,8 @@ import {
 } from "@/components/ui/table";
 import { Loader2 } from "lucide-react";
 import { TrafficAcquisitionTable } from "./TrafficAcquisitionTable";
+import { AIRecommendations } from "./AIRecommendations";
+import { format } from "date-fns";
 
 interface PerformanceTabProps {
   brand: Brand;
