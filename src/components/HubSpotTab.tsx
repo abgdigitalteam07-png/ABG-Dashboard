@@ -14,6 +14,7 @@ import { format, startOfWeek, startOfMonth, startOfDay, parseISO, addDays, addWe
 import { EmailPreviewModal } from "@/components/EmailPreviewModal";
 import { ContactCharts } from "@/components/ContactCharts";
 import { Button } from "@/components/ui/button";
+import { AIRecommendations } from "./AIRecommendations";
 
 interface HubSpotTabProps {
   brand: Brand;
