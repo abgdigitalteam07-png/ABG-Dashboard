@@ -14,6 +14,7 @@ import { format, startOfWeek, startOfMonth, startOfDay, parseISO, addDays, addWe
 import { EmailPreviewModal } from "@/components/EmailPreviewModal";
 import { ContactCharts } from "@/components/ContactCharts";
 import { Button } from "@/components/ui/button";
+import { AIRecommendations } from "./AIRecommendations";
 
 interface HubSpotTabProps {
   brand: Brand;
@@ -563,6 +564,18 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
 
       {/* ═══ SECTION 6 — Contact Charts ═══ */}
       <ContactCharts brand={brand} dateFrom={dateFrom} dateTo={dateTo} />
+
+      <AIRecommendations
+        tabName="crm_email"
+        brandName={brand.name}
+        dateRange={`${format(dateFrom, "MMM d, yyyy")} – ${format(dateTo, "MMM d, yyyy")}`}
+        metrics={{
+          openRate: parseFloat(d.openRate),
+          clickRate: parseFloat(d.clickRate),
+          bounceRate: parseFloat(d.bounceRate || d.hardBounceRate || "0"),
+          unsubscribeRate: parseFloat(d.unsubscribeRate || "0"),
+        }}
+      />
 
       <p className="px-1 text-xs text-muted-foreground">
         {d.totalEmails} emails for "{d.brandName}"

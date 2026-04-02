@@ -11,6 +11,8 @@ import {
 } from "@/components/ui/table";
 import { Loader2, Users, Eye, BarChart3, Heart, UserCheck, ExternalLink, Facebook, Instagram, ChevronDown, ChevronUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { AIRecommendations } from "./AIRecommendations";
+import { format } from "date-fns";
 
 interface SocialMediaTabProps {
   brand: Brand;
@@ -405,6 +407,19 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
           </ResponsiveContainer>
         </div>
       )}
+
+      <AIRecommendations
+        tabName="social_media"
+        brandName={brand.name}
+        dateRange={`${format(dateFrom, "MMM d, yyyy")} – ${format(dateTo, "MMM d, yyyy")}`}
+        metrics={{
+          engagementRate: overview.engagementRate,
+          followerGrowth: avgFollowerGrowth,
+          websiteClicks: overview.websiteClicks,
+          postsPerWeek: overview.totalPosts / Math.max(1, Math.ceil((dateTo.getTime() - dateFrom.getTime()) / (7 * 86400000))),
+          reelCount: posts?.filter((p: any) => p.type === "reel").length ?? 0,
+        }}
+      />
     </div>
   );
 }
