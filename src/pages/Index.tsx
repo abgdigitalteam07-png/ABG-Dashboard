@@ -4,6 +4,7 @@ import { DashboardHeader } from "@/components/DashboardHeader";
 import { TabNav } from "@/components/TabNav";
 import { PerformanceTab } from "@/components/PerformanceTab";
 import { HubSpotTab } from "@/components/HubSpotTab";
+import { SocialMediaTab } from "@/components/SocialMediaTab";
 import { ReadMeTab } from "@/components/ReadMeTab";
 
 const Index = () => {
@@ -21,6 +22,13 @@ const Index = () => {
     setDateTo(to);
   }, []);
 
+  const socialMediaBrandNames = [
+    "Laurel Mountain", "ABG Home Services", "Accessible Home Store", "American Bath Group",
+    "Arizona Shower Door", "Bootz", "Coastal Shower Doors", "DreamLine", "MAAX", "MAAX Bath",
+    "Maidstone", "Swan", "Mr.Steam", "Vintage Tub", "Vintage Tub & Bath - Canada",
+  ];
+  const hasSocialMedia = socialMediaBrandNames.includes(selectedBrand.name);
+
   const tabs = [
     {
       id: "readme",
@@ -31,6 +39,12 @@ const Index = () => {
       label: "Google Analytics & Search Console",
       disabled: !selectedBrand.hasGA4 && !selectedBrand.hasGSC,
       tooltip: "No GA4/GSC property linked for this brand.",
+    },
+    {
+      id: "social",
+      label: "Social Media",
+      disabled: !hasSocialMedia,
+      tooltip: "No social media data for this brand.",
     },
     {
       id: "hubspot",
@@ -61,6 +75,7 @@ const Index = () => {
         </div>
 
         {effectiveTab === "performance" && <PerformanceTab brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />}
+        {effectiveTab === "social" && <SocialMediaTab brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />}
         {effectiveTab === "hubspot" && <HubSpotTab brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />}
         {effectiveTab === "readme" && <ReadMeTab />}
       </main>
