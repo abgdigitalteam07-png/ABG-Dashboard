@@ -17,3 +17,6 @@ verify_jwt = false
 
 [functions.hubspot-contacts]
 verify_jwt = false
+
+[functions.social-media-data]
+verify_jwt = false
