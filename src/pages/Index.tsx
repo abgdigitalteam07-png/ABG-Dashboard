@@ -1,5 +1,6 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { brands } from "@/lib/brands";
+import { supabase } from "@/integrations/supabase/client";
 import { DashboardHeader } from "@/components/DashboardHeader";
 import { TabNav } from "@/components/TabNav";
 import { PerformanceTab } from "@/components/PerformanceTab";
