@@ -58,6 +58,23 @@ const Index = () => {
   const effectiveTab =
     activeTab === "performance" && !selectedBrand.hasGA4 && !selectedBrand.hasGSC ? "hubspot" : activeTab;
 
+  // Silent page_view logging
+  const lastLogRef = useRef("");
+  useEffect(() => {
+    const key = `${effectiveTab}|${selectedBrand.name}`;
+    if (key === lastLogRef.current) return;
+    lastLogRef.current = key;
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) return;
+      supabase.from("user_activity_log").insert({
+        user_id: session.user.id,
+        email: session.user.email || "",
+        action: "page_view",
+        metadata: { tab: effectiveTab, brand: selectedBrand.name },
+      });
+    });
+  }, [effectiveTab, selectedBrand.name]);
+
   return (
     <div className="min-h-screen bg-background">
       <DashboardHeader
