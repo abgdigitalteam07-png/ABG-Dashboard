@@ -1,6 +1,7 @@
 import { Brand } from "@/lib/brands";
 import { BrandSwitcher } from "./BrandSwitcher";
 import { DateRangePicker } from "./DateRangePicker";
+import { UserMenu } from "./UserMenu";
 
 const ABG_LOGO_URL =
   "https://24202603.fs1.hubspotusercontent-na1.net/hubfs/24202603/Swan/website/common/abg-logo-white-horizontal.png";
@@ -48,7 +49,10 @@ export function DashboardHeader({
           </h1>
         </div>
 
-        <DateRangePicker from={dateFrom} to={dateTo} onChange={onDateChange} />
+        <div className="flex items-center gap-3">
+          <DateRangePicker from={dateFrom} to={dateTo} onChange={onDateChange} />
+          <UserMenu />
+        </div>
       </div>
     </header>
   );

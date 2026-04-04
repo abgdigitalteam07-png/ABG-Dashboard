@@ -20,3 +20,6 @@ verify_jwt = false
 
 [functions.social-media-data]
 verify_jwt = false
+
+[functions.invite-user]
+verify_jwt = false
