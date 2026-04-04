@@ -14,13 +14,117 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      user_activity_log: {
+        Row: {
+          action: string
+          created_at: string
+          email: string
+          id: string
+          metadata: Json | null
+          user_id: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          email: string
+          id?: string
+          metadata?: Json | null
+          user_id?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          email?: string
+          id?: string
+          metadata?: Json | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      user_invitations: {
+        Row: {
+          accepted_at: string | null
+          created_at: string
+          email: string
+          expires_at: string
+          full_name: string | null
+          id: string
+          invited_by: string
+          role: string
+          status: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          created_at?: string
+          email: string
+          expires_at?: string
+          full_name?: string | null
+          id?: string
+          invited_by: string
+          role?: string
+          status?: string
+        }
+        Update: {
+          accepted_at?: string | null
+          created_at?: string
+          email?: string
+          expires_at?: string
+          full_name?: string | null
+          id?: string
+          invited_by?: string
+          role?: string
+          status?: string
+        }
+        Relationships: []
+      }
+      user_profiles: {
+        Row: {
+          created_at: string
+          deactivated_at: string | null
+          deactivated_by: string | null
+          domain: string
+          email: string
+          full_name: string | null
+          id: string
+          invited_by: string | null
+          is_active: boolean
+          last_login_at: string | null
+          role: string
+        }
+        Insert: {
+          created_at?: string
+          deactivated_at?: string | null
+          deactivated_by?: string | null
+          domain: string
+          email: string
+          full_name?: string | null
+          id: string
+          invited_by?: string | null
+          is_active?: boolean
+          last_login_at?: string | null
+          role?: string
+        }
+        Update: {
+          created_at?: string
+          deactivated_at?: string | null
+          deactivated_by?: string | null
+          domain?: string
+          email?: string
+          full_name?: string | null
+          id?: string
+          invited_by?: string | null
+          is_active?: boolean
+          last_login_at?: string | null
+          role?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      is_admin: { Args: { _user_id: string }; Returns: boolean }
     }
     Enums: {
       [_ in never]: never
