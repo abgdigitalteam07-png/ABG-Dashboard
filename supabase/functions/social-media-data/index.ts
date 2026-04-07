@@ -7,6 +7,7 @@ const BRAND_PAGE_MAP: Record<string, { pageId: string }> = {
   "Laurel Mountain":             { pageId: "589637594226360" },
   "ABG Home Services":           { pageId: "102649446177548" },
   "Accessible Home Store":       { pageId: "614467925083933" },
+  "American Bath Group":         { pageId: "617291181470878" },
   "Arizona Shower Door":         { pageId: "140920859267060" },
   "Bootz":                       { pageId: "579915778528160" },
   "Coastal Shower Doors":        { pageId: "209917263175" },
@@ -30,31 +31,22 @@ const BRAND_PAGE_MAP: Record<string, { pageId: string }> = {
   "ABG Decorative Products":     { pageId: "104595485455883" },
 };
 
-const GRAPH = "https://graph.facebook.com/v25.0";
+const GRAPH = "https://graph.facebook.com/v21.0";
 
-// Cache of pageId -> page access token from /me/accounts
 let cachedPageTokens: Record<string, string> | null = null;
 
 async function fetchAllPageTokens(userToken: string): Promise<Record<string, string>> {
   if (cachedPageTokens) return cachedPageTokens;
-
   const tokens: Record<string, string> = {};
   let url: string | null = `${GRAPH}/me/accounts?fields=id,access_token&limit=100&access_token=${userToken}`;
-
   while (url) {
     const res = await fetch(url);
     const data = await res.json();
-    if (data.error) {
-      console.error(`[fetchAllPageTokens] Error: ${data.error.message}`);
-      break;
-    }
-    for (const page of (data.data || [])) {
-      tokens[page.id] = page.access_token;
-    }
+    if (data.error) { console.error(`[fetchAllPageTokens] Error: ${data.error.message}`); break; }
+    for (const page of (data.data || [])) tokens[page.id] = page.access_token;
     url = data.paging?.next || null;
   }
-
-  console.log(`[fetchAllPageTokens] Found tokens for ${Object.keys(tokens).length} pages: ${Object.keys(tokens).join(", ")}`);
+  console.log(`[fetchAllPageTokens] Found tokens for ${Object.keys(tokens).length} pages`);
   cachedPageTokens = tokens;
   return tokens;
 }
@@ -62,86 +54,58 @@ async function fetchAllPageTokens(userToken: string): Promise<Record<string, str
 async function getPageToken(pageId: string, userToken: string): Promise<string> {
   const allTokens = await fetchAllPageTokens(userToken);
   const token = allTokens[pageId];
-  if (token) {
-    console.log(`[getPageToken] Found page token for ${pageId} via /me/accounts`);
-    return token;
-  }
-  console.warn(`[getPageToken] No token found for page ${pageId} in /me/accounts — falling back to user token`);
+  if (token) { console.log(`[getPageToken] Found page token for ${pageId}`); return token; }
+  console.warn(`[getPageToken] No token for ${pageId} — using user token`);
   return userToken;
 }
 
-// Dynamically fetch IG Business Account ID linked to a Facebook Page
 async function getIgBusinessAccountId(pageId: string, pageToken: string): Promise<string | null> {
-  const url = `${GRAPH}/${pageId}?fields=instagram_business_account&access_token=${pageToken}`;
   try {
-    const res = await fetch(url);
+    const res = await fetch(`${GRAPH}/${pageId}?fields=instagram_business_account&access_token=${pageToken}`);
     const data = await res.json();
-    console.log(`[getIgBusinessAccountId] Raw response for page ${pageId}:`, JSON.stringify(data));
-    if (data.error) {
-      console.warn(`[getIgBusinessAccountId] Error for page ${pageId}: ${data.error.message}`);
-      return null;
-    }
-    const igId = data.instagram_business_account?.id || null;
-    console.log(`[getIgBusinessAccountId] Page ${pageId} -> IG: ${igId || "none"}`);
-    return igId;
-  } catch (e) {
-    console.warn(`[getIgBusinessAccountId] Fetch error: ${e.message}`);
-    return null;
-  }
+    console.log(`[getIgBusinessAccountId] Raw for ${pageId}:`, JSON.stringify(data));
+    if (data.error) return null;
+    return data.instagram_business_account?.id || null;
+  } catch (e) { console.warn(`[getIgBusinessAccountId] Error: ${e.message}`); return null; }
 }
 
-async function getPageInsights(pageId: string, pageToken: string, since: string, until: string): Promise<Record<string, number>> {
-  // v25.0: fetch each metric individually with period=day, chunk by 90 days max
-  const metrics = [
-    "page_impressions",
-    "page_impressions_unique",
-    "page_views_total",
-    "page_post_engagements",
-    "page_fan_adds",
-  ];
-  
-  const result: Record<string, number> = {};
-  
-  // Chunk into 90-day windows to avoid API limits
+function getDateChunks(since: string, until: string, maxDays = 89): Array<{ since: string; until: string }> {
   const chunks: Array<{ since: string; until: string }> = [];
   const start = new Date(since);
   const end = new Date(until);
   let current = new Date(start);
   while (current < end) {
     const chunkEnd = new Date(current);
-    chunkEnd.setDate(chunkEnd.getDate() + 89);
+    chunkEnd.setDate(chunkEnd.getDate() + maxDays);
     const actualEnd = chunkEnd > end ? end : chunkEnd;
-    chunks.push({
-      since: current.toISOString().split("T")[0],
-      until: actualEnd.toISOString().split("T")[0],
-    });
-    current = actualEnd;
+    chunks.push({ since: current.toISOString().split("T")[0], until: actualEnd.toISOString().split("T")[0] });
+    current = new Date(actualEnd);
+    current.setDate(current.getDate() + 1);
   }
-  
+  return chunks;
+}
+
+async function getPageInsights(pageId: string, pageToken: string, since: string, until: string): Promise<Record<string, number>> {
+  const metrics = ["page_impressions_unique", "page_views_total", "page_post_engagements"];
+  const result: Record<string, number> = {};
+  const chunks = getDateChunks(since, until, 89);
+
   for (const chunk of chunks) {
     for (const metric of metrics) {
-      const url = `${GRAPH}/${pageId}/insights?metric=${metric}&since=${chunk.since}&until=${chunk.until}&period=day&access_token=${pageToken}`;
       try {
+        const url = `${GRAPH}/${pageId}/insights?metric=${metric}&since=${chunk.since}&until=${chunk.until}&period=day&access_token=${pageToken}`;
         const res = await fetch(url);
         const data = await res.json();
-        if (data.error) {
-          console.warn(`[getPageInsights] Metric "${metric}" chunk ${chunk.since}..${chunk.until} failed: ${data.error.message}`);
-          continue;
-        }
+        if (data.error) { console.warn(`[getPageInsights] ${metric} ${chunk.since}..${chunk.until}: ${data.error.message}`); continue; }
         for (const item of (data.data || [])) {
           let total = 0;
-          for (const v of (item.values || [])) {
-            total += typeof v.value === "number" ? v.value : 0;
-          }
+          for (const v of (item.values || [])) total += typeof v.value === "number" ? v.value : 0;
           result[item.name] = (result[item.name] || 0) + total;
         }
-      } catch (e) {
-        console.warn(`[getPageInsights] Fetch error for "${metric}": ${e.message}`);
-      }
+      } catch (e) { console.warn(`[getPageInsights] fetch error ${metric}: ${e.message}`); }
     }
   }
-  
-  console.log(`[getPageInsights] Final result:`, JSON.stringify(result));
+  console.log(`[getPageInsights] Final:`, JSON.stringify(result));
   return result;
 }
 
@@ -152,143 +116,48 @@ async function getPageFanCount(pageId: string, pageToken: string): Promise<numbe
 }
 
 async function getPagePosts(pageId: string, pageToken: string, since: string, until: string) {
-  const fields = "id,message,created_time,shares,likes.summary(true),comments.summary(true),attachments{type,media_type,media,subattachments}";
+  const fields = "id,message,created_time,permalink_url,shares,likes.summary(true),comments.summary(true),attachments{type,media_type,media,subattachments}";
   let url: string | null = `${GRAPH}/${pageId}/posts?fields=${fields}&since=${since}&until=${until}&limit=100&access_token=${pageToken}`;
-  console.log(`[getPagePosts] Fetching posts for page ${pageId} since=${since} until=${until}`);
   const allPosts: any[] = [];
-  const maxPosts = 200;
-  while (url && allPosts.length < maxPosts) {
+  while (url && allPosts.length < 200) {
     const res = await fetch(url);
     const data = await res.json();
-    if (data.error) {
-      console.warn(`[getPagePosts] Error: ${data.error.message}`);
-      break;
-    }
-    const posts = data.data || [];
-    allPosts.push(...posts);
-    url = (allPosts.length < maxPosts && data.paging?.next) ? data.paging.next : null;
+    if (data.error) { console.warn(`[getPagePosts] Error: ${data.error.message}`); break; }
+    allPosts.push(...(data.data || []));
+    url = (allPosts.length < 200 && data.paging?.next) ? data.paging.next : null;
   }
-  console.log(`[getPagePosts] Total FB posts fetched for page ${pageId}: ${allPosts.length}`);
+  console.log(`[getPagePosts] FB posts for ${pageId}: ${allPosts.length}`);
   return allPosts;
-}
-
-// Fetch per-post insights for a single FB post (v25.0 — uses post_views metrics)
-async function getFbPostInsights(postId: string, pageToken: string): Promise<{ impressions: number; reach: number; engagedUsers: number; clicks: number }> {
-  const result = { impressions: 0, reach: 0, engagedUsers: 0, clicks: 0 };
-  const metricSets = [
-    "post_views,post_views_unique,post_engaged_users,post_clicks",
-    "post_impressions,post_impressions_unique,post_engaged_users,post_clicks",
-  ];
-  for (const metrics of metricSets) {
-    try {
-      const url = `${GRAPH}/${postId}/insights?metric=${metrics}&access_token=${pageToken}`;
-      const res = await fetch(url);
-      const data = await res.json();
-      if (data.error) {
-        console.warn(`[getFbPostInsights] ${postId} metrics "${metrics}": ${data.error.message}`);
-        continue;
-      }
-      for (const item of (data.data || [])) {
-        const val = item.values?.[0]?.value || 0;
-        if (item.name === "post_views" || item.name === "post_impressions") result.impressions = val;
-        if (item.name === "post_views_unique" || item.name === "post_impressions_unique") result.reach = val;
-        if (item.name === "post_engaged_users") result.engagedUsers = val;
-        if (item.name === "post_clicks") result.clicks = val;
-      }
-      if (result.impressions > 0 || result.reach > 0) break;
-    } catch (e) {
-      console.warn(`[getFbPostInsights] fetch error for ${postId}: ${e.message}`);
-    }
-  }
-  return result;
-}
-
-// Fetch per-post insights for a single IG media object (v25.0 — no impressions, use views)
-async function getIgMediaInsights(mediaId: string, mediaType: string, pageToken: string): Promise<{ reach: number; impressions: number; saved: number; shares: number }> {
-  const result = { reach: 0, impressions: 0, saved: 0, shares: 0 };
-  const isReel = mediaType === "VIDEO";
-  const metrics = isReel ? "reach,saved,shares,plays" : "reach,saved,shares";
-  try {
-    const url = `${GRAPH}/${mediaId}/insights?metric=${metrics}&access_token=${pageToken}`;
-    const res = await fetch(url);
-    const data = await res.json();
-    if (data.error) {
-      console.warn(`[getIgMediaInsights] ${mediaId}: ${data.error.message}`);
-      return result;
-    }
-    for (const item of (data.data || [])) {
-      const val = typeof item.values?.[0]?.value === "number" ? item.values[0].value : 0;
-      if (item.name === "reach") result.reach = val;
-      if (item.name === "plays") result.impressions = val;
-      if (item.name === "saved") result.saved = val;
-      if (item.name === "shares") result.shares = val;
-    }
-    if (result.impressions === 0) result.impressions = result.reach;
-  } catch (e) {
-    console.warn(`[getIgMediaInsights] fetch error for ${mediaId}: ${e.message}`);
-  }
-  return result;
-}
-
-// Generate 30-day chunks for IG insights (max 30 days per request)
-function getDateChunks(since: string, until: string): Array<{ since: string; until: string }> {
-  const chunks: Array<{ since: string; until: string }> = [];
-  const start = new Date(since);
-  const end = new Date(until);
-  let current = new Date(start);
-  while (current < end) {
-    const chunkEnd = new Date(current);
-    chunkEnd.setDate(chunkEnd.getDate() + 28); // 28 days to stay under 30-day limit
-    const actualEnd = chunkEnd > end ? end : chunkEnd;
-    chunks.push({
-      since: current.toISOString().split("T")[0],
-      until: actualEnd.toISOString().split("T")[0],
-    });
-    current = actualEnd;
-  }
-  return chunks;
 }
 
 async function getIgInsights(igId: string, pageToken: string, since: string, until: string) {
   const result: Record<string, number> = {};
-  const chunks = getDateChunks(since, until);
+  const chunks = getDateChunks(since, until, 28);
   console.log(`[getIgInsights] Fetching ${chunks.length} chunks for IG ${igId}`);
 
   for (const chunk of chunks) {
-    // Fetch reach (period=day)
     try {
-      const reachUrl = `${GRAPH}/${igId}/insights?metric=reach&since=${chunk.since}&until=${chunk.until}&period=day&access_token=${pageToken}`;
-      const reachRes = await fetch(reachUrl);
-      const reachData = await reachRes.json();
-      if (!reachData.error) {
-        for (const item of (reachData.data || [])) {
-          for (const v of (item.values || [])) {
-            result[item.name] = (result[item.name] || 0) + (typeof v.value === "number" ? v.value : 0);
-          }
+      const url = `${GRAPH}/${igId}/insights?metric=reach&since=${chunk.since}&until=${chunk.until}&period=day&access_token=${pageToken}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (!data.error) {
+        for (const item of (data.data || [])) {
+          for (const v of (item.values || [])) result[item.name] = (result[item.name] || 0) + (typeof v.value === "number" ? v.value : 0);
         }
-      } else {
-        console.warn(`[getIgInsights] reach chunk failed: ${reachData.error.message}`);
       }
-    } catch (e) { console.warn(`[getIgInsights] reach fetch error: ${e.message}`); }
+    } catch (e) { console.warn(`[getIgInsights] reach error: ${e.message}`); }
 
-    // Fetch total_value metrics
     try {
-      const totalMetrics = "profile_views,website_clicks,total_interactions";
-      const totalUrl = `${GRAPH}/${igId}/insights?metric=${totalMetrics}&metric_type=total_value&since=${chunk.since}&until=${chunk.until}&period=day&access_token=${pageToken}`;
-      const totalRes = await fetch(totalUrl);
-      const totalData = await totalRes.json();
-      if (!totalData.error) {
-        for (const item of (totalData.data || [])) {
-          for (const v of (item.values || [])) {
-            result[item.name] = (result[item.name] || 0) + (typeof v.value === "number" ? v.value : 0);
-          }
+      const url = `${GRAPH}/${igId}/insights?metric=profile_views,website_clicks&metric_type=total_value&since=${chunk.since}&until=${chunk.until}&period=day&access_token=${pageToken}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (!data.error) {
+        for (const item of (data.data || [])) {
+          for (const v of (item.values || [])) result[item.name] = (result[item.name] || 0) + (typeof v.value === "number" ? v.value : 0);
         }
-      } else {
-        console.warn(`[getIgInsights] total_value chunk failed: ${totalData.error.message}`);
       }
-    } catch (e) { console.warn(`[getIgInsights] total_value fetch error: ${e.message}`); }
+    } catch (e) { console.warn(`[getIgInsights] total_value error: ${e.message}`); }
   }
-
   console.log(`[getIgInsights] Result:`, JSON.stringify(result));
   return result;
 }
@@ -300,19 +169,38 @@ async function getIgFollowers(igId: string, pageToken: string): Promise<number> 
 }
 
 async function getIgMedia(igId: string, pageToken: string, since: string, until: string) {
-  const fields = "id,caption,media_type,timestamp,like_count,comments_count,thumbnail_url,media_url";
+  const fields = "id,caption,media_type,timestamp,like_count,comments_count,thumbnail_url,media_url,permalink";
   let url: string | null = `${GRAPH}/${igId}/media?fields=${fields}&since=${since}&until=${until}&limit=100&access_token=${pageToken}`;
   const allMedia: any[] = [];
-  const maxMedia = 200;
-  while (url && allMedia.length < maxMedia) {
+  while (url && allMedia.length < 200) {
     const res = await fetch(url);
     const data = await res.json();
     if (data.error) { console.warn(`[getIgMedia] Error: ${data.error.message}`); break; }
     allMedia.push(...(data.data || []));
-    url = (allMedia.length < maxMedia && data.paging?.next) ? data.paging.next : null;
+    url = (allMedia.length < 200 && data.paging?.next) ? data.paging.next : null;
   }
-  console.log(`[getIgMedia] Total IG posts fetched for IG ${igId}: ${allMedia.length}`);
+  console.log(`[getIgMedia] IG posts for ${igId}: ${allMedia.length}`);
   return allMedia;
+}
+
+async function getIgMediaInsights(mediaId: string, mediaType: string, pageToken: string): Promise<{ reach: number; impressions: number; saved: number; shares: number }> {
+  const result = { reach: 0, impressions: 0, saved: 0, shares: 0 };
+  // v21: plays is deprecated. Use reach,saved,shares for all types.
+  const metrics = "reach,saved,shares";
+  try {
+    const url = `${GRAPH}/${mediaId}/insights?metric=${metrics}&access_token=${pageToken}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.error) { console.warn(`[getIgMediaInsights] ${mediaId}: ${data.error.message}`); return result; }
+    for (const item of (data.data || [])) {
+      const val = typeof item.values?.[0]?.value === "number" ? item.values[0].value : 0;
+      if (item.name === "reach") result.reach = val;
+      if (item.name === "saved") result.saved = val;
+      if (item.name === "shares") result.shares = val;
+    }
+    result.impressions = result.reach; // impressions deprecated, approximate with reach
+  } catch (e) { console.warn(`[getIgMediaInsights] error ${mediaId}: ${e.message}`); }
+  return result;
 }
 
 function safeDiv(a: number, b: number): number {
@@ -320,27 +208,19 @@ function safeDiv(a: number, b: number): number {
 }
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
-  }
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
     const { brandName, startDate, endDate, platform = "all" } = await req.json();
     console.log(`[social-media-data] brand=${brandName} range=${startDate}..${endDate} platform=${platform}`);
 
     if (!brandName || !startDate || !endDate) {
-      return new Response(JSON.stringify({ error: "Missing required fields" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(JSON.stringify({ error: "Missing required fields" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const brandConfig = BRAND_PAGE_MAP[brandName];
     if (!brandConfig) {
-      return new Response(JSON.stringify({ error: "no_social_media", message: `No social media data for ${brandName}` }), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(JSON.stringify({ error: "no_social_media", message: `No social media data for ${brandName}` }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const userToken = Deno.env.get("META_USER_ACCESS_TOKEN");
@@ -348,209 +228,195 @@ Deno.serve(async (req) => {
 
     const { pageId } = brandConfig;
     const pageToken = await getPageToken(pageId, userToken);
-
-    // Dynamically discover the IG Business Account linked to this page
     const igId = await getIgBusinessAccountId(pageId, pageToken);
 
-    const [fbInsights, fbFans, fbPosts] = await Promise.all([
-      getPageInsights(pageId, pageToken, startDate, endDate),
-      getPageFanCount(pageId, pageToken),
-      getPagePosts(pageId, pageToken, startDate, endDate),
-    ]);
+    // Use AbortController for 25s timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 25000);
 
-    // Map v25.0 metric names
-    const fbImpressions = fbInsights["page_impressions"] || 0;
-    const fbReach = fbInsights["page_impressions_unique"] || 0;
-    const fbProfileVisits = fbInsights["page_views_total"] || 0;
-    const fbEngagements = fbInsights["page_post_engagements"] || 0;
-    const fbWebsiteClicks = fbProfileVisits; // approximate
-
-    let igFollowers = 0, igReach = 0, igImpressions = 0, igEngagements = 0, igProfileViews = 0, igWebsiteClicks = 0;
-    let igPostsList: any[] = [];
-
-    if (igId) {
-      const [igInsights, igFollowerCount, igMedia] = await Promise.all([
-        getIgInsights(igId, pageToken, startDate, endDate),
-        getIgFollowers(igId, pageToken),
-        getIgMedia(igId, pageToken, startDate, endDate),
+    try {
+      const [fbInsights, fbFans, fbPosts] = await Promise.all([
+        getPageInsights(pageId, pageToken, startDate, endDate),
+        getPageFanCount(pageId, pageToken),
+        getPagePosts(pageId, pageToken, startDate, endDate),
       ]);
 
-      igFollowers = igFollowerCount;
-      igReach = igInsights["reach"] || 0;
-      igImpressions = igReach; // impressions deprecated, use reach
-      igProfileViews = igInsights["profile_views"] || 0;
-      igEngagements = igInsights["total_interactions"] || igProfileViews;
-      igWebsiteClicks = igInsights["website_clicks"] || 0;
+      const fbReach = fbInsights["page_impressions_unique"] || 0;
+      const fbImpressions = fbReach; // page_impressions often fails on New Pages Experience, use reach
+      const fbProfileVisits = fbInsights["page_views_total"] || 0;
+      const fbEngagements = fbInsights["page_post_engagements"] || 0;
+      const fbWebsiteClicks = fbProfileVisits;
 
-      // Fetch per-post insights for IG media in parallel (batch of 5)
-      const igMediaWithInsights: any[] = [];
-      for (let i = 0; i < igMedia.length; i += 5) {
-        const batch = igMedia.slice(i, i + 5);
-        const insights = await Promise.all(batch.map((m: any) => getIgMediaInsights(m.id, m.media_type || "", pageToken)));
-        for (let j = 0; j < batch.length; j++) {
-          const m = batch[j];
-          const ins = insights[j];
-          const likes = m.like_count || 0;
-          const comments = m.comments_count || 0;
-          const saves = ins.saved || 0;
-          const shares = ins.shares || 0;
-          const reach = ins.reach || 0;
-          const impressions = ins.impressions || 0;
-          const engRate = safeDiv(likes + comments + saves, reach);
-          const type = m.media_type === "VIDEO" ? "reel" : m.media_type === "CAROUSEL_ALBUM" ? "carousel" : "image";
-          igMediaWithInsights.push({
-            id: m.id,
-            platform: "instagram",
-            type,
-            caption: m.caption || "",
-            publishedAt: m.timestamp,
-            thumbnail: m.thumbnail_url || m.media_url || "",
-            reach,
-            impressions,
-            likes,
-            comments,
-            shares,
-            saves,
-            engagementRate: engRate,
-            clicks: 0,
-          });
+      let igFollowers = 0, igReach = 0, igImpressions = 0, igEngagements = 0, igProfileViews = 0, igWebsiteClicks = 0;
+      let igPostsList: any[] = [];
+
+      if (igId) {
+        const [igInsights, igFollowerCount, igMedia] = await Promise.all([
+          getIgInsights(igId, pageToken, startDate, endDate),
+          getIgFollowers(igId, pageToken),
+          getIgMedia(igId, pageToken, startDate, endDate),
+        ]);
+
+        igFollowers = igFollowerCount;
+        igReach = igInsights["reach"] || 0;
+        igImpressions = igReach;
+        igProfileViews = igInsights["profile_views"] || 0;
+        igWebsiteClicks = igInsights["website_clicks"] || 0;
+
+        // Build IG posts with per-post insights (batch of 5)
+        for (let i = 0; i < igMedia.length; i += 5) {
+          const batch = igMedia.slice(i, i + 5);
+          const insights = await Promise.all(batch.map((m: any) => getIgMediaInsights(m.id, m.media_type || "", pageToken)));
+          for (let j = 0; j < batch.length; j++) {
+            const m = batch[j];
+            const ins = insights[j];
+            const likes = m.like_count || 0;
+            const comments = m.comments_count || 0;
+            const saves = ins.saved || 0;
+            const shares = ins.shares || 0;
+            const reach = ins.reach || 0;
+            const impressions = ins.impressions || 0;
+            const totalEng = likes + comments + saves + shares;
+            const engRate = safeDiv(totalEng, reach);
+            const type = m.media_type === "VIDEO" ? "reel" : m.media_type === "CAROUSEL_ALBUM" ? "carousel" : "image";
+            igPostsList.push({
+              id: m.id, platform: "instagram", type,
+              caption: m.caption || "", publishedAt: m.timestamp,
+              thumbnail: m.thumbnail_url || m.media_url || "",
+              permalink: m.permalink || "",
+              reach, impressions, likes, comments, shares, saves,
+              engagementRate: engRate, clicks: 0,
+            });
+          }
+        }
+
+        // Compute IG engagements from posts if total_interactions not available
+        if (igPostsList.length > 0) {
+          const postEngagements = igPostsList.reduce((s: number, p: any) => s + p.likes + p.comments + p.shares + p.saves, 0);
+          igEngagements = postEngagements;
         }
       }
-      igPostsList = igMediaWithInsights;
-    }
 
-    // Format FB posts — post-level insights not available on New Pages Experience
-    // Use likes/comments/shares from the post object directly
-    const fbPostsFormatted: any[] = [];
-    for (const p of fbPosts) {
-      const likes = p.likes?.summary?.total_count || 0;
-      const comments = p.comments?.summary?.total_count || 0;
-      const shares = p.shares?.count || 0;
-      const att = p.attachments?.data?.[0];
-      const attType = att?.type || att?.media_type || "";
-      const type = attType.toLowerCase().includes("video") ? "reel" : attType.toLowerCase().includes("album") ? "carousel" : "image";
-      const thumbnail = att?.media?.image?.src || "";
-      const totalEng = likes + comments + shares;
+      // Format FB posts
+      const fbPostsFormatted: any[] = [];
+      for (const p of fbPosts) {
+        const likes = p.likes?.summary?.total_count || 0;
+        const comments = p.comments?.summary?.total_count || 0;
+        const shares = p.shares?.count || 0;
+        const att = p.attachments?.data?.[0];
+        const attType = att?.type || att?.media_type || "";
+        const type = attType.toLowerCase().includes("video") ? "reel" : attType.toLowerCase().includes("album") ? "carousel" : "image";
+        const thumbnail = att?.media?.image?.src || "";
+        const totalEng = likes + comments + shares;
+        // FB post-level reach/impressions not available on New Pages Experience
+        // Use engagementRate from totalEng / fbFans as approximation
+        const engRate = fbFans > 0 ? safeDiv(totalEng, fbFans) : 0;
 
-      fbPostsFormatted.push({
-        id: p.id,
-        platform: "facebook",
-        type,
-        caption: p.message || "",
-        publishedAt: p.created_time,
-        thumbnail,
-        reach: 0,
-        impressions: 0,
-        likes,
-        comments,
-        shares,
-        saves: 0,
-        engagementRate: 0,
-        clicks: 0,
-      });
-    }
+        fbPostsFormatted.push({
+          id: p.id, platform: "facebook", type,
+          caption: p.message || "", publishedAt: p.created_time,
+          thumbnail,
+          permalink: p.permalink_url || "",
+          reach: 0, impressions: 0,
+          likes, comments, shares, saves: 0,
+          engagementRate: engRate, clicks: 0,
+        });
+      }
 
-    const allPosts = [
-      ...(platform === "instagram" ? [] : fbPostsFormatted),
-      ...(platform === "facebook" ? [] : igPostsList),
-    ].sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+      const allPosts = [
+        ...(platform === "instagram" ? [] : fbPostsFormatted),
+        ...(platform === "facebook" ? [] : igPostsList),
+      ].sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
 
-    const totalReach = platform === "facebook" ? fbReach : platform === "instagram" ? igReach : fbReach + igReach;
-    const totalImpressions = platform === "facebook" ? fbImpressions : platform === "instagram" ? igImpressions : fbImpressions + igImpressions;
-    const totalEngagements = fbEngagements + igEngagements;
-    const totalProfileVisits = fbProfileVisits + igProfileViews;
-    const totalWebsiteClicks = fbWebsiteClicks + igWebsiteClicks;
-    const engagementRate = safeDiv(totalEngagements, totalReach);
+      const totalReach = platform === "facebook" ? fbReach : platform === "instagram" ? igReach : fbReach + igReach;
+      const totalImpressions = platform === "facebook" ? fbImpressions : platform === "instagram" ? igImpressions : fbImpressions + igImpressions;
+      const totalEngagements = fbEngagements + igEngagements;
+      const totalProfileVisits = fbProfileVisits + igProfileViews;
+      const totalWebsiteClicks = fbWebsiteClicks + igWebsiteClicks;
+      const engagementRate = safeDiv(totalEngagements, totalReach);
 
-    const typeMap: Record<string, { count: number; totalEng: number }> = {};
-    for (const p of allPosts) {
-      const label = p.type === "reel" ? "Reel/Video" : p.type.charAt(0).toUpperCase() + p.type.slice(1);
-      if (!typeMap[label]) typeMap[label] = { count: 0, totalEng: 0 };
-      typeMap[label].count++;
-      typeMap[label].totalEng += p.engagementRate;
-    }
-    const byType = Object.entries(typeMap).map(([type, v]) => ({
-      type,
-      count: v.count,
-      avgEngagement: parseFloat((v.totalEng / v.count).toFixed(1)),
-    }));
-
-    const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-    const dayMap: Record<string, { posts: number; totalEng: number }> = {};
-    for (const d of dayNames) dayMap[d] = { posts: 0, totalEng: 0 };
-    for (const p of allPosts) {
-      const day = dayNames[new Date(p.publishedAt).getDay()];
-      dayMap[day].posts++;
-      dayMap[day].totalEng += p.engagementRate;
-    }
-    const byDayOfWeek = dayNames.map((day) => ({
-      day,
-      posts: dayMap[day].posts,
-      avgEngagement: dayMap[day].posts > 0 ? parseFloat((dayMap[day].totalEng / dayMap[day].posts).toFixed(1)) : 0,
-    }));
-
-    const dailyMap: Record<string, { reach: number; eng: number; count: number }> = {};
-    for (const p of allPosts) {
-      const d = p.publishedAt.split("T")[0];
-      if (!dailyMap[d]) dailyMap[d] = { reach: 0, eng: 0, count: 0 };
-      dailyMap[d].reach += p.reach;
-      dailyMap[d].eng += p.engagementRate;
-      dailyMap[d].count++;
-    }
-    const dailyTrends = Object.entries(dailyMap)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, v]) => ({
-        date,
-        reach: v.reach,
-        engagementRate: parseFloat((v.eng / v.count).toFixed(1)),
+      const typeMap: Record<string, { count: number; totalEng: number }> = {};
+      for (const p of allPosts) {
+        const label = p.type === "reel" ? "Reel/Video" : p.type.charAt(0).toUpperCase() + p.type.slice(1);
+        if (!typeMap[label]) typeMap[label] = { count: 0, totalEng: 0 };
+        typeMap[label].count++;
+        typeMap[label].totalEng += p.engagementRate;
+      }
+      const byType = Object.entries(typeMap).map(([type, v]) => ({
+        type, count: v.count, avgEngagement: parseFloat((v.totalEng / v.count).toFixed(1)),
       }));
 
-    const topPostType = (arr: any[]) => {
-      if (!arr.length) return "image";
-      const counts: Record<string, number> = {};
-      for (const p of arr) { counts[p.type] = (counts[p.type] || 0) + 1; }
-      return Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
-    };
+      const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+      const dayMap: Record<string, { posts: number; totalEng: number }> = {};
+      for (const d of dayNames) dayMap[d] = { posts: 0, totalEng: 0 };
+      for (const p of allPosts) {
+        const day = dayNames[new Date(p.publishedAt).getDay()];
+        dayMap[day].posts++;
+        dayMap[day].totalEng += p.engagementRate;
+      }
+      const byDayOfWeek = dayNames.map((day) => ({
+        day, posts: dayMap[day].posts,
+        avgEngagement: dayMap[day].posts > 0 ? parseFloat((dayMap[day].totalEng / dayMap[day].posts).toFixed(1)) : 0,
+      }));
 
-    return new Response(JSON.stringify({
-      overview: {
-        totalFollowers: { facebook: fbFans, instagram: igFollowers },
-        followerGrowth: { facebook: 0, instagram: 0 },
-        totalPosts: allPosts.length,
-        totalReach: Math.round(totalReach),
-        totalImpressions: Math.round(totalImpressions),
-        totalEngagements: Math.round(totalEngagements),
-        engagementRate,
-        profileVisits: Math.round(totalProfileVisits),
-        websiteClicks: Math.round(totalWebsiteClicks),
-      },
-      posts: allPosts,
-      platformBreakdown: {
-        facebook: {
-          reach: Math.round(fbReach),
-          impressions: Math.round(fbImpressions),
-          engagements: Math.round(fbEngagements),
-          engagementRate: safeDiv(fbEngagements, fbReach),
-          topPostType: topPostType(fbPostsFormatted),
+      const dailyMap: Record<string, { reach: number; eng: number; count: number }> = {};
+      for (const p of allPosts) {
+        const d = p.publishedAt.split("T")[0];
+        if (!dailyMap[d]) dailyMap[d] = { reach: 0, eng: 0, count: 0 };
+        dailyMap[d].reach += p.reach;
+        dailyMap[d].eng += p.engagementRate;
+        dailyMap[d].count++;
+      }
+      const dailyTrends = Object.entries(dailyMap).sort(([a], [b]) => a.localeCompare(b)).map(([date, v]) => ({
+        date, reach: v.reach, engagementRate: parseFloat((v.eng / v.count).toFixed(1)),
+      }));
+
+      const topPostType = (arr: any[]) => {
+        if (!arr.length) return "image";
+        const counts: Record<string, number> = {};
+        for (const p of arr) counts[p.type] = (counts[p.type] || 0) + 1;
+        return Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
+      };
+
+      clearTimeout(timeoutId);
+
+      return new Response(JSON.stringify({
+        overview: {
+          totalFollowers: { facebook: fbFans, instagram: igFollowers },
+          followerGrowth: { facebook: 0, instagram: 0 },
+          totalPosts: allPosts.length,
+          totalReach: Math.round(totalReach),
+          totalImpressions: Math.round(totalImpressions),
+          totalEngagements: Math.round(totalEngagements),
+          engagementRate,
+          profileVisits: Math.round(totalProfileVisits),
+          websiteClicks: Math.round(totalWebsiteClicks),
         },
-        instagram: {
-          reach: Math.round(igReach),
-          impressions: Math.round(igImpressions),
-          engagements: Math.round(igEngagements),
-          engagementRate: safeDiv(igEngagements, igReach),
-          topPostType: topPostType(igPostsList),
+        posts: allPosts,
+        platformBreakdown: {
+          facebook: {
+            reach: Math.round(fbReach), impressions: Math.round(fbImpressions),
+            engagements: Math.round(fbEngagements), engagementRate: safeDiv(fbEngagements, fbReach),
+            topPostType: topPostType(fbPostsFormatted),
+          },
+          instagram: {
+            reach: Math.round(igReach), impressions: Math.round(igImpressions),
+            engagements: Math.round(igEngagements), engagementRate: safeDiv(igEngagements, igReach),
+            topPostType: topPostType(igPostsList),
+          },
         },
-      },
-      contentPerformance: { byType, byDayOfWeek },
-      dailyTrends,
-    }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+        contentPerformance: { byType, byDayOfWeek },
+        dailyTrends,
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    } catch (e) {
+      clearTimeout(timeoutId);
+      if (e.name === "AbortError") {
+        return new Response(JSON.stringify({ error: "Social media data is taking too long to load. Please try again with a shorter date range." }), { status: 504, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+      throw e;
+    }
   } catch (err) {
     console.error("[social-media-data] Error:", err);
-    return new Response(JSON.stringify({ error: err.message }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });
