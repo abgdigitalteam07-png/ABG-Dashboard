@@ -130,8 +130,7 @@ async function getPageFanCount(pageId: string, pageToken: string): Promise<numbe
 }
 
 async function getPagePosts(pageId: string, pageToken: string, since: string, until: string) {
-  // Don't request insights subfield inline — it can fail on v25.0
-  const fields = "id,message,created_time,shares,attachments";
+  const fields = "id,message,created_time,shares,likes.summary(true),comments.summary(true),attachments{type,media_type,media,subattachments}";
   const url = `${GRAPH}/${pageId}/posts?fields=${fields}&since=${since}&until=${until}&limit=50&access_token=${pageToken}`;
   console.log(`[getPagePosts] Fetching posts for page ${pageId}`);
   const res = await fetch(url);
@@ -142,6 +141,64 @@ async function getPagePosts(pageId: string, pageToken: string, since: string, un
   }
   console.log(`[getPagePosts] Got ${(data.data || []).length} posts`);
   return data.data || [];
+}
+
+// Fetch per-post insights for a single FB post (v25.0 — uses post_views metrics)
+async function getFbPostInsights(postId: string, pageToken: string): Promise<{ impressions: number; reach: number; engagedUsers: number; clicks: number }> {
+  const result = { impressions: 0, reach: 0, engagedUsers: 0, clicks: 0 };
+  const metricSets = [
+    "post_views,post_views_unique,post_engaged_users,post_clicks",
+    "post_impressions,post_impressions_unique,post_engaged_users,post_clicks",
+  ];
+  for (const metrics of metricSets) {
+    try {
+      const url = `${GRAPH}/${postId}/insights?metric=${metrics}&access_token=${pageToken}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.error) {
+        console.warn(`[getFbPostInsights] ${postId} metrics "${metrics}": ${data.error.message}`);
+        continue;
+      }
+      for (const item of (data.data || [])) {
+        const val = item.values?.[0]?.value || 0;
+        if (item.name === "post_views" || item.name === "post_impressions") result.impressions = val;
+        if (item.name === "post_views_unique" || item.name === "post_impressions_unique") result.reach = val;
+        if (item.name === "post_engaged_users") result.engagedUsers = val;
+        if (item.name === "post_clicks") result.clicks = val;
+      }
+      if (result.impressions > 0 || result.reach > 0) break;
+    } catch (e) {
+      console.warn(`[getFbPostInsights] fetch error for ${postId}: ${e.message}`);
+    }
+  }
+  return result;
+}
+
+// Fetch per-post insights for a single IG media object (v25.0 — no impressions, use views)
+async function getIgMediaInsights(mediaId: string, mediaType: string, pageToken: string): Promise<{ reach: number; impressions: number; saved: number; shares: number }> {
+  const result = { reach: 0, impressions: 0, saved: 0, shares: 0 };
+  const isReel = mediaType === "VIDEO";
+  const metrics = isReel ? "reach,saved,shares,plays" : "reach,saved,shares";
+  try {
+    const url = `${GRAPH}/${mediaId}/insights?metric=${metrics}&access_token=${pageToken}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.error) {
+      console.warn(`[getIgMediaInsights] ${mediaId}: ${data.error.message}`);
+      return result;
+    }
+    for (const item of (data.data || [])) {
+      const val = typeof item.values?.[0]?.value === "number" ? item.values[0].value : 0;
+      if (item.name === "reach") result.reach = val;
+      if (item.name === "plays") result.impressions = val;
+      if (item.name === "saved") result.saved = val;
+      if (item.name === "shares") result.shares = val;
+    }
+    if (result.impressions === 0) result.impressions = result.reach;
+  } catch (e) {
+    console.warn(`[getIgMediaInsights] fetch error for ${mediaId}: ${e.message}`);
+  }
+  return result;
 }
 
 // Generate 30-day chunks for IG insights (max 30 days per request)
@@ -214,11 +271,11 @@ async function getIgFollowers(igId: string, pageToken: string): Promise<number> 
 }
 
 async function getIgMedia(igId: string, pageToken: string, since: string, until: string) {
-  const fields = "id,caption,media_type,timestamp,like_count,comments_count,reach,impressions,saved,video_views";
+  const fields = "id,caption,media_type,timestamp,like_count,comments_count,thumbnail_url,media_url";
   const url = `${GRAPH}/${igId}/media?fields=${fields}&since=${since}&until=${until}&limit=50&access_token=${pageToken}`;
   const res = await fetch(url);
   const data = await res.json();
-  if (data.error) return [];
+  if (data.error) { console.warn(`[getIgMedia] Error: ${data.error.message}`); return []; }
   return data.data || [];
 }
 
@@ -290,54 +347,73 @@ Deno.serve(async (req) => {
       igEngagements = igInsights["total_interactions"] || igProfileViews;
       igWebsiteClicks = igInsights["website_clicks"] || 0;
 
-      igPostsList = igMedia.map((m: any) => {
-        const likes = m.like_count || 0;
-        const comments = m.comments_count || 0;
-        const saves = m.saved || 0;
-        const reach = m.reach || 0;
-        const impressions = m.impressions || 0;
-        const engRate = safeDiv(likes + comments + saves, reach);
-        const type = m.media_type === "VIDEO" ? "reel" : m.media_type === "CAROUSEL_ALBUM" ? "carousel" : "image";
-
-        return {
-          id: m.id,
-          platform: "instagram",
-          type,
-          caption: m.caption || "",
-          publishedAt: m.timestamp,
-          reach,
-          impressions,
-          likes,
-          comments,
-          shares: 0,
-          saves,
-          engagementRate: engRate,
-          clicks: 0,
-        };
-      });
+      // Fetch per-post insights for IG media in parallel (batch of 5)
+      const igMediaWithInsights: any[] = [];
+      for (let i = 0; i < igMedia.length; i += 5) {
+        const batch = igMedia.slice(i, i + 5);
+        const insights = await Promise.all(batch.map((m: any) => getIgMediaInsights(m.id, m.media_type || "", pageToken)));
+        for (let j = 0; j < batch.length; j++) {
+          const m = batch[j];
+          const ins = insights[j];
+          const likes = m.like_count || 0;
+          const comments = m.comments_count || 0;
+          const saves = ins.saved || 0;
+          const shares = ins.shares || 0;
+          const reach = ins.reach || 0;
+          const impressions = ins.impressions || 0;
+          const engRate = safeDiv(likes + comments + saves, reach);
+          const type = m.media_type === "VIDEO" ? "reel" : m.media_type === "CAROUSEL_ALBUM" ? "carousel" : "image";
+          igMediaWithInsights.push({
+            id: m.id,
+            platform: "instagram",
+            type,
+            caption: m.caption || "",
+            publishedAt: m.timestamp,
+            thumbnail: m.thumbnail_url || m.media_url || "",
+            reach,
+            impressions,
+            likes,
+            comments,
+            shares,
+            saves,
+            engagementRate: engRate,
+            clicks: 0,
+          });
+        }
+      }
+      igPostsList = igMediaWithInsights;
     }
 
-    const fbPostsFormatted = fbPosts.map((p: any) => {
+    // Format FB posts — post-level insights not available on New Pages Experience
+    // Use likes/comments/shares from the post object directly
+    const fbPostsFormatted: any[] = [];
+    for (const p of fbPosts) {
+      const likes = p.likes?.summary?.total_count || 0;
+      const comments = p.comments?.summary?.total_count || 0;
       const shares = p.shares?.count || 0;
-      const attType = p.attachments?.data?.[0]?.type || "";
-      const type = attType.includes("video") ? "reel" : attType.includes("album") ? "carousel" : "image";
+      const att = p.attachments?.data?.[0];
+      const attType = att?.type || att?.media_type || "";
+      const type = attType.toLowerCase().includes("video") ? "reel" : attType.toLowerCase().includes("album") ? "carousel" : "image";
+      const thumbnail = att?.media?.image?.src || "";
+      const totalEng = likes + comments + shares;
 
-      return {
+      fbPostsFormatted.push({
         id: p.id,
         platform: "facebook",
         type,
         caption: p.message || "",
         publishedAt: p.created_time,
+        thumbnail,
         reach: 0,
         impressions: 0,
-        likes: 0,
-        comments: 0,
+        likes,
+        comments,
         shares,
         saves: 0,
         engagementRate: 0,
         clicks: 0,
-      };
-    });
+      });
+    }
 
     const allPosts = [
       ...(platform === "instagram" ? [] : fbPostsFormatted),
