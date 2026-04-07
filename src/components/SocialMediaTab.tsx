@@ -143,8 +143,12 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
   if (!hasSocialMedia) {
     return (
       <div className="flex flex-col items-center justify-center py-24 text-center">
-        <p className="text-sm font-medium text-muted-foreground">No social media data available for {brand.name}.</p>
-        <p className="mt-1 text-xs text-muted-foreground">This brand does not have a connected Meta Business Suite account.</p>
+        <p className="text-sm font-medium text-muted-foreground">
+          {isParentBrand
+            ? "American Bath Group is the parent company. Please select an individual brand to view social media data."
+            : `No social media data available for ${brand.name}.`}
+        </p>
+        {!isParentBrand && <p className="mt-1 text-xs text-muted-foreground">This brand does not have a connected Meta Business Suite account.</p>}
       </div>
     );
   }
