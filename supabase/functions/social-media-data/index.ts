@@ -223,8 +223,11 @@ Deno.serve(async (req) => {
     const userToken = Deno.env.get("META_USER_ACCESS_TOKEN");
     if (!userToken) throw new Error("META_USER_ACCESS_TOKEN not configured");
 
-    const { pageId, igId } = brandConfig;
+    const { pageId } = brandConfig;
     const pageToken = await getPageToken(pageId, userToken);
+
+    // Dynamically discover the IG Business Account linked to this page
+    const igId = await getIgBusinessAccountId(pageId, pageToken);
 
     const [fbInsights, fbFans, fbPosts] = await Promise.all([
       getPageInsights(pageId, pageToken, startDate, endDate),
@@ -236,7 +239,6 @@ Deno.serve(async (req) => {
     const fbEngagements = fbInsights["page_post_engagements"] || fbInsights["page_engaged_users"] || 0;
     const fbProfileVisits = fbInsights["page_views_total"] || 0;
     const fbConsumptions = fbInsights["page_consumptions"] || 0;
-    // Use engagements as a proxy for reach/impressions since old metrics are deprecated
     const fbReach = fbProfileVisits + fbEngagements;
     const fbImpressions = fbReach + fbConsumptions;
     const fbWebsiteClicks = fbConsumptions;
