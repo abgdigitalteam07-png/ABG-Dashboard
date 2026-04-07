@@ -26,15 +26,23 @@ const GRAPH = "https://graph.facebook.com/v19.0";
 async function getPageToken(pageId: string, userToken: string): Promise<string> {
   const res = await fetch(`${GRAPH}/${pageId}?fields=access_token&access_token=${userToken}`);
   const data = await res.json();
+  if (data.error) {
+    console.warn(`[getPageToken] Failed for page ${pageId}: ${data.error.message}`);
+    return userToken;
+  }
+  console.log(`[getPageToken] Got page token for ${pageId}: ${data.access_token ? "yes" : "no"}`);
   return data.access_token || userToken;
 }
 
-async function getPageInsights(pageId: string, pageToken: string, since: string, until: string) {
+async function getPageInsights(pageId: string, pageToken: string, since: string, until: string): Promise<Record<string, number>> {
   const metrics = "page_impressions,page_reach,page_engaged_users,page_views_total,page_website_clicks_logged_in_unique";
   const url = `${GRAPH}/${pageId}/insights?metric=${metrics}&since=${since}&until=${until}&period=total_over_range&access_token=${pageToken}`;
   const res = await fetch(url);
   const data = await res.json();
-  if (data.error) throw new Error(`FB Insights error: ${data.error.message}`);
+  if (data.error) {
+    console.warn(`[getPageInsights] Error for page ${pageId}: ${data.error.message} (code: ${data.error.code}, subcode: ${data.error.error_subcode})`);
+    return {};
+  }
   const result: Record<string, number> = {};
   for (const item of (data.data || [])) {
     const val = item.values?.[0]?.value;
