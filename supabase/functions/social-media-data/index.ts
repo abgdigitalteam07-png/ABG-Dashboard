@@ -76,6 +76,7 @@ async function getIgBusinessAccountId(pageId: string, pageToken: string): Promis
   try {
     const res = await fetch(url);
     const data = await res.json();
+    console.log(`[getIgBusinessAccountId] Raw response for page ${pageId}:`, JSON.stringify(data));
     if (data.error) {
       console.warn(`[getIgBusinessAccountId] Error for page ${pageId}: ${data.error.message}`);
       return null;
@@ -90,32 +91,53 @@ async function getIgBusinessAccountId(pageId: string, pageToken: string): Promis
 }
 
 async function getPageInsights(pageId: string, pageToken: string, since: string, until: string): Promise<Record<string, number>> {
-  // Try multiple metric sets - v25.0 has deprecated many old metrics
-  const metricSets = [
+  // v25.0: fetch each metric individually with period=day, chunk by 90 days max
+  const metrics = [
+    "page_impressions",
+    "page_impressions_unique",
     "page_views_total",
     "page_post_engagements",
+    "page_fan_adds",
   ];
   
   const result: Record<string, number> = {};
   
-  for (const metric of metricSets) {
-    const url = `${GRAPH}/${pageId}/insights?metric=${metric}&since=${since}&until=${until}&period=day&access_token=${pageToken}`;
-    try {
-      const res = await fetch(url);
-      const data = await res.json();
-      if (data.error) {
-        console.warn(`[getPageInsights] Metric "${metric}" failed: ${data.error.message}`);
-        continue;
-      }
-      for (const item of (data.data || [])) {
-        let total = 0;
-        for (const v of (item.values || [])) {
-          total += typeof v.value === "number" ? v.value : 0;
+  // Chunk into 90-day windows to avoid API limits
+  const chunks: Array<{ since: string; until: string }> = [];
+  const start = new Date(since);
+  const end = new Date(until);
+  let current = new Date(start);
+  while (current < end) {
+    const chunkEnd = new Date(current);
+    chunkEnd.setDate(chunkEnd.getDate() + 89);
+    const actualEnd = chunkEnd > end ? end : chunkEnd;
+    chunks.push({
+      since: current.toISOString().split("T")[0],
+      until: actualEnd.toISOString().split("T")[0],
+    });
+    current = actualEnd;
+  }
+  
+  for (const chunk of chunks) {
+    for (const metric of metrics) {
+      const url = `${GRAPH}/${pageId}/insights?metric=${metric}&since=${chunk.since}&until=${chunk.until}&period=day&access_token=${pageToken}`;
+      try {
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data.error) {
+          console.warn(`[getPageInsights] Metric "${metric}" chunk ${chunk.since}..${chunk.until} failed: ${data.error.message}`);
+          continue;
         }
-        result[item.name] = total;
+        for (const item of (data.data || [])) {
+          let total = 0;
+          for (const v of (item.values || [])) {
+            total += typeof v.value === "number" ? v.value : 0;
+          }
+          result[item.name] = (result[item.name] || 0) + total;
+        }
+      } catch (e) {
+        console.warn(`[getPageInsights] Fetch error for "${metric}": ${e.message}`);
       }
-    } catch (e) {
-      console.warn(`[getPageInsights] Fetch error for "${metric}": ${e.message}`);
     }
   }
   
@@ -322,13 +344,12 @@ Deno.serve(async (req) => {
       getPagePosts(pageId, pageToken, startDate, endDate),
     ]);
 
-    // Map to new v25.0 metric names
-    const fbEngagements = fbInsights["page_post_engagements"] || fbInsights["page_engaged_users"] || 0;
+    // Map v25.0 metric names
+    const fbImpressions = fbInsights["page_impressions"] || 0;
+    const fbReach = fbInsights["page_impressions_unique"] || 0;
     const fbProfileVisits = fbInsights["page_views_total"] || 0;
-    const fbConsumptions = fbInsights["page_consumptions"] || 0;
-    const fbReach = fbProfileVisits + fbEngagements;
-    const fbImpressions = fbReach + fbConsumptions;
-    const fbWebsiteClicks = fbConsumptions;
+    const fbEngagements = fbInsights["page_post_engagements"] || 0;
+    const fbWebsiteClicks = fbProfileVisits; // approximate
 
     let igFollowers = 0, igReach = 0, igImpressions = 0, igEngagements = 0, igProfileViews = 0, igWebsiteClicks = 0;
     let igPostsList: any[] = [];
