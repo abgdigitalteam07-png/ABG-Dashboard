@@ -153,16 +153,23 @@ async function getPageFanCount(pageId: string, pageToken: string): Promise<numbe
 
 async function getPagePosts(pageId: string, pageToken: string, since: string, until: string) {
   const fields = "id,message,created_time,shares,likes.summary(true),comments.summary(true),attachments{type,media_type,media,subattachments}";
-  const url = `${GRAPH}/${pageId}/posts?fields=${fields}&since=${since}&until=${until}&limit=50&access_token=${pageToken}`;
-  console.log(`[getPagePosts] Fetching posts for page ${pageId}`);
-  const res = await fetch(url);
-  const data = await res.json();
-  if (data.error) {
-    console.warn(`[getPagePosts] Error: ${data.error.message}`);
-    return [];
+  let url: string | null = `${GRAPH}/${pageId}/posts?fields=${fields}&since=${since}&until=${until}&limit=100&access_token=${pageToken}`;
+  console.log(`[getPagePosts] Fetching posts for page ${pageId} since=${since} until=${until}`);
+  const allPosts: any[] = [];
+  const maxPosts = 200;
+  while (url && allPosts.length < maxPosts) {
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.error) {
+      console.warn(`[getPagePosts] Error: ${data.error.message}`);
+      break;
+    }
+    const posts = data.data || [];
+    allPosts.push(...posts);
+    url = (allPosts.length < maxPosts && data.paging?.next) ? data.paging.next : null;
   }
-  console.log(`[getPagePosts] Got ${(data.data || []).length} posts`);
-  return data.data || [];
+  console.log(`[getPagePosts] Total FB posts fetched for page ${pageId}: ${allPosts.length}`);
+  return allPosts;
 }
 
 // Fetch per-post insights for a single FB post (v25.0 — uses post_views metrics)
@@ -294,11 +301,18 @@ async function getIgFollowers(igId: string, pageToken: string): Promise<number> 
 
 async function getIgMedia(igId: string, pageToken: string, since: string, until: string) {
   const fields = "id,caption,media_type,timestamp,like_count,comments_count,thumbnail_url,media_url";
-  const url = `${GRAPH}/${igId}/media?fields=${fields}&since=${since}&until=${until}&limit=50&access_token=${pageToken}`;
-  const res = await fetch(url);
-  const data = await res.json();
-  if (data.error) { console.warn(`[getIgMedia] Error: ${data.error.message}`); return []; }
-  return data.data || [];
+  let url: string | null = `${GRAPH}/${igId}/media?fields=${fields}&since=${since}&until=${until}&limit=100&access_token=${pageToken}`;
+  const allMedia: any[] = [];
+  const maxMedia = 200;
+  while (url && allMedia.length < maxMedia) {
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.error) { console.warn(`[getIgMedia] Error: ${data.error.message}`); break; }
+    allMedia.push(...(data.data || []));
+    url = (allMedia.length < maxMedia && data.paging?.next) ? data.paging.next : null;
+  }
+  console.log(`[getIgMedia] Total IG posts fetched for IG ${igId}: ${allMedia.length}`);
+  return allMedia;
 }
 
 function safeDiv(a: number, b: number): number {
