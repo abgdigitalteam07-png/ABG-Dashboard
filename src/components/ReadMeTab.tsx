@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table";
-import { Check, Minus, Search, BookOpen, BarChart3, Mail } from "lucide-react";
+import { Check, Minus, Search, BookOpen, BarChart3, Mail, Share2 } from "lucide-react";
 import { brands } from "@/lib/brands";
 
 /* ── colour helpers (semantic tokens only) ── */
@@ -49,40 +49,41 @@ const crmMetrics = [
 ];
 
 /* ── Brand matrix (static, matches spec exactly — 27 brands) ── */
-const brandMatrix: { name: string; hubspot: boolean; ga4: boolean; gsc: boolean }[] = [
-  { name: "A2Bath", hubspot: false, ga4: true, gsc: false },
-  { name: "ABG Home Services", hubspot: false, ga4: true, gsc: false },
-  { name: "ABG Hospitality", hubspot: true, ga4: true, gsc: true },
-  { name: "Accessible Home Store", hubspot: true, ga4: false, gsc: false },
-  { name: "Aker", hubspot: true, ga4: false, gsc: true },
-  { name: "Amazing Shower Door", hubspot: false, ga4: true, gsc: false },
-  { name: "American Bath Group", hubspot: false, ga4: false, gsc: true },
-  { name: "American Whirlpool", hubspot: false, ga4: true, gsc: true },
-  { name: "Aquarius", hubspot: true, ga4: true, gsc: true },
-  { name: "Aquatic", hubspot: true, ga4: true, gsc: true },
-  { name: "Bootz", hubspot: true, ga4: true, gsc: true },
-  { name: "Briggs Bath", hubspot: false, ga4: true, gsc: false },
-  { name: "Clarion", hubspot: true, ga4: false, gsc: true },
-  { name: "Coastal Shower Doors", hubspot: false, ga4: true, gsc: true },
-  { name: "Comfort Designs", hubspot: true, ga4: true, gsc: true },
-  { name: "DreamLine", hubspot: true, ga4: false, gsc: true },
-  { name: "Florestone", hubspot: true, ga4: true, gsc: true },
-  { name: "Hamilton", hubspot: true, ga4: true, gsc: true },
-  { name: "IMI", hubspot: true, ga4: true, gsc: false },
-  { name: "Laurel Mountain", hubspot: true, ga4: true, gsc: true },
-  { name: "MAAX", hubspot: true, ga4: true, gsc: true },
-  { name: "Maidstone", hubspot: true, ga4: true, gsc: true },
-  { name: "Neptune", hubspot: true, ga4: true, gsc: true },
-  { name: "RBS", hubspot: true, ga4: false, gsc: true },
-  { name: "Swan", hubspot: true, ga4: true, gsc: true },
-  { name: "Vintage.ca", hubspot: true, ga4: false, gsc: false },
-  { name: "Vita Spa", hubspot: false, ga4: true, gsc: true },
+const brandMatrix: { name: string; hubspot: boolean; ga4: boolean; gsc: boolean; meta: boolean }[] = [
+  { name: "A2Bath", hubspot: false, ga4: true, gsc: false, meta: false },
+  { name: "ABG Home Services", hubspot: false, ga4: true, gsc: false, meta: true },
+  { name: "ABG Hospitality", hubspot: true, ga4: true, gsc: true, meta: false },
+  { name: "Accessible Home Store", hubspot: true, ga4: false, gsc: false, meta: true },
+  { name: "Aker", hubspot: true, ga4: false, gsc: true, meta: true },
+  { name: "Amazing Shower Door", hubspot: false, ga4: true, gsc: false, meta: false },
+  { name: "American Bath Group", hubspot: false, ga4: false, gsc: true, meta: true },
+  { name: "American Whirlpool", hubspot: false, ga4: true, gsc: true, meta: true },
+  { name: "Aquarius", hubspot: true, ga4: true, gsc: true, meta: false },
+  { name: "Aquatic", hubspot: true, ga4: true, gsc: true, meta: true },
+  { name: "Bootz", hubspot: true, ga4: true, gsc: true, meta: true },
+  { name: "Briggs Bath", hubspot: false, ga4: true, gsc: false, meta: false },
+  { name: "Clarion", hubspot: true, ga4: false, gsc: true, meta: false },
+  { name: "Coastal Shower Doors", hubspot: false, ga4: true, gsc: true, meta: true },
+  { name: "Comfort Designs", hubspot: true, ga4: true, gsc: true, meta: false },
+  { name: "DreamLine", hubspot: true, ga4: false, gsc: true, meta: true },
+  { name: "Florestone", hubspot: true, ga4: true, gsc: true, meta: false },
+  { name: "Hamilton", hubspot: true, ga4: true, gsc: true, meta: false },
+  { name: "IMI", hubspot: true, ga4: true, gsc: false, meta: true },
+  { name: "Laurel Mountain", hubspot: true, ga4: true, gsc: true, meta: true },
+  { name: "MAAX", hubspot: true, ga4: true, gsc: true, meta: true },
+  { name: "Maidstone", hubspot: true, ga4: true, gsc: true, meta: true },
+  { name: "Neptune", hubspot: true, ga4: true, gsc: true, meta: true },
+  { name: "RBS", hubspot: true, ga4: false, gsc: true, meta: false },
+  { name: "Swan", hubspot: true, ga4: true, gsc: true, meta: true },
+  { name: "Vintage.ca", hubspot: true, ga4: false, gsc: false, meta: true },
+  { name: "Vita Spa", hubspot: false, ga4: true, gsc: true, meta: true },
 ];
 
 const totals = {
   hubspot: brandMatrix.filter((b) => b.hubspot).length,
   ga4: brandMatrix.filter((b) => b.ga4).length,
   gsc: brandMatrix.filter((b) => b.gsc).length,
+  meta: brandMatrix.filter((b) => b.meta).length,
 };
 
 /* ── Component ── */
