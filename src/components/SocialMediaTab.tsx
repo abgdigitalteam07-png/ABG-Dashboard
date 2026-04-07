@@ -177,6 +177,12 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
   // Chart colors
   const FB_COLOR = "hsl(221, 44%, 41%)";
   const IG_COLOR = "hsl(340, 75%, 54%)";
+  const typeColors: Record<string, string> = {
+    Image: "hsl(221, 44%, 41%)",
+    "Reel/Video": "hsl(340, 75%, 54%)",
+    Carousel: "hsl(45, 93%, 47%)",
+    Story: "hsl(142, 71%, 45%)",
+  };
 
   return (
     <div className="space-y-6">
