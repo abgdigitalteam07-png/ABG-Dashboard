@@ -255,9 +255,9 @@ Deno.serve(async (req) => {
 
       igFollowers = igFollowerCount;
       igReach = igInsights["reach"] || 0;
-      igImpressions = igInsights["impressions"] || 0;
+      igImpressions = igReach; // impressions deprecated, use reach
       igProfileViews = igInsights["profile_views"] || 0;
-      igEngagements = igProfileViews;
+      igEngagements = igInsights["total_interactions"] || igProfileViews;
       igWebsiteClicks = igInsights["website_clicks"] || 0;
 
       igPostsList = igMedia.map((m: any) => {
