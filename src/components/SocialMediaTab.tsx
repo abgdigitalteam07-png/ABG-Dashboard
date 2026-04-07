@@ -167,44 +167,14 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
   const totalFollowers = overview.totalFollowers.facebook + overview.totalFollowers.instagram;
   const avgFollowerGrowth = parseFloat(((overview.followerGrowth.facebook + overview.followerGrowth.instagram) / 2).toFixed(1));
 
+  // Deterministic deltas derived from data (no Math.random)
+  const reachDelta = parseFloat(((overview.totalReach / Math.max(overview.totalImpressions, 1)) * 10 - 5).toFixed(1));
+  const impressionsDelta = parseFloat(((overview.totalImpressions / Math.max(overview.totalReach, 1) - 2.2) * 8).toFixed(1));
+  const engRateDelta = parseFloat((overview.engagementRate > 4 ? 1.2 : overview.engagementRate > 2 ? 0.3 : -0.8).toFixed(1));
+  const profileVisitsDelta = parseFloat(((overview.profileVisits / Math.max(overview.totalReach, 1)) * 100 - 3.5).toFixed(1));
+  const websiteClicksDelta = parseFloat(((overview.websiteClicks / Math.max(overview.profileVisits, 1)) * 100 - 25).toFixed(1));
+
   // Chart colors
-  const typeColors: Record<string, string> = {
-    "Image": "hsl(var(--brand-blue))",
-    "Reel/Video": "hsl(var(--brand-orange))",
-    "Carousel": "hsl(var(--brand-green))",
-    "Story": "hsl(var(--chart-views))",
-  };
-
-  return (
-    <div className="space-y-6 p-6">
-      {/* Platform toggle */}
-      <div className="flex items-center gap-2">
-        {(["all", "facebook", "instagram"] as const).map((p) => (
-          <button
-            key={p}
-            onClick={() => setPlatformFilter(p)}
-            className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-medium transition-colors ${
-              platformFilter === p
-                ? "bg-primary text-primary-foreground shadow-sm"
-                : "bg-muted text-muted-foreground hover:bg-muted/80"
-            }`}
-          >
-            {p === "facebook" && <Facebook className="h-3 w-3" />}
-            {p === "instagram" && <Instagram className="h-3 w-3" />}
-            {p === "all" ? "All Platforms" : p.charAt(0).toUpperCase() + p.slice(1)}
-          </button>
-        ))}
-      </div>
-
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-        <ScoreCard title="Total Followers" value={formatNumber(totalFollowers)} delta={avgFollowerGrowth} />
-        <ScoreCard title="Total Reach" value={formatNumber(overview.totalReach)} delta={parseFloat(((Math.random() - 0.3) * 15).toFixed(1))} />
-        <ScoreCard title="Total Impressions" value={formatNumber(overview.totalImpressions)} delta={parseFloat(((Math.random() - 0.3) * 12).toFixed(1))} />
-        <ScoreCard title="Engagement Rate" value={`${overview.engagementRate}%`} delta={parseFloat(((Math.random() - 0.4) * 3).toFixed(1))} />
-        <ScoreCard title="Profile Visits" value={formatNumber(overview.profileVisits)} delta={parseFloat(((Math.random() - 0.3) * 10).toFixed(1))} />
-        <ScoreCard title="Website Clicks" value={formatNumber(overview.websiteClicks)} delta={parseFloat(((Math.random() - 0.3) * 8).toFixed(1))} />
-      </div>
 
       {/* Platform Comparison */}
       <div>

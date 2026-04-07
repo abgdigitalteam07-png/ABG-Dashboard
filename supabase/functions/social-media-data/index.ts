@@ -69,16 +69,17 @@ function generateMockData(brandName: string, startDate: string, endDate: string,
   if (!config) return null;
 
   const range = categoryRanges[config.category as keyof typeof categoryRanges];
-  const seed = hashString(brandName + "social");
+  const seed = hashString(brandName + startDate + endDate + "social");
   const rand = seededRandom(seed);
 
   const start = new Date(startDate);
   const end = new Date(endDate);
   const days = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
+  const daysFactor = Math.max(0.25, days / 30);
 
   const fbFollowers = Math.round(range.followersMin + rand() * (range.followersMax - range.followersMin));
   const igFollowers = Math.round(fbFollowers * (0.3 + rand() * 0.5));
-  const totalReach = Math.round(range.reachMin + rand() * (range.reachMax - range.reachMin)) * Math.max(1, Math.round(days / 30));
+  const totalReach = Math.round((range.reachMin + rand() * (range.reachMax - range.reachMin)) * daysFactor);
   const fbReach = Math.round(totalReach * (0.5 + rand() * 0.2));
   const igReach = totalReach - fbReach;
   const totalImpressions = Math.round(totalReach * (2.2 + rand() * 1.5));
@@ -92,7 +93,7 @@ function generateMockData(brandName: string, startDate: string, endDate: string,
   const websiteClicks = Math.round(profileVisits * (0.2 + rand() * 0.15));
 
   // Generate posts
-  const postCount = 8 + Math.round(rand() * 7);
+  const postCount = Math.max(1, Math.round((2 + rand() * 3) * daysFactor));
   const posts: any[] = [];
   for (let i = 0; i < postCount; i++) {
     const r = seededRandom(seed + i + 100);
@@ -194,10 +195,13 @@ function generateMockData(brandName: string, startDate: string, endDate: string,
   return {
     overview: {
       totalFollowers: { facebook: fbFollowers, instagram: igFollowers },
-      followerGrowth: {
-        facebook: parseFloat(((rand() - 0.2) * 12).toFixed(1)),
-        instagram: parseFloat(((rand() - 0.1) * 15).toFixed(1)),
-      },
+      followerGrowth: (() => {
+        const growthRand = seededRandom(hashString(brandName + startDate + endDate + "growth"));
+        return {
+          facebook: parseFloat(((growthRand() - 0.2) * 12).toFixed(1)),
+          instagram: parseFloat(((growthRand() - 0.1) * 15).toFixed(1)),
+        };
+      })(),
       totalPosts: filteredPosts.length,
       totalReach: platformFilter === "facebook" ? fbReach : platformFilter === "instagram" ? igReach : totalReach,
       totalImpressions: platformFilter === "facebook" ? fbImpressions : platformFilter === "instagram" ? igImpressions : totalImpressions,
