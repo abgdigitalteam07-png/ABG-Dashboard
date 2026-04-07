@@ -12,53 +12,23 @@ interface AuthGuardProps {
 export function AuthGuard({ children }: AuthGuardProps) {
   const [loading, setLoading] = useState(true);
   const [authenticated, setAuthenticated] = useState(false);
+  const [timedOut, setTimedOut] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (!session) {
-          setAuthenticated(false);
-          setLoading(false);
-          navigate("/login", { replace: true });
-          return;
-        }
+    let mounted = true;
 
-        // Check if user is active
-        const { data: profile } = await supabase
-          .from("user_profiles")
-          .select("is_active")
-          .eq("id", session.user.id)
-          .single();
-
-        if (profile && !profile.is_active) {
-          await supabase.auth.signOut();
-          navigate("/login", { state: { deactivated: true }, replace: true });
-          return;
-        }
-
-        // Log login on SIGNED_IN event
-        if (event === "SIGNED_IN") {
-          await supabase.from("user_activity_log").insert({
-            user_id: session.user.id,
-            email: session.user.email || "",
-            action: "login",
-            metadata: {},
-          });
-          // Update last_login_at
-          await supabase
-            .from("user_profiles")
-            .update({ last_login_at: new Date().toISOString() })
-            .eq("id", session.user.id);
-        }
-
-        setAuthenticated(true);
-        setLoading(false);
+    // Timeout: if loading takes >5s, show fallback
+    const timeout = setTimeout(() => {
+      if (mounted && loading) {
+        setTimedOut(true);
       }
-    );
+    }, 5000);
 
-    // Initial session check
+    // 1. Check existing session first
     supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!mounted) return;
+
       if (!session) {
         setAuthenticated(false);
         setLoading(false);
@@ -66,11 +36,14 @@ export function AuthGuard({ children }: AuthGuardProps) {
         return;
       }
 
+      // Check if user is active
       const { data: profile } = await supabase
         .from("user_profiles")
         .select("is_active")
         .eq("id", session.user.id)
         .single();
+
+      if (!mounted) return;
 
       if (profile && !profile.is_active) {
         await supabase.auth.signOut();
@@ -82,7 +55,44 @@ export function AuthGuard({ children }: AuthGuardProps) {
       setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    // 2. Listen for auth state changes (sign-in, sign-out, token refresh)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (!mounted) return;
+
+        if (!session) {
+          setAuthenticated(false);
+          setLoading(false);
+          navigate("/login", { replace: true });
+          return;
+        }
+
+        if (event === "SIGNED_IN") {
+          // Log login
+          supabase.from("user_activity_log").insert({
+            user_id: session.user.id,
+            email: session.user.email || "",
+            action: "login",
+            metadata: {},
+          });
+          supabase
+            .from("user_profiles")
+            .update({ last_login_at: new Date().toISOString() })
+            .eq("id", session.user.id);
+        }
+
+        if (event === "TOKEN_REFRESHED" || event === "SIGNED_IN") {
+          setAuthenticated(true);
+          setLoading(false);
+        }
+      }
+    );
+
+    return () => {
+      mounted = false;
+      clearTimeout(timeout);
+      subscription.unsubscribe();
+    };
   }, [navigate]);
 
   if (loading) {
@@ -93,6 +103,17 @@ export function AuthGuard({ children }: AuthGuardProps) {
           <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
           <span className="text-primary-foreground text-sm font-medium">Loading dashboard…</span>
         </div>
+        {timedOut && (
+          <button
+            onClick={() => {
+              supabase.auth.signOut();
+              navigate("/login", { replace: true });
+            }}
+            className="text-primary-foreground/80 hover:text-primary-foreground text-sm underline underline-offset-4 transition-colors"
+          >
+            Taking too long? Click here to sign in again
+          </button>
+        )}
       </div>
     );
   }
