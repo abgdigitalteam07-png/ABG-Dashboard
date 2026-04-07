@@ -169,7 +169,7 @@ async function getIgFollowers(igId: string, pageToken: string): Promise<number> 
 }
 
 async function getIgMedia(igId: string, pageToken: string, since: string, until: string) {
-  const fields = "id,caption,media_type,timestamp,like_count,comments_count,thumbnail_url,media_url,permalink";
+  const fields = "id,caption,media_type,media_product_type,timestamp,like_count,comments_count,thumbnail_url,media_url,permalink";
   let url: string | null = `${GRAPH}/${igId}/media?fields=${fields}&since=${since}&until=${until}&limit=100&access_token=${pageToken}`;
   const allMedia: any[] = [];
   while (url && allMedia.length < 200) {
@@ -278,7 +278,8 @@ Deno.serve(async (req) => {
             const impressions = ins.impressions || 0;
             const totalEng = likes + comments + saves + shares;
             const engRate = safeDiv(totalEng, reach);
-            const type = m.media_type === "VIDEO" ? "reel" : m.media_type === "CAROUSEL_ALBUM" ? "carousel" : "image";
+            const isReel = m.media_product_type === "REELS";
+            const type = isReel ? "reel" : m.media_type === "VIDEO" ? "video" : m.media_type === "CAROUSEL_ALBUM" ? "carousel" : "image";
             igPostsList.push({
               id: m.id, platform: "instagram", type,
               caption: m.caption || "", publishedAt: m.timestamp,
@@ -336,15 +337,19 @@ Deno.serve(async (req) => {
       const engagementRate = safeDiv(totalEngagements, totalReach);
 
       const typeMap: Record<string, { count: number; totalEng: number }> = {};
+      // Ensure all standard types are present
+      for (const t of ["Image", "Reel", "Video", "Carousel"]) typeMap[t] = { count: 0, totalEng: 0 };
       for (const p of allPosts) {
-        const label = p.type === "reel" ? "Reel/Video" : p.type.charAt(0).toUpperCase() + p.type.slice(1);
+        const label = p.type === "reel" ? "Reel" : p.type === "video" ? "Video" : p.type.charAt(0).toUpperCase() + p.type.slice(1);
         if (!typeMap[label]) typeMap[label] = { count: 0, totalEng: 0 };
         typeMap[label].count++;
         typeMap[label].totalEng += p.engagementRate;
       }
-      const byType = Object.entries(typeMap).map(([type, v]) => ({
-        type, count: v.count, avgEngagement: parseFloat((v.totalEng / v.count).toFixed(1)),
-      }));
+      const byType = Object.entries(typeMap)
+        .filter(([_, v]) => v.count > 0 || ["Image", "Reel", "Video"].includes(_))
+        .map(([type, v]) => ({
+          type, count: v.count, avgEngagement: v.count > 0 ? parseFloat((v.totalEng / v.count).toFixed(1)) : 0,
+        }));
 
       const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
       const dayMap: Record<string, { posts: number; totalEng: number }> = {};

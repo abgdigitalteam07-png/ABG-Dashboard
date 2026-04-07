@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table";
-import { Check, Minus, Search, BookOpen, BarChart3, Mail } from "lucide-react";
+import { Check, Minus, Search, BookOpen, BarChart3, Mail, Share2 } from "lucide-react";
 import { brands } from "@/lib/brands";
 
 /* ── colour helpers (semantic tokens only) ── */
@@ -48,41 +48,55 @@ const crmMetrics = [
   ["Lifecycle Stage Breakdown", "Bar chart showing contact distribution across HubSpot lifecycle stages (Subscriber, Lead, MQL, SQL, Opportunity, Customer)"],
 ];
 
+const socialMetrics = [
+  ["Impressions", "Total times content was displayed, whether clicked or not"],
+  ["Reach", "Number of unique accounts that saw the content"],
+  ["Engagement Rate", "(Likes + Comments + Shares + Saves) ÷ Reach × 100"],
+  ["Engagements", "Total interactions: likes, comments, shares, saves"],
+  ["Clicks", "Number of times a post or link was clicked"],
+  ["Followers", "Total page followers at end of selected period"],
+  ["Post Reach", "Unique accounts that saw a specific post"],
+  ["Post Impressions", "Total times a specific post was displayed"],
+  ["Saves", "Times a post was saved (Instagram only)"],
+  ["Shares", "Times a post was shared or forwarded"],
+];
+
 /* ── Brand matrix (static, matches spec exactly — 27 brands) ── */
-const brandMatrix: { name: string; hubspot: boolean; ga4: boolean; gsc: boolean }[] = [
-  { name: "A2Bath", hubspot: false, ga4: true, gsc: false },
-  { name: "ABG Home Services", hubspot: false, ga4: true, gsc: false },
-  { name: "ABG Hospitality", hubspot: true, ga4: true, gsc: true },
-  { name: "Accessible Home Store", hubspot: true, ga4: false, gsc: false },
-  { name: "Aker", hubspot: true, ga4: false, gsc: true },
-  { name: "Amazing Shower Door", hubspot: false, ga4: true, gsc: false },
-  { name: "American Bath Group", hubspot: false, ga4: false, gsc: true },
-  { name: "American Whirlpool", hubspot: false, ga4: true, gsc: true },
-  { name: "Aquarius", hubspot: true, ga4: true, gsc: true },
-  { name: "Aquatic", hubspot: true, ga4: true, gsc: true },
-  { name: "Bootz", hubspot: true, ga4: true, gsc: true },
-  { name: "Briggs Bath", hubspot: false, ga4: true, gsc: false },
-  { name: "Clarion", hubspot: true, ga4: false, gsc: true },
-  { name: "Coastal Shower Doors", hubspot: false, ga4: true, gsc: true },
-  { name: "Comfort Designs", hubspot: true, ga4: true, gsc: true },
-  { name: "DreamLine", hubspot: true, ga4: false, gsc: true },
-  { name: "Florestone", hubspot: true, ga4: true, gsc: true },
-  { name: "Hamilton", hubspot: true, ga4: true, gsc: true },
-  { name: "IMI", hubspot: true, ga4: true, gsc: false },
-  { name: "Laurel Mountain", hubspot: true, ga4: true, gsc: true },
-  { name: "MAAX", hubspot: true, ga4: true, gsc: true },
-  { name: "Maidstone", hubspot: true, ga4: true, gsc: true },
-  { name: "Neptune", hubspot: true, ga4: true, gsc: true },
-  { name: "RBS", hubspot: true, ga4: false, gsc: true },
-  { name: "Swan", hubspot: true, ga4: true, gsc: true },
-  { name: "Vintage.ca", hubspot: true, ga4: false, gsc: false },
-  { name: "Vita Spa", hubspot: false, ga4: true, gsc: true },
+const brandMatrix: { name: string; hubspot: boolean; ga4: boolean; gsc: boolean; meta: boolean }[] = [
+  { name: "A2Bath", hubspot: false, ga4: true, gsc: false, meta: false },
+  { name: "ABG Home Services", hubspot: false, ga4: true, gsc: false, meta: true },
+  { name: "ABG Hospitality", hubspot: true, ga4: true, gsc: true, meta: false },
+  { name: "Accessible Home Store", hubspot: true, ga4: false, gsc: false, meta: true },
+  { name: "Aker", hubspot: true, ga4: false, gsc: true, meta: true },
+  { name: "Amazing Shower Door", hubspot: false, ga4: true, gsc: false, meta: false },
+  { name: "American Bath Group", hubspot: false, ga4: false, gsc: true, meta: true },
+  { name: "American Whirlpool", hubspot: false, ga4: true, gsc: true, meta: true },
+  { name: "Aquarius", hubspot: true, ga4: true, gsc: true, meta: false },
+  { name: "Aquatic", hubspot: true, ga4: true, gsc: true, meta: true },
+  { name: "Bootz", hubspot: true, ga4: true, gsc: true, meta: true },
+  { name: "Briggs Bath", hubspot: false, ga4: true, gsc: false, meta: false },
+  { name: "Clarion", hubspot: true, ga4: false, gsc: true, meta: false },
+  { name: "Coastal Shower Doors", hubspot: false, ga4: true, gsc: true, meta: true },
+  { name: "Comfort Designs", hubspot: true, ga4: true, gsc: true, meta: false },
+  { name: "DreamLine", hubspot: true, ga4: false, gsc: true, meta: true },
+  { name: "Florestone", hubspot: true, ga4: true, gsc: true, meta: false },
+  { name: "Hamilton", hubspot: true, ga4: true, gsc: true, meta: false },
+  { name: "IMI", hubspot: true, ga4: true, gsc: false, meta: true },
+  { name: "Laurel Mountain", hubspot: true, ga4: true, gsc: true, meta: true },
+  { name: "MAAX", hubspot: true, ga4: true, gsc: true, meta: true },
+  { name: "Maidstone", hubspot: true, ga4: true, gsc: true, meta: true },
+  { name: "Neptune", hubspot: true, ga4: true, gsc: true, meta: true },
+  { name: "RBS", hubspot: true, ga4: false, gsc: true, meta: false },
+  { name: "Swan", hubspot: true, ga4: true, gsc: true, meta: true },
+  { name: "Vintage.ca", hubspot: true, ga4: false, gsc: false, meta: true },
+  { name: "Vita Spa", hubspot: false, ga4: true, gsc: true, meta: true },
 ];
 
 const totals = {
   hubspot: brandMatrix.filter((b) => b.hubspot).length,
   ga4: brandMatrix.filter((b) => b.ga4).length,
   gsc: brandMatrix.filter((b) => b.gsc).length,
+  meta: brandMatrix.filter((b) => b.meta).length,
 };
 
 /* ── Component ── */
@@ -179,6 +193,32 @@ export function ReadMeTab() {
               </Table>
             </div>
           </div>
+
+          {/* Social Media */}
+          <div>
+            <div className="mb-3 flex items-center gap-2">
+              <Share2 className="h-4 w-4 text-brand-green" />
+              <h3 className="text-sm font-semibold text-foreground">Social Media Tab</h3>
+            </div>
+            <div className="overflow-hidden rounded-md border border-border">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-[hsl(var(--table-header))]">
+                    <TableHead className="text-primary-foreground font-medium w-[220px]">Metric</TableHead>
+                    <TableHead className="text-primary-foreground font-medium">Description</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {socialMetrics.map(([metric, desc]) => (
+                    <TableRow key={metric}>
+                      <TableCell className="font-medium text-foreground">{metric}</TableCell>
+                      <TableCell className="text-muted-foreground">{desc}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
@@ -213,15 +253,26 @@ export function ReadMeTab() {
                   <TableHead className="text-primary-foreground font-medium text-center w-[100px]">HubSpot</TableHead>
                   <TableHead className="text-primary-foreground font-medium text-center w-[100px]">GA4</TableHead>
                   <TableHead className="text-primary-foreground font-medium text-center w-[100px]">GSC</TableHead>
+                  <TableHead className="text-primary-foreground font-medium text-center w-[100px]">Meta</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filtered.map((b) => (
                   <TableRow key={b.name}>
-                    <TableCell className="font-medium text-foreground">{b.name}</TableCell>
+                    <TableCell className="font-medium text-foreground">
+                      <span className="flex items-center gap-2">
+                        {b.name}
+                        {b.meta ? (
+                          <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold text-white" style={{ backgroundColor: "#1877F2" }}>Meta</span>
+                        ) : (
+                          <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground bg-muted">Not connected</span>
+                        )}
+                      </span>
+                    </TableCell>
                     <TableCell className="text-center"><ConnIcon ok={b.hubspot} /></TableCell>
                     <TableCell className="text-center"><ConnIcon ok={b.ga4} /></TableCell>
                     <TableCell className="text-center"><ConnIcon ok={b.gsc} /></TableCell>
+                    <TableCell className="text-center"><ConnIcon ok={b.meta} /></TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -231,6 +282,7 @@ export function ReadMeTab() {
                   <TableCell className="text-center font-semibold">{totals.hubspot}</TableCell>
                   <TableCell className="text-center font-semibold">{totals.ga4}</TableCell>
                   <TableCell className="text-center font-semibold">{totals.gsc}</TableCell>
+                  <TableCell className="text-center font-semibold">{totals.meta}</TableCell>
                 </TableRow>
               </TableFooter>
             </Table>

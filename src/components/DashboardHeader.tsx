@@ -2,13 +2,7 @@ import { Brand } from "@/lib/brands";
 import { BrandSwitcher } from "./BrandSwitcher";
 import { DateRangePicker } from "./DateRangePicker";
 import { UserMenu } from "./UserMenu";
-import { HelpCircle } from "lucide-react";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { HelpButton } from "./HelpButton";
 
 const ABG_LOGO_URL =
   "https://24202603.fs1.hubspotusercontent-na1.net/hubfs/24202603/Swan/website/common/abg-logo-white-horizontal.png";
@@ -64,25 +58,7 @@ export function DashboardHeader({
 
         <div className="flex items-center gap-3">
           <DateRangePicker from={dateFrom} to={dateTo} onChange={onDateChange} />
-
-          {/* Help / Inquiry Button */}
-          <TooltipProvider delayDuration={200}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <a
-                  href="mailto:mali@americanbathgroup.com?subject=Dashboard%20Inquiry&body=Hi%20Mostafa%2C%0A%0AI%20have%20a%20question%20or%20issue%20regarding%20the%20ABG%20Digital%20Dashboard%3A%0A%0A"
-                  className="flex items-center justify-center h-8 w-8 rounded-full bg-primary-foreground/15 hover:bg-primary-foreground/25 transition-colors"
-                  title="Get Help"
-                >
-                  <HelpCircle className="h-5 w-5 text-primary-foreground" />
-                </a>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" className="text-xs max-w-[200px] text-center">
-                Questions, data issues, or feedback? Click to email the dashboard team.
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-
+          <HelpButton variant="header" />
           <UserMenu />
         </div>
       </div>

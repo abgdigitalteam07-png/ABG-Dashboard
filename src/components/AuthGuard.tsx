@@ -1,9 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-
-const ABG_LOGO_URL =
-  "https://24202603.fs1.hubspotusercontent-na1.net/hubfs/24202603/Swan/website/common/abg-logo-white-horizontal.png";
+import { WaterFillLoader } from "./WaterFillLoader";
 
 interface AuthGuardProps {
   children: React.ReactNode;
@@ -97,22 +95,20 @@ export function AuthGuard({ children }: AuthGuardProps) {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-primary gap-6">
-        <img src={ABG_LOGO_URL} className="w-[280px] h-auto animate-pulse" alt="American Bath Group" />
-        <div className="flex items-center gap-3">
-          <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
-          <span className="text-primary-foreground text-sm font-medium">Loading dashboard…</span>
-        </div>
+      <div className="relative">
+        <WaterFillLoader message="Loading dashboard…" fullScreen={true} />
         {timedOut && (
-          <button
-            onClick={() => {
-              supabase.auth.signOut();
-              navigate("/login", { replace: true });
-            }}
-            className="text-primary-foreground/80 hover:text-primary-foreground text-sm underline underline-offset-4 transition-colors"
-          >
-            Taking too long? Click here to sign in again
-          </button>
+          <div className="absolute bottom-12 left-1/2 -translate-x-1/2">
+            <button
+              onClick={() => {
+                supabase.auth.signOut();
+                navigate("/login", { replace: true });
+              }}
+              className="text-primary-foreground/80 hover:text-primary-foreground text-sm underline underline-offset-4 transition-colors"
+            >
+              Taking too long? Click here to sign in again
+            </button>
+          </div>
         )}
       </div>
     );
