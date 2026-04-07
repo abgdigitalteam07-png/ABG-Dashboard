@@ -71,39 +71,37 @@ async function getPageToken(pageId: string, userToken: string): Promise<string> 
 }
 
 async function getPageInsights(pageId: string, pageToken: string, since: string, until: string): Promise<Record<string, number>> {
-  // v25.0 valid metrics - old ones like page_impressions, page_reach are deprecated
-  const metrics = "page_views_total,page_engaged_users,page_post_engagements,page_consumptions,page_fans_online";
-  const url = `${GRAPH}/${pageId}/insights?metric=${metrics}&since=${since}&until=${until}&period=total_over_range&access_token=${pageToken}`;
-  console.log(`[getPageInsights] Fetching: ${url.replace(pageToken, "TOKEN")}`);
-  const res = await fetch(url);
-  const data = await res.json();
-  if (data.error) {
-    console.warn(`[getPageInsights] Error for page ${pageId}: ${data.error.message} (code: ${data.error.code})`);
-    // Try day period as fallback for metrics that don't support total_over_range
-    const dayUrl = `${GRAPH}/${pageId}/insights?metric=page_views_total,page_engaged_users,page_post_engagements&since=${since}&until=${until}&period=day&access_token=${pageToken}`;
-    const dayRes = await fetch(dayUrl);
-    const dayData = await dayRes.json();
-    if (dayData.error) {
-      console.warn(`[getPageInsights] Day fallback also failed: ${dayData.error.message}`);
-      return {};
-    }
-    const result: Record<string, number> = {};
-    for (const item of (dayData.data || [])) {
-      let total = 0;
-      for (const v of (item.values || [])) {
-        total += typeof v.value === "number" ? v.value : 0;
-      }
-      result[item.name] = total;
-    }
-    console.log(`[getPageInsights] Day fallback result:`, JSON.stringify(result));
-    return result;
-  }
+  // Try multiple metric sets - v25.0 has deprecated many old metrics
+  const metricSets = [
+    "page_views_total",
+    "page_post_engagements",
+    "page_fan_adds",
+  ];
+  
   const result: Record<string, number> = {};
-  for (const item of (data.data || [])) {
-    const val = item.values?.[0]?.value;
-    result[item.name] = typeof val === "number" ? val : 0;
+  
+  for (const metric of metricSets) {
+    const url = `${GRAPH}/${pageId}/insights?metric=${metric}&since=${since}&until=${until}&period=day&access_token=${pageToken}`;
+    try {
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.error) {
+        console.warn(`[getPageInsights] Metric "${metric}" failed: ${data.error.message}`);
+        continue;
+      }
+      for (const item of (data.data || [])) {
+        let total = 0;
+        for (const v of (item.values || [])) {
+          total += typeof v.value === "number" ? v.value : 0;
+        }
+        result[item.name] = total;
+      }
+    } catch (e) {
+      console.warn(`[getPageInsights] Fetch error for "${metric}": ${e.message}`);
+    }
   }
-  console.log(`[getPageInsights] Result:`, JSON.stringify(result));
+  
+  console.log(`[getPageInsights] Final result:`, JSON.stringify(result));
   return result;
 }
 
