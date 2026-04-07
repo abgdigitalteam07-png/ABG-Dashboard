@@ -143,35 +143,44 @@ async function getPagePosts(pageId: string, pageToken: string, since: string, un
   return data.data || [];
 }
 
-// Fetch per-post insights for a single FB post (v25.0 compatible)
+// Fetch per-post insights for a single FB post (v25.0 — uses post_views metrics)
 async function getFbPostInsights(postId: string, pageToken: string): Promise<{ impressions: number; reach: number; engagedUsers: number; clicks: number }> {
   const result = { impressions: 0, reach: 0, engagedUsers: 0, clicks: 0 };
-  try {
-    const url = `${GRAPH}/${postId}/insights?metric=post_impressions,post_impressions_unique,post_engaged_users,post_clicks&access_token=${pageToken}`;
-    const res = await fetch(url);
-    const data = await res.json();
-    if (data.error) {
-      console.warn(`[getFbPostInsights] ${postId}: ${data.error.message}`);
-      return result;
+  const metricSets = [
+    "post_views,post_views_unique,post_engaged_users,post_clicks",
+    "post_impressions,post_impressions_unique,post_engaged_users,post_clicks",
+  ];
+  for (const metrics of metricSets) {
+    try {
+      const url = `${GRAPH}/${postId}/insights?metric=${metrics}&access_token=${pageToken}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.error) {
+        console.warn(`[getFbPostInsights] ${postId} metrics "${metrics}": ${data.error.message}`);
+        continue;
+      }
+      for (const item of (data.data || [])) {
+        const val = item.values?.[0]?.value || 0;
+        if (item.name === "post_views" || item.name === "post_impressions") result.impressions = val;
+        if (item.name === "post_views_unique" || item.name === "post_impressions_unique") result.reach = val;
+        if (item.name === "post_engaged_users") result.engagedUsers = val;
+        if (item.name === "post_clicks") result.clicks = val;
+      }
+      if (result.impressions > 0 || result.reach > 0) break;
+    } catch (e) {
+      console.warn(`[getFbPostInsights] fetch error for ${postId}: ${e.message}`);
     }
-    for (const item of (data.data || [])) {
-      const val = item.values?.[0]?.value || 0;
-      if (item.name === "post_impressions") result.impressions = val;
-      if (item.name === "post_impressions_unique") result.reach = val;
-      if (item.name === "post_engaged_users") result.engagedUsers = val;
-      if (item.name === "post_clicks") result.clicks = val;
-    }
-  } catch (e) {
-    console.warn(`[getFbPostInsights] fetch error for ${postId}: ${e.message}`);
   }
   return result;
 }
 
-// Fetch per-post insights for a single IG media object
-async function getIgMediaInsights(mediaId: string, pageToken: string): Promise<{ reach: number; impressions: number; saved: number; shares: number }> {
+// Fetch per-post insights for a single IG media object (v25.0 — no impressions, use views)
+async function getIgMediaInsights(mediaId: string, mediaType: string, pageToken: string): Promise<{ reach: number; impressions: number; saved: number; shares: number }> {
   const result = { reach: 0, impressions: 0, saved: 0, shares: 0 };
+  const isReel = mediaType === "VIDEO";
+  const metrics = isReel ? "reach,saved,shares,plays" : "reach,saved,shares";
   try {
-    const url = `${GRAPH}/${mediaId}/insights?metric=reach,impressions,saved,shares&access_token=${pageToken}`;
+    const url = `${GRAPH}/${mediaId}/insights?metric=${metrics}&access_token=${pageToken}`;
     const res = await fetch(url);
     const data = await res.json();
     if (data.error) {
@@ -181,10 +190,11 @@ async function getIgMediaInsights(mediaId: string, pageToken: string): Promise<{
     for (const item of (data.data || [])) {
       const val = typeof item.values?.[0]?.value === "number" ? item.values[0].value : 0;
       if (item.name === "reach") result.reach = val;
-      if (item.name === "impressions") result.impressions = val;
+      if (item.name === "plays") result.impressions = val;
       if (item.name === "saved") result.saved = val;
       if (item.name === "shares") result.shares = val;
     }
+    if (result.impressions === 0) result.impressions = result.reach;
   } catch (e) {
     console.warn(`[getIgMediaInsights] fetch error for ${mediaId}: ${e.message}`);
   }
