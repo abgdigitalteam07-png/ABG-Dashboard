@@ -94,7 +94,6 @@ async function getPageInsights(pageId: string, pageToken: string, since: string,
   const metricSets = [
     "page_views_total",
     "page_post_engagements",
-    "page_fan_adds",
   ];
   
   const result: Record<string, number> = {};
