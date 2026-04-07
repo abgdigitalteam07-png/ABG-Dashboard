@@ -7,9 +7,28 @@ import { PerformanceTab } from "@/components/PerformanceTab";
 import { HubSpotTab } from "@/components/HubSpotTab";
 import { SocialMediaTab } from "@/components/SocialMediaTab";
 import { ReadMeTab } from "@/components/ReadMeTab";
+import { toast } from "sonner";
 
 const Index = () => {
   const [selectedBrand, setSelectedBrand] = useState(brands[0]);
+  const welcomeShown = useRef(false);
+
+  useEffect(() => {
+    if (welcomeShown.current) return;
+    welcomeShown.current = true;
+
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!session) return;
+      const { data: profile } = await supabase
+        .from("user_profiles")
+        .select("full_name")
+        .eq("id", session.user.id)
+        .single();
+
+      const firstName = profile?.full_name?.split(" ")[0];
+      toast.success(firstName ? `Welcome back, ${firstName}!` : "Welcome back!");
+    });
+  }, []);
   const [activeTab, setActiveTab] = useState("performance");
 
   const now = new Date();
