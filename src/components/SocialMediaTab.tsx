@@ -9,7 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter,
 } from "@/components/ui/table";
-import { Loader2, Users, Eye, BarChart3, Heart, UserCheck, ExternalLink, Facebook, Instagram, ChevronDown, ChevronUp } from "lucide-react";
+import { Loader2, Facebook, Instagram, ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { AIRecommendations } from "./AIRecommendations";
 import { format } from "date-fns";
@@ -25,6 +25,9 @@ const socialMediaBrandNames = [
   "Arizona Shower Door", "Bootz", "Coastal Shower Doors", "DreamLine", "MAAX", "MAAX Bath",
   "Maidstone", "Swan", "Mr.Steam", "Vintage Tub", "Vintage Tub & Bath - Canada",
 ];
+
+// Brands that are parent companies without their own analytics
+const parentBrands = ["American Bath Group"];
 
 function formatNumber(n: number): string {
   if (n >= 1000000) return (n / 1000000).toFixed(1) + "M";
@@ -53,6 +56,7 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
   const pageSize = 10;
 
   const hasSocialMedia = socialMediaBrandNames.includes(brand.name);
+  const isParentBrand = parentBrands.includes(brand.name);
 
   useEffect(() => {
     if (!hasSocialMedia) {
@@ -114,11 +118,11 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
     if (!sortedPosts.length) return null;
     const len = sortedPosts.length;
     return {
-      reach: sortedPosts.reduce((s, p) => s + p.reach, 0),
-      impressions: sortedPosts.reduce((s, p) => s + p.impressions, 0),
-      engagements: sortedPosts.reduce((s, p) => s + p.likes + p.comments + p.shares + p.saves, 0),
-      avgEngRate: parseFloat((sortedPosts.reduce((s, p) => s + p.engagementRate, 0) / len).toFixed(1)),
-      clicks: sortedPosts.reduce((s, p) => s + p.clicks, 0),
+      reach: sortedPosts.reduce((s, p) => s + (p.reach || 0), 0),
+      impressions: sortedPosts.reduce((s, p) => s + (p.impressions || 0), 0),
+      engagements: sortedPosts.reduce((s, p) => s + (p.likes || 0) + (p.comments || 0) + (p.shares || 0) + (p.saves || 0), 0),
+      avgEngRate: parseFloat((sortedPosts.reduce((s, p) => s + (p.engagementRate || 0), 0) / len).toFixed(2)),
+      clicks: sortedPosts.reduce((s, p) => s + (p.clicks || 0), 0),
     };
   }, [sortedPosts]);
 
@@ -139,8 +143,12 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
   if (!hasSocialMedia) {
     return (
       <div className="flex flex-col items-center justify-center py-24 text-center">
-        <p className="text-sm font-medium text-muted-foreground">No social media data available for {brand.name}.</p>
-        <p className="mt-1 text-xs text-muted-foreground">This brand does not have a connected Meta Business Suite account.</p>
+        <p className="text-sm font-medium text-muted-foreground">
+          {isParentBrand
+            ? "American Bath Group is the parent company. Please select an individual brand to view social media data."
+            : `No social media data available for ${brand.name}.`}
+        </p>
+        {!isParentBrand && <p className="mt-1 text-xs text-muted-foreground">This brand does not have a connected Meta Business Suite account.</p>}
       </div>
     );
   }
@@ -164,17 +172,15 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
   if (!data) return null;
 
   const { overview, platformBreakdown, contentPerformance, dailyTrends, posts } = data;
-  const totalFollowers = overview.totalFollowers.facebook + overview.totalFollowers.instagram;
+  const totalFollowers = (overview.totalFollowers.facebook || 0) + (overview.totalFollowers.instagram || 0);
   const avgFollowerGrowth = parseFloat(((overview.followerGrowth.facebook + overview.followerGrowth.instagram) / 2).toFixed(1));
 
-  // Deterministic deltas derived from data (no Math.random)
   const reachDelta = parseFloat(((overview.totalReach / Math.max(overview.totalImpressions, 1)) * 10 - 5).toFixed(1));
   const impressionsDelta = parseFloat(((overview.totalImpressions / Math.max(overview.totalReach, 1) - 2.2) * 8).toFixed(1));
   const engRateDelta = parseFloat((overview.engagementRate > 4 ? 1.2 : overview.engagementRate > 2 ? 0.3 : -0.8).toFixed(1));
   const profileVisitsDelta = parseFloat(((overview.profileVisits / Math.max(overview.totalReach, 1)) * 100 - 3.5).toFixed(1));
   const websiteClicksDelta = parseFloat(((overview.websiteClicks / Math.max(overview.profileVisits, 1)) * 100 - 25).toFixed(1));
 
-  // Chart colors
   const FB_COLOR = "hsl(221, 44%, 41%)";
   const IG_COLOR = "hsl(340, 75%, 54%)";
   const typeColors: Record<string, string> = {
@@ -209,14 +215,14 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
                   <Icon className="h-5 w-5" />
                   <h3 className="text-sm font-semibold capitalize">{p}</h3>
                   <span className="ml-auto text-xs text-muted-foreground">
-                    {formatNumber(overview.totalFollowers[p])} followers
+                    {formatNumber(overview.totalFollowers[p] || 0)} followers
                   </span>
                 </div>
                 <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div><span className="text-xs text-muted-foreground">Reach</span><p className="font-semibold tabular-nums">{formatNumber(pb.reach)}</p></div>
-                  <div><span className="text-xs text-muted-foreground">Impressions</span><p className="font-semibold tabular-nums">{formatNumber(pb.impressions)}</p></div>
-                  <div><span className="text-xs text-muted-foreground">Engagements</span><p className="font-semibold tabular-nums">{formatNumber(pb.engagements)}</p></div>
-                  <div><span className="text-xs text-muted-foreground">Engagement Rate</span><p className="font-semibold tabular-nums">{pb.engagementRate}%</p></div>
+                  <div><span className="text-xs text-muted-foreground">Reach</span><p className="font-semibold tabular-nums">{formatNumber(pb.reach || 0)}</p></div>
+                  <div><span className="text-xs text-muted-foreground">Impressions</span><p className="font-semibold tabular-nums">{formatNumber(pb.impressions || 0)}</p></div>
+                  <div><span className="text-xs text-muted-foreground">Engagements</span><p className="font-semibold tabular-nums">{formatNumber(pb.engagements || 0)}</p></div>
+                  <div><span className="text-xs text-muted-foreground">Engagement Rate</span><p className="font-semibold tabular-nums">{pb.engagementRate || 0}%</p></div>
                 </div>
                 <div className="mt-3">
                   <Badge variant="secondary" className="text-xs">Top: {pb.topPostType}</Badge>
@@ -231,7 +237,6 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
       <div>
         <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Content Performance</h2>
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          {/* By content type */}
           <div className="rounded-lg border border-border bg-card p-6 shadow-card">
             <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Performance by Content Type</h3>
             <ResponsiveContainer width="100%" height={220}>
@@ -254,7 +259,6 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
             </div>
           </div>
 
-          {/* By day of week */}
           <div className="rounded-lg border border-border bg-card p-6 shadow-card">
             <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Best Day to Post</h3>
             <ResponsiveContainer width="100%" height={220}>
@@ -294,12 +298,14 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
               <SortHeader label="Engagements" field="totalEngagements" className="text-right" />
               <SortHeader label="Eng. Rate" field="engagementRate" className="text-right" />
               <SortHeader label="Clicks" field="clicks" className="text-right" />
+              <TableHead className="text-xs w-10"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {paginatedPosts.map((post: any) => {
-              const totalEng = post.likes + post.comments + post.shares + post.saves;
+              const totalEng = (post.likes || 0) + (post.comments || 0) + (post.shares || 0) + (post.saves || 0);
               const isExpanded = expandedPost === post.id;
+              const permalink = post.permalink || post.permalink_url || "";
               return (
                 <>
                   <TableRow
@@ -317,25 +323,38 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
                       {post.caption.length > 60 ? post.caption.slice(0, 60) + "..." : post.caption}
                     </TableCell>
                     <TableCell className="text-right text-sm tabular-nums">{formatDisplayDate(post.publishedAt)}</TableCell>
-                    <TableCell className="text-right text-sm tabular-nums">{post.reach.toLocaleString()}</TableCell>
-                    <TableCell className="text-right text-sm tabular-nums">{post.impressions.toLocaleString()}</TableCell>
+                    <TableCell className="text-right text-sm tabular-nums">{(post.reach || 0).toLocaleString()}</TableCell>
+                    <TableCell className="text-right text-sm tabular-nums">{(post.impressions || 0).toLocaleString()}</TableCell>
                     <TableCell className="text-right text-sm tabular-nums">{totalEng.toLocaleString()}</TableCell>
                     <TableCell className="text-right text-sm tabular-nums">
-                      <span className={post.engagementRate >= 5 ? "text-brand-green" : post.engagementRate < 2 ? "text-brand-red" : ""}>
-                        {post.engagementRate}%
+                      <span className={(post.engagementRate || 0) >= 5 ? "text-brand-green" : (post.engagementRate || 0) < 2 ? "text-brand-red" : ""}>
+                        {(post.engagementRate || 0)}%
                       </span>
                     </TableCell>
-                    <TableCell className="text-right text-sm tabular-nums">{post.clicks.toLocaleString()}</TableCell>
+                    <TableCell className="text-right text-sm tabular-nums">{(post.clicks || 0).toLocaleString()}</TableCell>
+                    <TableCell className="text-right">
+                      {permalink && (
+                        <a
+                          href={permalink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="inline-flex text-muted-foreground hover:text-foreground"
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                        </a>
+                      )}
+                    </TableCell>
                   </TableRow>
                   {isExpanded && (
                     <TableRow key={`${post.id}-detail`} className="bg-muted/30">
-                      <TableCell colSpan={9} className="p-4">
+                      <TableCell colSpan={10} className="p-4">
                         <p className="mb-2 text-sm">{post.caption}</p>
                         <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
-                          <span>👍 {post.likes} likes</span>
-                          <span>💬 {post.comments} comments</span>
-                          <span>🔄 {post.shares} shares</span>
-                          <span>🔖 {post.saves} saves</span>
+                          <span>👍 {(post.likes || 0).toLocaleString()} likes</span>
+                          <span>💬 {(post.comments || 0).toLocaleString()} comments</span>
+                          <span>🔄 {(post.shares || 0).toLocaleString()} shares</span>
+                          <span>🔖 {(post.saves || 0).toLocaleString()} saves</span>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -353,28 +372,16 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
                 <TableCell className="text-right tabular-nums text-sm">{postTotals.engagements.toLocaleString()}</TableCell>
                 <TableCell className="text-right tabular-nums text-sm">{postTotals.avgEngRate}%</TableCell>
                 <TableCell className="text-right tabular-nums text-sm">{postTotals.clicks.toLocaleString()}</TableCell>
+                <TableCell></TableCell>
               </TableRow>
             </TableFooter>
           )}
         </Table>
-        {/* Pagination */}
         {totalPages > 1 && (
           <div className="flex items-center justify-between border-t border-border px-6 py-3">
-            <button
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
-              className="rounded px-3 py-1 text-xs font-medium text-muted-foreground hover:bg-muted disabled:opacity-40"
-            >
-              Previous
-            </button>
+            <button onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={currentPage === 1} className="rounded px-3 py-1 text-xs font-medium text-muted-foreground hover:bg-muted disabled:opacity-40">Previous</button>
             <span className="text-xs text-muted-foreground">Page {currentPage} of {totalPages}</span>
-            <button
-              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
-              className="rounded px-3 py-1 text-xs font-medium text-muted-foreground hover:bg-muted disabled:opacity-40"
-            >
-              Next
-            </button>
+            <button onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="rounded px-3 py-1 text-xs font-medium text-muted-foreground hover:bg-muted disabled:opacity-40">Next</button>
           </div>
         )}
       </div>

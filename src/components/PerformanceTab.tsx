@@ -84,10 +84,15 @@ export function PerformanceTab({ brand, dateFrom, dateTo }: PerformanceTabProps)
   }, [gsc]);
 
   if (!brand.hasGA4 && !brand.hasGSC) {
+    const isParent = brand.name === "American Bath Group";
     return (
       <div className="flex flex-col items-center justify-center py-24 text-center">
-        <p className="text-sm font-medium text-muted-foreground">No GA4/GSC property linked for {brand.name}.</p>
-        <p className="mt-1 text-xs text-muted-foreground">This brand is HubSpot-only.</p>
+        <p className="text-sm font-medium text-muted-foreground">
+          {isParent
+            ? "American Bath Group is the parent company. Please select an individual brand to view analytics data."
+            : `No GA4/GSC property linked for ${brand.name}.`}
+        </p>
+        {!isParent && <p className="mt-1 text-xs text-muted-foreground">This brand is HubSpot-only.</p>}
       </div>
     );
   }
