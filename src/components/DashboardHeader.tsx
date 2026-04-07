@@ -69,7 +69,7 @@ export function DashboardHeader({
           <TooltipProvider delayDuration={200}>
             <Tooltip>
               <TooltipTrigger asChild>
-                
+                <a
                   href="mailto:mali@americanbathgroup.com?subject=Dashboard%20Inquiry&body=Hi%20Mostafa%2C%0A%0AI%20have%20a%20question%20or%20issue%20regarding%20the%20ABG%20Digital%20Dashboard%3A%0A%0A"
                   className="flex items-center justify-center h-8 w-8 rounded-full bg-primary-foreground/15 hover:bg-primary-foreground/25 transition-colors"
                   title="Get Help"
