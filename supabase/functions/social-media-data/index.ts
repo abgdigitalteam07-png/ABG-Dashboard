@@ -21,17 +21,44 @@ const BRAND_PAGE_MAP: Record<string, { pageId: string; igId?: string }> = {
   "Vintage Tub & Bath - Canada": { pageId: "109419884474877" },
 };
 
-const GRAPH = "https://graph.facebook.com/v19.0";
+const GRAPH = "https://graph.facebook.com/v25.0";
+
+// Cache of pageId -> page access token from /me/accounts
+let cachedPageTokens: Record<string, string> | null = null;
+
+async function fetchAllPageTokens(userToken: string): Promise<Record<string, string>> {
+  if (cachedPageTokens) return cachedPageTokens;
+
+  const tokens: Record<string, string> = {};
+  let url: string | null = `${GRAPH}/me/accounts?fields=id,access_token&limit=100&access_token=${userToken}`;
+
+  while (url) {
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.error) {
+      console.error(`[fetchAllPageTokens] Error: ${data.error.message}`);
+      break;
+    }
+    for (const page of (data.data || [])) {
+      tokens[page.id] = page.access_token;
+    }
+    url = data.paging?.next || null;
+  }
+
+  console.log(`[fetchAllPageTokens] Found tokens for ${Object.keys(tokens).length} pages: ${Object.keys(tokens).join(", ")}`);
+  cachedPageTokens = tokens;
+  return tokens;
+}
 
 async function getPageToken(pageId: string, userToken: string): Promise<string> {
-  const res = await fetch(`${GRAPH}/${pageId}?fields=access_token&access_token=${userToken}`);
-  const data = await res.json();
-  if (data.error) {
-    console.warn(`[getPageToken] Failed for page ${pageId}: ${data.error.message}`);
-    return userToken;
+  const allTokens = await fetchAllPageTokens(userToken);
+  const token = allTokens[pageId];
+  if (token) {
+    console.log(`[getPageToken] Found page token for ${pageId} via /me/accounts`);
+    return token;
   }
-  console.log(`[getPageToken] Got page token for ${pageId}: ${data.access_token ? "yes" : "no"}`);
-  return data.access_token || userToken;
+  console.warn(`[getPageToken] No token found for page ${pageId} in /me/accounts — falling back to user token`);
+  return userToken;
 }
 
 async function getPageInsights(pageId: string, pageToken: string, since: string, until: string): Promise<Record<string, number>> {
