@@ -89,6 +89,7 @@ async function getIgBusinessAccountId(pageId: string, pageToken: string): Promis
   }
 }
 
+async function getPageInsights(pageId: string, pageToken: string, since: string, until: string): Promise<Record<string, number>> {
   // Try multiple metric sets - v25.0 has deprecated many old metrics
   const metricSets = [
     "page_views_total",
