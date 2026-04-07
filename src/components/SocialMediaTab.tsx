@@ -10,6 +10,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter,
 } from "@/components/ui/table";
 import { Loader2, Facebook, Instagram, ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
+import { WaterFillLoader } from "./WaterFillLoader";
 import { Badge } from "@/components/ui/badge";
 import { AIRecommendations } from "./AIRecommendations";
 import { format } from "date-fns";
@@ -154,11 +155,7 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
   }
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-24">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <WaterFillLoader message="Loading social media data…" fullScreen={false} />;
   }
 
   if (error) {
@@ -185,7 +182,8 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
   const IG_COLOR = "hsl(340, 75%, 54%)";
   const typeColors: Record<string, string> = {
     Image: "hsl(221, 44%, 41%)",
-    "Reel/Video": "hsl(340, 75%, 54%)",
+    Reel: "hsl(340, 75%, 54%)",
+    Video: "hsl(262, 83%, 58%)",
     Carousel: "hsl(45, 93%, 47%)",
     Story: "hsl(142, 71%, 45%)",
   };
@@ -254,7 +252,9 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
             </ResponsiveContainer>
             <div className="mt-2 flex flex-wrap gap-2">
               {contentPerformance.byType.map((t: any) => (
-                <span key={t.type} className="text-xs text-muted-foreground">{t.type}: {t.count} posts</span>
+                <span key={t.type} className="text-xs text-muted-foreground">
+                  {t.type}: {t.count > 0 ? `${t.count} posts` : "No posts"}
+                </span>
               ))}
             </div>
           </div>
@@ -317,7 +317,7 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
                       {post.platform === "facebook" ? <Facebook className="h-4 w-4" /> : <Instagram className="h-4 w-4" />}
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline" className="text-xs capitalize">{post.type === "reel" ? "Reel/Video" : post.type}</Badge>
+                      <Badge variant="outline" className="text-xs capitalize">{post.type}</Badge>
                     </TableCell>
                     <TableCell className="max-w-[200px] whitespace-normal break-words text-xs" style={{ lineHeight: 1.4 }}>
                       {post.caption.length > 60 ? post.caption.slice(0, 60) + "..." : post.caption}
