@@ -145,34 +145,41 @@ async function getPagePosts(pageId: string, pageToken: string, since: string, un
 }
 
 async function getIgInsights(igId: string, pageToken: string, since: string, until: string) {
-  const metrics = "reach,profile_views,website_clicks,total_interactions";
-  const url = `${GRAPH}/${igId}/insights?metric=${metrics}&since=${since}&until=${until}&period=total_over_range&access_token=${pageToken}`;
-  const res = await fetch(url);
-  const data = await res.json();
-  if (data.error) {
-    console.warn(`[getIgInsights] Error: ${data.error.message}`);
-    // Try day period fallback
-    const dayUrl = `${GRAPH}/${igId}/insights?metric=${metrics}&since=${since}&until=${until}&period=day&access_token=${pageToken}`;
-    const dayRes = await fetch(dayUrl);
-    const dayData = await dayRes.json();
-    if (dayData.error) {
-      console.warn(`[getIgInsights] Day fallback also failed: ${dayData.error.message}`);
-      return {};
-    }
-    const result: Record<string, number> = {};
-    for (const item of (dayData.data || [])) {
-      let total = 0;
-      for (const v of (item.values || [])) total += typeof v.value === "number" ? v.value : 0;
-      result[item.name] = total;
-    }
-    console.log(`[getIgInsights] Day fallback result:`, JSON.stringify(result));
-    return result;
-  }
   const result: Record<string, number> = {};
-  for (const item of (data.data || [])) {
-    const val = item.values?.[0]?.value;
-    result[item.name] = typeof val === "number" ? val : 0;
-  }
+  
+  // Fetch reach separately (uses period=day)
+  const reachUrl = `${GRAPH}/${igId}/insights?metric=reach&since=${since}&until=${until}&period=day&access_token=${pageToken}`;
+  try {
+    const reachRes = await fetch(reachUrl);
+    const reachData = await reachRes.json();
+    if (!reachData.error) {
+      for (const item of (reachData.data || [])) {
+        let total = 0;
+        for (const v of (item.values || [])) total += typeof v.value === "number" ? v.value : 0;
+        result[item.name] = total;
+      }
+    } else {
+      console.warn(`[getIgInsights] reach failed: ${reachData.error.message}`);
+    }
+  } catch (e) { console.warn(`[getIgInsights] reach fetch error: ${e.message}`); }
+
+  // Fetch total_value metrics (profile_views, website_clicks, total_interactions)
+  const totalMetrics = "profile_views,website_clicks,total_interactions";
+  const totalUrl = `${GRAPH}/${igId}/insights?metric=${totalMetrics}&metric_type=total_value&since=${since}&until=${until}&period=day&access_token=${pageToken}`;
+  try {
+    const totalRes = await fetch(totalUrl);
+    const totalData = await totalRes.json();
+    if (!totalData.error) {
+      for (const item of (totalData.data || [])) {
+        let total = 0;
+        for (const v of (item.values || [])) total += typeof v.value === "number" ? v.value : 0;
+        result[item.name] = total;
+      }
+    } else {
+      console.warn(`[getIgInsights] total_value metrics failed: ${totalData.error.message}`);
+    }
+  } catch (e) { console.warn(`[getIgInsights] total_value fetch error: ${e.message}`); }
+
   console.log(`[getIgInsights] Result:`, JSON.stringify(result));
   return result;
 }
