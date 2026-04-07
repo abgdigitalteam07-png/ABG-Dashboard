@@ -114,11 +114,17 @@ async function getPageFanCount(pageId: string, pageToken: string): Promise<numbe
 }
 
 async function getPagePosts(pageId: string, pageToken: string, since: string, until: string) {
-  const fields = "id,message,created_time,insights.metric(post_impressions,post_reach,post_engaged_users,post_clicks),attachments";
+  // Don't request insights subfield inline — it can fail on v25.0
+  const fields = "id,message,created_time,shares,attachments";
   const url = `${GRAPH}/${pageId}/posts?fields=${fields}&since=${since}&until=${until}&limit=50&access_token=${pageToken}`;
+  console.log(`[getPagePosts] Fetching posts for page ${pageId}`);
   const res = await fetch(url);
   const data = await res.json();
-  if (data.error) return [];
+  if (data.error) {
+    console.warn(`[getPagePosts] Error: ${data.error.message}`);
+    return [];
+  }
+  console.log(`[getPagePosts] Got ${(data.data || []).length} posts`);
   return data.data || [];
 }
 
