@@ -180,6 +180,32 @@ export function ReadMeTab() {
               </Table>
             </div>
           </div>
+
+          {/* Social Media */}
+          <div>
+            <div className="mb-3 flex items-center gap-2">
+              <Share2 className="h-4 w-4 text-brand-green" />
+              <h3 className="text-sm font-semibold text-foreground">Social Media Tab</h3>
+            </div>
+            <div className="overflow-hidden rounded-md border border-border">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-[hsl(var(--table-header))]">
+                    <TableHead className="text-primary-foreground font-medium w-[220px]">Metric</TableHead>
+                    <TableHead className="text-primary-foreground font-medium">Description</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {socialMetrics.map(([metric, desc]) => (
+                    <TableRow key={metric}>
+                      <TableCell className="font-medium text-foreground">{metric}</TableCell>
+                      <TableCell className="text-muted-foreground">{desc}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
@@ -214,15 +240,26 @@ export function ReadMeTab() {
                   <TableHead className="text-primary-foreground font-medium text-center w-[100px]">HubSpot</TableHead>
                   <TableHead className="text-primary-foreground font-medium text-center w-[100px]">GA4</TableHead>
                   <TableHead className="text-primary-foreground font-medium text-center w-[100px]">GSC</TableHead>
+                  <TableHead className="text-primary-foreground font-medium text-center w-[100px]">Meta</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filtered.map((b) => (
                   <TableRow key={b.name}>
-                    <TableCell className="font-medium text-foreground">{b.name}</TableCell>
+                    <TableCell className="font-medium text-foreground">
+                      <span className="flex items-center gap-2">
+                        {b.name}
+                        {b.meta ? (
+                          <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold text-white" style={{ backgroundColor: "#1877F2" }}>Meta</span>
+                        ) : (
+                          <span className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground bg-muted">Not connected</span>
+                        )}
+                      </span>
+                    </TableCell>
                     <TableCell className="text-center"><ConnIcon ok={b.hubspot} /></TableCell>
                     <TableCell className="text-center"><ConnIcon ok={b.ga4} /></TableCell>
                     <TableCell className="text-center"><ConnIcon ok={b.gsc} /></TableCell>
+                    <TableCell className="text-center"><ConnIcon ok={b.meta} /></TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -232,6 +269,7 @@ export function ReadMeTab() {
                   <TableCell className="text-center font-semibold">{totals.hubspot}</TableCell>
                   <TableCell className="text-center font-semibold">{totals.ga4}</TableCell>
                   <TableCell className="text-center font-semibold">{totals.gsc}</TableCell>
+                  <TableCell className="text-center font-semibold">{totals.meta}</TableCell>
                 </TableRow>
               </TableFooter>
             </Table>
