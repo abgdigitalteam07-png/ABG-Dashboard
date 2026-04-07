@@ -384,42 +384,35 @@ Deno.serve(async (req) => {
       igPostsList = igMediaWithInsights;
     }
 
-    // Fetch per-post insights for FB posts in parallel (batch of 5)
+    // Format FB posts — post-level insights not available on New Pages Experience
+    // Use likes/comments/shares from the post object directly
     const fbPostsFormatted: any[] = [];
-    for (let i = 0; i < fbPosts.length; i += 5) {
-      const batch = fbPosts.slice(i, i + 5);
-      const insights = await Promise.all(batch.map((p: any) => getFbPostInsights(p.id, pageToken)));
-      for (let j = 0; j < batch.length; j++) {
-        const p = batch[j];
-        const ins = insights[j];
-        const likes = p.likes?.summary?.total_count || 0;
-        const comments = p.comments?.summary?.total_count || 0;
-        const shares = p.shares?.count || 0;
-        const att = p.attachments?.data?.[0];
-        const attType = att?.type || att?.media_type || "";
-        const type = attType.toLowerCase().includes("video") ? "reel" : attType.toLowerCase().includes("album") ? "carousel" : "image";
-        const thumbnail = att?.media?.image?.src || "";
-        const reach = ins.reach;
-        const impressions = ins.impressions;
-        const engRate = safeDiv(likes + comments + shares, reach);
+    for (const p of fbPosts) {
+      const likes = p.likes?.summary?.total_count || 0;
+      const comments = p.comments?.summary?.total_count || 0;
+      const shares = p.shares?.count || 0;
+      const att = p.attachments?.data?.[0];
+      const attType = att?.type || att?.media_type || "";
+      const type = attType.toLowerCase().includes("video") ? "reel" : attType.toLowerCase().includes("album") ? "carousel" : "image";
+      const thumbnail = att?.media?.image?.src || "";
+      const totalEng = likes + comments + shares;
 
-        fbPostsFormatted.push({
-          id: p.id,
-          platform: "facebook",
-          type,
-          caption: p.message || "",
-          publishedAt: p.created_time,
-          thumbnail,
-          reach,
-          impressions,
-          likes,
-          comments,
-          shares,
-          saves: 0,
-          engagementRate: engRate,
-          clicks: ins.clicks,
-        });
-      }
+      fbPostsFormatted.push({
+        id: p.id,
+        platform: "facebook",
+        type,
+        caption: p.message || "",
+        publishedAt: p.created_time,
+        thumbnail,
+        reach: 0,
+        impressions: 0,
+        likes,
+        comments,
+        shares,
+        saves: 0,
+        engagementRate: 0,
+        clicks: 0,
+      });
     }
 
     const allPosts = [
