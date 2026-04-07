@@ -261,11 +261,11 @@ async function getIgFollowers(igId: string, pageToken: string): Promise<number> 
 }
 
 async function getIgMedia(igId: string, pageToken: string, since: string, until: string) {
-  const fields = "id,caption,media_type,timestamp,like_count,comments_count,reach,impressions,saved,video_views";
+  const fields = "id,caption,media_type,timestamp,like_count,comments_count,thumbnail_url,media_url";
   const url = `${GRAPH}/${igId}/media?fields=${fields}&since=${since}&until=${until}&limit=50&access_token=${pageToken}`;
   const res = await fetch(url);
   const data = await res.json();
-  if (data.error) return [];
+  if (data.error) { console.warn(`[getIgMedia] Error: ${data.error.message}`); return []; }
   return data.data || [];
 }
 
