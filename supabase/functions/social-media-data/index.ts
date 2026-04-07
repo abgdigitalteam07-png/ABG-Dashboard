@@ -337,54 +337,80 @@ Deno.serve(async (req) => {
       igEngagements = igInsights["total_interactions"] || igProfileViews;
       igWebsiteClicks = igInsights["website_clicks"] || 0;
 
-      igPostsList = igMedia.map((m: any) => {
-        const likes = m.like_count || 0;
-        const comments = m.comments_count || 0;
-        const saves = m.saved || 0;
-        const reach = m.reach || 0;
-        const impressions = m.impressions || 0;
-        const engRate = safeDiv(likes + comments + saves, reach);
-        const type = m.media_type === "VIDEO" ? "reel" : m.media_type === "CAROUSEL_ALBUM" ? "carousel" : "image";
+      // Fetch per-post insights for IG media in parallel (batch of 5)
+      const igMediaWithInsights: any[] = [];
+      for (let i = 0; i < igMedia.length; i += 5) {
+        const batch = igMedia.slice(i, i + 5);
+        const insights = await Promise.all(batch.map((m: any) => getIgMediaInsights(m.id, pageToken)));
+        for (let j = 0; j < batch.length; j++) {
+          const m = batch[j];
+          const ins = insights[j];
+          const likes = m.like_count || 0;
+          const comments = m.comments_count || 0;
+          const saves = ins.saved || 0;
+          const shares = ins.shares || 0;
+          const reach = ins.reach || 0;
+          const impressions = ins.impressions || 0;
+          const engRate = safeDiv(likes + comments + saves, reach);
+          const type = m.media_type === "VIDEO" ? "reel" : m.media_type === "CAROUSEL_ALBUM" ? "carousel" : "image";
+          igMediaWithInsights.push({
+            id: m.id,
+            platform: "instagram",
+            type,
+            caption: m.caption || "",
+            publishedAt: m.timestamp,
+            thumbnail: m.thumbnail_url || m.media_url || "",
+            reach,
+            impressions,
+            likes,
+            comments,
+            shares,
+            saves,
+            engagementRate: engRate,
+            clicks: 0,
+          });
+        }
+      }
+      igPostsList = igMediaWithInsights;
+    }
 
-        return {
-          id: m.id,
-          platform: "instagram",
+    // Fetch per-post insights for FB posts in parallel (batch of 5)
+    const fbPostsFormatted: any[] = [];
+    for (let i = 0; i < fbPosts.length; i += 5) {
+      const batch = fbPosts.slice(i, i + 5);
+      const insights = await Promise.all(batch.map((p: any) => getFbPostInsights(p.id, pageToken)));
+      for (let j = 0; j < batch.length; j++) {
+        const p = batch[j];
+        const ins = insights[j];
+        const likes = p.likes?.summary?.total_count || 0;
+        const comments = p.comments?.summary?.total_count || 0;
+        const shares = p.shares?.count || 0;
+        const att = p.attachments?.data?.[0];
+        const attType = att?.type || att?.media_type || "";
+        const type = attType.toLowerCase().includes("video") ? "reel" : attType.toLowerCase().includes("album") ? "carousel" : "image";
+        const thumbnail = att?.media?.image?.src || "";
+        const reach = ins.reach;
+        const impressions = ins.impressions;
+        const engRate = safeDiv(likes + comments + shares, reach);
+
+        fbPostsFormatted.push({
+          id: p.id,
+          platform: "facebook",
           type,
-          caption: m.caption || "",
-          publishedAt: m.timestamp,
+          caption: p.message || "",
+          publishedAt: p.created_time,
+          thumbnail,
           reach,
           impressions,
           likes,
           comments,
-          shares: 0,
-          saves,
+          shares,
+          saves: 0,
           engagementRate: engRate,
-          clicks: 0,
-        };
-      });
+          clicks: ins.clicks,
+        });
+      }
     }
-
-    const fbPostsFormatted = fbPosts.map((p: any) => {
-      const shares = p.shares?.count || 0;
-      const attType = p.attachments?.data?.[0]?.type || "";
-      const type = attType.includes("video") ? "reel" : attType.includes("album") ? "carousel" : "image";
-
-      return {
-        id: p.id,
-        platform: "facebook",
-        type,
-        caption: p.message || "",
-        publishedAt: p.created_time,
-        reach: 0,
-        impressions: 0,
-        likes: 0,
-        comments: 0,
-        shares,
-        saves: 0,
-        engagementRate: 0,
-        clicks: 0,
-      };
-    });
 
     const allPosts = [
       ...(platform === "instagram" ? [] : fbPostsFormatted),
