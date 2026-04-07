@@ -31,7 +31,7 @@ const BRAND_PAGE_MAP: Record<string, { pageId: string }> = {
   "ABG Decorative Products":     { pageId: "104595485455883" },
 };
 
-const GRAPH = "https://graph.facebook.com/v21.0";
+const GRAPH = "https://graph.facebook.com/v25.0";
 
 let cachedPageTokens: Record<string, string> | null = null;
 
