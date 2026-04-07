@@ -70,7 +70,25 @@ async function getPageToken(pageId: string, userToken: string): Promise<string> 
   return userToken;
 }
 
-async function getPageInsights(pageId: string, pageToken: string, since: string, until: string): Promise<Record<string, number>> {
+// Dynamically fetch IG Business Account ID linked to a Facebook Page
+async function getIgBusinessAccountId(pageId: string, pageToken: string): Promise<string | null> {
+  const url = `${GRAPH}/${pageId}?fields=instagram_business_account&access_token=${pageToken}`;
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.error) {
+      console.warn(`[getIgBusinessAccountId] Error for page ${pageId}: ${data.error.message}`);
+      return null;
+    }
+    const igId = data.instagram_business_account?.id || null;
+    console.log(`[getIgBusinessAccountId] Page ${pageId} -> IG: ${igId || "none"}`);
+    return igId;
+  } catch (e) {
+    console.warn(`[getIgBusinessAccountId] Fetch error: ${e.message}`);
+    return null;
+  }
+}
+
   // Try multiple metric sets - v25.0 has deprecated many old metrics
   const metricSets = [
     "page_views_total",
