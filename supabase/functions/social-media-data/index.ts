@@ -146,7 +146,7 @@ async function getPagePosts(pageId: string, pageToken: string, since: string, un
 }
 
 async function getIgInsights(igId: string, pageToken: string, since: string, until: string) {
-  const metrics = "reach,impressions,profile_views,website_clicks";
+  const metrics = "reach,profile_views,website_clicks,total_interactions";
   const url = `${GRAPH}/${igId}/insights?metric=${metrics}&since=${since}&until=${until}&period=total_over_range&access_token=${pageToken}`;
   const res = await fetch(url);
   const data = await res.json();
