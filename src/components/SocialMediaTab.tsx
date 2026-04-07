@@ -175,6 +175,20 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
   const websiteClicksDelta = parseFloat(((overview.websiteClicks / Math.max(overview.profileVisits, 1)) * 100 - 25).toFixed(1));
 
   // Chart colors
+  const FB_COLOR = "hsl(221, 44%, 41%)";
+  const IG_COLOR = "hsl(340, 75%, 54%)";
+
+  return (
+    <div className="space-y-6">
+      {/* KPI Cards */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <ScoreCard title="Total Followers" value={formatNumber(totalFollowers)} delta={avgFollowerGrowth} />
+        <ScoreCard title="Total Reach" value={formatNumber(overview.totalReach)} delta={reachDelta} />
+        <ScoreCard title="Total Impressions" value={formatNumber(overview.totalImpressions)} delta={impressionsDelta} />
+        <ScoreCard title="Engagement Rate" value={`${overview.engagementRate}%`} delta={engRateDelta} />
+        <ScoreCard title="Profile Visits" value={formatNumber(overview.profileVisits)} delta={profileVisitsDelta} />
+        <ScoreCard title="Website Clicks" value={formatNumber(overview.websiteClicks)} delta={websiteClicksDelta} />
+      </div>
 
       {/* Platform Comparison */}
       <div>
