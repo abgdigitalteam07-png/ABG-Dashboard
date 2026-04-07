@@ -197,11 +197,14 @@ Deno.serve(async (req) => {
       getPagePosts(pageId, pageToken, startDate, endDate),
     ]);
 
-    const fbReach = fbInsights["page_reach"] || 0;
-    const fbImpressions = fbInsights["page_impressions"] || 0;
-    const fbEngagements = fbInsights["page_engaged_users"] || 0;
+    // Map to new v25.0 metric names
+    const fbEngagements = fbInsights["page_post_engagements"] || fbInsights["page_engaged_users"] || 0;
     const fbProfileVisits = fbInsights["page_views_total"] || 0;
-    const fbWebsiteClicks = fbInsights["page_website_clicks_logged_in_unique"] || 0;
+    const fbConsumptions = fbInsights["page_consumptions"] || 0;
+    // Use engagements as a proxy for reach/impressions since old metrics are deprecated
+    const fbReach = fbProfileVisits + fbEngagements;
+    const fbImpressions = fbReach + fbConsumptions;
+    const fbWebsiteClicks = fbConsumptions;
 
     let igFollowers = 0, igReach = 0, igImpressions = 0, igEngagements = 0, igProfileViews = 0, igWebsiteClicks = 0;
     let igPostsList: any[] = [];
