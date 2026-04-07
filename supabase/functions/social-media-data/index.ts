@@ -351,7 +351,7 @@ Deno.serve(async (req) => {
       const igMediaWithInsights: any[] = [];
       for (let i = 0; i < igMedia.length; i += 5) {
         const batch = igMedia.slice(i, i + 5);
-        const insights = await Promise.all(batch.map((m: any) => getIgMediaInsights(m.id, pageToken)));
+        const insights = await Promise.all(batch.map((m: any) => getIgMediaInsights(m.id, m.media_type || "", pageToken)));
         for (let j = 0; j < batch.length; j++) {
           const m = batch[j];
           const ins = insights[j];
