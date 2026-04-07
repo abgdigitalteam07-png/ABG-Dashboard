@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Lock, AlertCircle, Eye, EyeOff } from "lucide-react";
+import { HelpButton } from "@/components/HelpButton";
 
 const ABG_LOGO_URL =
   "https://24202603.fs1.hubspotusercontent-na1.net/hubfs/24202603/Swan/website/common/abg-logo-white-horizontal.png";
@@ -174,6 +175,7 @@ export default function Login() {
           </div>
         </CardContent>
       </Card>
+      <HelpButton variant="login" />
     </div>
   );
 }
