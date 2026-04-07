@@ -144,41 +144,64 @@ async function getPagePosts(pageId: string, pageToken: string, since: string, un
   return data.data || [];
 }
 
+// Generate 30-day chunks for IG insights (max 30 days per request)
+function getDateChunks(since: string, until: string): Array<{ since: string; until: string }> {
+  const chunks: Array<{ since: string; until: string }> = [];
+  const start = new Date(since);
+  const end = new Date(until);
+  let current = new Date(start);
+  while (current < end) {
+    const chunkEnd = new Date(current);
+    chunkEnd.setDate(chunkEnd.getDate() + 28); // 28 days to stay under 30-day limit
+    const actualEnd = chunkEnd > end ? end : chunkEnd;
+    chunks.push({
+      since: current.toISOString().split("T")[0],
+      until: actualEnd.toISOString().split("T")[0],
+    });
+    current = actualEnd;
+  }
+  return chunks;
+}
+
 async function getIgInsights(igId: string, pageToken: string, since: string, until: string) {
   const result: Record<string, number> = {};
-  
-  // Fetch reach separately (uses period=day)
-  const reachUrl = `${GRAPH}/${igId}/insights?metric=reach&since=${since}&until=${until}&period=day&access_token=${pageToken}`;
-  try {
-    const reachRes = await fetch(reachUrl);
-    const reachData = await reachRes.json();
-    if (!reachData.error) {
-      for (const item of (reachData.data || [])) {
-        let total = 0;
-        for (const v of (item.values || [])) total += typeof v.value === "number" ? v.value : 0;
-        result[item.name] = total;
-      }
-    } else {
-      console.warn(`[getIgInsights] reach failed: ${reachData.error.message}`);
-    }
-  } catch (e) { console.warn(`[getIgInsights] reach fetch error: ${e.message}`); }
+  const chunks = getDateChunks(since, until);
+  console.log(`[getIgInsights] Fetching ${chunks.length} chunks for IG ${igId}`);
 
-  // Fetch total_value metrics (profile_views, website_clicks, total_interactions)
-  const totalMetrics = "profile_views,website_clicks,total_interactions";
-  const totalUrl = `${GRAPH}/${igId}/insights?metric=${totalMetrics}&metric_type=total_value&since=${since}&until=${until}&period=day&access_token=${pageToken}`;
-  try {
-    const totalRes = await fetch(totalUrl);
-    const totalData = await totalRes.json();
-    if (!totalData.error) {
-      for (const item of (totalData.data || [])) {
-        let total = 0;
-        for (const v of (item.values || [])) total += typeof v.value === "number" ? v.value : 0;
-        result[item.name] = total;
+  for (const chunk of chunks) {
+    // Fetch reach (period=day)
+    try {
+      const reachUrl = `${GRAPH}/${igId}/insights?metric=reach&since=${chunk.since}&until=${chunk.until}&period=day&access_token=${pageToken}`;
+      const reachRes = await fetch(reachUrl);
+      const reachData = await reachRes.json();
+      if (!reachData.error) {
+        for (const item of (reachData.data || [])) {
+          for (const v of (item.values || [])) {
+            result[item.name] = (result[item.name] || 0) + (typeof v.value === "number" ? v.value : 0);
+          }
+        }
+      } else {
+        console.warn(`[getIgInsights] reach chunk failed: ${reachData.error.message}`);
       }
-    } else {
-      console.warn(`[getIgInsights] total_value metrics failed: ${totalData.error.message}`);
-    }
-  } catch (e) { console.warn(`[getIgInsights] total_value fetch error: ${e.message}`); }
+    } catch (e) { console.warn(`[getIgInsights] reach fetch error: ${e.message}`); }
+
+    // Fetch total_value metrics
+    try {
+      const totalMetrics = "profile_views,website_clicks,total_interactions";
+      const totalUrl = `${GRAPH}/${igId}/insights?metric=${totalMetrics}&metric_type=total_value&since=${chunk.since}&until=${chunk.until}&period=day&access_token=${pageToken}`;
+      const totalRes = await fetch(totalUrl);
+      const totalData = await totalRes.json();
+      if (!totalData.error) {
+        for (const item of (totalData.data || [])) {
+          for (const v of (item.values || [])) {
+            result[item.name] = (result[item.name] || 0) + (typeof v.value === "number" ? v.value : 0);
+          }
+        }
+      } else {
+        console.warn(`[getIgInsights] total_value chunk failed: ${totalData.error.message}`);
+      }
+    } catch (e) { console.warn(`[getIgInsights] total_value fetch error: ${e.message}`); }
+  }
 
   console.log(`[getIgInsights] Result:`, JSON.stringify(result));
   return result;
