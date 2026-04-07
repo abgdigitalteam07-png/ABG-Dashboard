@@ -270,14 +270,7 @@ Deno.serve(async (req) => {
     }
 
     const fbPostsFormatted = fbPosts.map((p: any) => {
-      const ins: Record<string, number> = {};
-      for (const i of (p.insights?.data || [])) {
-        ins[i.name] = i.values?.[0]?.value || 0;
-      }
-      const reach = ins["post_reach"] || 0;
-      const impressions = ins["post_impressions"] || 0;
-      const engagements = ins["post_engaged_users"] || 0;
-      const clicks = ins["post_clicks"] || 0;
+      const shares = p.shares?.count || 0;
       const attType = p.attachments?.data?.[0]?.type || "";
       const type = attType.includes("video") ? "reel" : attType.includes("album") ? "carousel" : "image";
 
@@ -287,14 +280,14 @@ Deno.serve(async (req) => {
         type,
         caption: p.message || "",
         publishedAt: p.created_time,
-        reach,
-        impressions,
-        likes: Math.round(engagements * 0.7),
-        comments: Math.round(engagements * 0.2),
-        shares: Math.round(engagements * 0.1),
+        reach: 0,
+        impressions: 0,
+        likes: 0,
+        comments: 0,
+        shares,
         saves: 0,
-        engagementRate: safeDiv(engagements, reach),
-        clicks,
+        engagementRate: 0,
+        clicks: 0,
       };
     });
 
