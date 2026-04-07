@@ -47,65 +47,40 @@ export default function Login() {
 
     setSending(true);
 
-    // Fetch shared password from app_config
-    const { data: configRow, error: configError } = await supabase
-      .from("app_config")
-      .select("value")
-      .eq("key", "shared_password")
-      .single();
+    try {
+      const res = await supabase.functions.invoke("shared-login", {
+        body: { email: trimmed, password },
+      });
 
-    if (configError || !configRow) {
-      setSending(false);
-      setError("Unable to verify credentials. Please contact your admin.");
-      return;
-    }
-
-    if (password !== configRow.value) {
-      setSending(false);
-      setError("Incorrect password. Please contact your admin.");
-      return;
-    }
-
-    // Password matches — sign in or sign up with Supabase using the shared password
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: trimmed,
-      password,
-    });
-
-    if (signInError) {
-      // User might not exist yet — auto-create account
-      if (signInError.message.includes("Invalid login credentials")) {
-        const { error: signUpError } = await supabase.auth.signUp({
-          email: trimmed,
-          password,
-        });
-
-        if (signUpError) {
-          setSending(false);
-          setError(signUpError.message);
-          return;
-        }
-
-        // Try signing in again after signup
-        const { error: retryError } = await supabase.auth.signInWithPassword({
-          email: trimmed,
-          password,
-        });
-
-        if (retryError) {
-          setSending(false);
-          setError("Account created but sign-in failed. Please try again.");
-          return;
-        }
-      } else {
+      if (res.error || !res.data?.session) {
+        const msg = res.data?.error || res.error?.message || "Login failed. Please try again.";
         setSending(false);
-        setError(signInError.message);
+        if (msg.includes("Incorrect password")) {
+          setError("Incorrect password. Please contact your admin.");
+        } else {
+          setError(msg);
+        }
         return;
       }
-    }
 
-    setSending(false);
-    navigate("/", { replace: true });
+      // Set the session from the edge function response
+      const { error: setSessionError } = await supabase.auth.setSession({
+        access_token: res.data.session.access_token,
+        refresh_token: res.data.session.refresh_token,
+      });
+
+      if (setSessionError) {
+        setSending(false);
+        setError("Sign-in failed. Please try again.");
+        return;
+      }
+
+      setSending(false);
+      navigate("/", { replace: true });
+    } catch (err: any) {
+      setSending(false);
+      setError(err.message || "An unexpected error occurred.");
+    }
   };
 
   return (
