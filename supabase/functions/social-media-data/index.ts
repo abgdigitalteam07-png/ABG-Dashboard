@@ -133,12 +133,31 @@ async function getIgInsights(igId: string, pageToken: string, since: string, unt
   const url = `${GRAPH}/${igId}/insights?metric=${metrics}&since=${since}&until=${until}&period=total_over_range&access_token=${pageToken}`;
   const res = await fetch(url);
   const data = await res.json();
-  if (data.error) return {};
+  if (data.error) {
+    console.warn(`[getIgInsights] Error: ${data.error.message}`);
+    // Try day period fallback
+    const dayUrl = `${GRAPH}/${igId}/insights?metric=${metrics}&since=${since}&until=${until}&period=day&access_token=${pageToken}`;
+    const dayRes = await fetch(dayUrl);
+    const dayData = await dayRes.json();
+    if (dayData.error) {
+      console.warn(`[getIgInsights] Day fallback also failed: ${dayData.error.message}`);
+      return {};
+    }
+    const result: Record<string, number> = {};
+    for (const item of (dayData.data || [])) {
+      let total = 0;
+      for (const v of (item.values || [])) total += typeof v.value === "number" ? v.value : 0;
+      result[item.name] = total;
+    }
+    console.log(`[getIgInsights] Day fallback result:`, JSON.stringify(result));
+    return result;
+  }
   const result: Record<string, number> = {};
   for (const item of (data.data || [])) {
     const val = item.values?.[0]?.value;
     result[item.name] = typeof val === "number" ? val : 0;
   }
+  console.log(`[getIgInsights] Result:`, JSON.stringify(result));
   return result;
 }
 
