@@ -48,6 +48,19 @@ const crmMetrics = [
   ["Lifecycle Stage Breakdown", "Bar chart showing contact distribution across HubSpot lifecycle stages (Subscriber, Lead, MQL, SQL, Opportunity, Customer)"],
 ];
 
+const socialMetrics = [
+  ["Impressions", "Total times content was displayed, whether clicked or not"],
+  ["Reach", "Number of unique accounts that saw the content"],
+  ["Engagement Rate", "(Likes + Comments + Shares + Saves) ÷ Reach × 100"],
+  ["Engagements", "Total interactions: likes, comments, shares, saves"],
+  ["Clicks", "Number of times a post or link was clicked"],
+  ["Followers", "Total page followers at end of selected period"],
+  ["Post Reach", "Unique accounts that saw a specific post"],
+  ["Post Impressions", "Total times a specific post was displayed"],
+  ["Saves", "Times a post was saved (Instagram only)"],
+  ["Shares", "Times a post was shared or forwarded"],
+];
+
 /* ── Brand matrix (static, matches spec exactly — 27 brands) ── */
 const brandMatrix: { name: string; hubspot: boolean; ga4: boolean; gsc: boolean; meta: boolean }[] = [
   { name: "A2Bath", hubspot: false, ga4: true, gsc: false, meta: false },
