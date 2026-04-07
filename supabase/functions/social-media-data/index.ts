@@ -130,8 +130,7 @@ async function getPageFanCount(pageId: string, pageToken: string): Promise<numbe
 }
 
 async function getPagePosts(pageId: string, pageToken: string, since: string, until: string) {
-  // Don't request insights subfield inline — it can fail on v25.0
-  const fields = "id,message,created_time,shares,attachments";
+  const fields = "id,message,created_time,shares,likes.summary(true),comments.summary(true),attachments{type,media_type,media,subattachments}";
   const url = `${GRAPH}/${pageId}/posts?fields=${fields}&since=${since}&until=${until}&limit=50&access_token=${pageToken}`;
   console.log(`[getPagePosts] Fetching posts for page ${pageId}`);
   const res = await fetch(url);
@@ -142,6 +141,54 @@ async function getPagePosts(pageId: string, pageToken: string, since: string, un
   }
   console.log(`[getPagePosts] Got ${(data.data || []).length} posts`);
   return data.data || [];
+}
+
+// Fetch per-post insights for a single FB post (v25.0 compatible)
+async function getFbPostInsights(postId: string, pageToken: string): Promise<{ impressions: number; reach: number; engagedUsers: number; clicks: number }> {
+  const result = { impressions: 0, reach: 0, engagedUsers: 0, clicks: 0 };
+  try {
+    const url = `${GRAPH}/${postId}/insights?metric=post_impressions,post_impressions_unique,post_engaged_users,post_clicks&access_token=${pageToken}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.error) {
+      console.warn(`[getFbPostInsights] ${postId}: ${data.error.message}`);
+      return result;
+    }
+    for (const item of (data.data || [])) {
+      const val = item.values?.[0]?.value || 0;
+      if (item.name === "post_impressions") result.impressions = val;
+      if (item.name === "post_impressions_unique") result.reach = val;
+      if (item.name === "post_engaged_users") result.engagedUsers = val;
+      if (item.name === "post_clicks") result.clicks = val;
+    }
+  } catch (e) {
+    console.warn(`[getFbPostInsights] fetch error for ${postId}: ${e.message}`);
+  }
+  return result;
+}
+
+// Fetch per-post insights for a single IG media object
+async function getIgMediaInsights(mediaId: string, pageToken: string): Promise<{ reach: number; impressions: number; saved: number; shares: number }> {
+  const result = { reach: 0, impressions: 0, saved: 0, shares: 0 };
+  try {
+    const url = `${GRAPH}/${mediaId}/insights?metric=reach,impressions,saved,shares&access_token=${pageToken}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.error) {
+      console.warn(`[getIgMediaInsights] ${mediaId}: ${data.error.message}`);
+      return result;
+    }
+    for (const item of (data.data || [])) {
+      const val = typeof item.values?.[0]?.value === "number" ? item.values[0].value : 0;
+      if (item.name === "reach") result.reach = val;
+      if (item.name === "impressions") result.impressions = val;
+      if (item.name === "saved") result.saved = val;
+      if (item.name === "shares") result.shares = val;
+    }
+  } catch (e) {
+    console.warn(`[getIgMediaInsights] fetch error for ${mediaId}: ${e.message}`);
+  }
+  return result;
 }
 
 // Generate 30-day chunks for IG insights (max 30 days per request)
