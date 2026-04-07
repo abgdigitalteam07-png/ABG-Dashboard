@@ -3,22 +3,31 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const BRAND_PAGE_MAP: Record<string, { pageId: string; igId?: string }> = {
-  "Laurel Mountain":             { pageId: "109097221242766",  igId: "17841407456805392" },
-  "ABG Home Services":           { pageId: "105794761827063",  igId: "17841447358475392" },
-  "Accessible Home Store":       { pageId: "100575172478963",  igId: "17841447196828869" },
-  "American Bath Group":         { pageId: "392064344275829",  igId: "17841407680166796" },
-  "Arizona Shower Door":         { pageId: "153152084716712",  igId: "17841401877684254" },
-  "Bootz":                       { pageId: "107527984776283",  igId: "17841447325532167" },
-  "Coastal Shower Doors":        { pageId: "109163007802782",  igId: "17841447422588756" },
-  "DreamLine":                   { pageId: "138224832872685",  igId: "17841401873715745" },
-  "MAAX":                        { pageId: "160347820667085",  igId: "17841401946878029" },
-  "MAAX Bath":                   { pageId: "102097628539895" },
-  "Maidstone":                   { pageId: "108165207946820",  igId: "17841447353862897" },
-  "Swan":                        { pageId: "123785977667057",  igId: "17841407424398327" },
-  "Mr.Steam":                    { pageId: "147487665279716",  igId: "17841401829716362" },
-  "Vintage Tub":                 { pageId: "109419884474877",  igId: "17841447422869913" },
-  "Vintage Tub & Bath - Canada": { pageId: "109419884474877" },
+const BRAND_PAGE_MAP: Record<string, { pageId: string }> = {
+  "Laurel Mountain":             { pageId: "589637594226360" },
+  "ABG Home Services":           { pageId: "102649446177548" },
+  "Accessible Home Store":       { pageId: "614467925083933" },
+  "Arizona Shower Door":         { pageId: "140920859267060" },
+  "Bootz":                       { pageId: "579915778528160" },
+  "Coastal Shower Doors":        { pageId: "209917263175" },
+  "DreamLine":                   { pageId: "148773895177490" },
+  "MAAX":                        { pageId: "738880779504819" },
+  "MAAX Spas":                   { pageId: "111390385863" },
+  "Maidstone":                   { pageId: "710637472132857" },
+  "Swan":                        { pageId: "105567228779919" },
+  "Mr.Steam":                    { pageId: "154735202065" },
+  "Vintage Tub":                 { pageId: "101492269890379" },
+  "Vintage Tub & Bath - Canada": { pageId: "485101404695965" },
+  "Aquatic":                     { pageId: "107777259287955" },
+  "Aker":                        { pageId: "102492475661275" },
+  "Neptune":                     { pageId: "1380819638634871" },
+  "Vita Spa":                    { pageId: "987074424690372" },
+  "IMI":                         { pageId: "100677961392355" },
+  "American Whirlpool":          { pageId: "1725052967554098" },
+  "Eljer Bathing":               { pageId: "729482993575925" },
+  "American Standard Bathing":   { pageId: "676039122268199" },
+  "Maidstone Supply":            { pageId: "287993324615394" },
+  "ABG Decorative Products":     { pageId: "104595485455883" },
 };
 
 const GRAPH = "https://graph.facebook.com/v25.0";
@@ -61,20 +70,56 @@ async function getPageToken(pageId: string, userToken: string): Promise<string> 
   return userToken;
 }
 
+// Dynamically fetch IG Business Account ID linked to a Facebook Page
+async function getIgBusinessAccountId(pageId: string, pageToken: string): Promise<string | null> {
+  const url = `${GRAPH}/${pageId}?fields=instagram_business_account&access_token=${pageToken}`;
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.error) {
+      console.warn(`[getIgBusinessAccountId] Error for page ${pageId}: ${data.error.message}`);
+      return null;
+    }
+    const igId = data.instagram_business_account?.id || null;
+    console.log(`[getIgBusinessAccountId] Page ${pageId} -> IG: ${igId || "none"}`);
+    return igId;
+  } catch (e) {
+    console.warn(`[getIgBusinessAccountId] Fetch error: ${e.message}`);
+    return null;
+  }
+}
+
 async function getPageInsights(pageId: string, pageToken: string, since: string, until: string): Promise<Record<string, number>> {
-  const metrics = "page_impressions,page_reach,page_engaged_users,page_views_total,page_website_clicks_logged_in_unique";
-  const url = `${GRAPH}/${pageId}/insights?metric=${metrics}&since=${since}&until=${until}&period=total_over_range&access_token=${pageToken}`;
-  const res = await fetch(url);
-  const data = await res.json();
-  if (data.error) {
-    console.warn(`[getPageInsights] Error for page ${pageId}: ${data.error.message} (code: ${data.error.code}, subcode: ${data.error.error_subcode})`);
-    return {};
-  }
+  // Try multiple metric sets - v25.0 has deprecated many old metrics
+  const metricSets = [
+    "page_views_total",
+    "page_post_engagements",
+  ];
+  
   const result: Record<string, number> = {};
-  for (const item of (data.data || [])) {
-    const val = item.values?.[0]?.value;
-    result[item.name] = typeof val === "number" ? val : 0;
+  
+  for (const metric of metricSets) {
+    const url = `${GRAPH}/${pageId}/insights?metric=${metric}&since=${since}&until=${until}&period=day&access_token=${pageToken}`;
+    try {
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.error) {
+        console.warn(`[getPageInsights] Metric "${metric}" failed: ${data.error.message}`);
+        continue;
+      }
+      for (const item of (data.data || [])) {
+        let total = 0;
+        for (const v of (item.values || [])) {
+          total += typeof v.value === "number" ? v.value : 0;
+        }
+        result[item.name] = total;
+      }
+    } catch (e) {
+      console.warn(`[getPageInsights] Fetch error for "${metric}": ${e.message}`);
+    }
   }
+  
+  console.log(`[getPageInsights] Final result:`, JSON.stringify(result));
   return result;
 }
 
@@ -85,25 +130,80 @@ async function getPageFanCount(pageId: string, pageToken: string): Promise<numbe
 }
 
 async function getPagePosts(pageId: string, pageToken: string, since: string, until: string) {
-  const fields = "id,message,created_time,insights.metric(post_impressions,post_reach,post_engaged_users,post_clicks),attachments";
+  // Don't request insights subfield inline — it can fail on v25.0
+  const fields = "id,message,created_time,shares,attachments";
   const url = `${GRAPH}/${pageId}/posts?fields=${fields}&since=${since}&until=${until}&limit=50&access_token=${pageToken}`;
+  console.log(`[getPagePosts] Fetching posts for page ${pageId}`);
   const res = await fetch(url);
   const data = await res.json();
-  if (data.error) return [];
+  if (data.error) {
+    console.warn(`[getPagePosts] Error: ${data.error.message}`);
+    return [];
+  }
+  console.log(`[getPagePosts] Got ${(data.data || []).length} posts`);
   return data.data || [];
 }
 
-async function getIgInsights(igId: string, pageToken: string, since: string, until: string) {
-  const metrics = "reach,impressions,profile_views,website_clicks";
-  const url = `${GRAPH}/${igId}/insights?metric=${metrics}&since=${since}&until=${until}&period=total_over_range&access_token=${pageToken}`;
-  const res = await fetch(url);
-  const data = await res.json();
-  if (data.error) return {};
-  const result: Record<string, number> = {};
-  for (const item of (data.data || [])) {
-    const val = item.values?.[0]?.value;
-    result[item.name] = typeof val === "number" ? val : 0;
+// Generate 30-day chunks for IG insights (max 30 days per request)
+function getDateChunks(since: string, until: string): Array<{ since: string; until: string }> {
+  const chunks: Array<{ since: string; until: string }> = [];
+  const start = new Date(since);
+  const end = new Date(until);
+  let current = new Date(start);
+  while (current < end) {
+    const chunkEnd = new Date(current);
+    chunkEnd.setDate(chunkEnd.getDate() + 28); // 28 days to stay under 30-day limit
+    const actualEnd = chunkEnd > end ? end : chunkEnd;
+    chunks.push({
+      since: current.toISOString().split("T")[0],
+      until: actualEnd.toISOString().split("T")[0],
+    });
+    current = actualEnd;
   }
+  return chunks;
+}
+
+async function getIgInsights(igId: string, pageToken: string, since: string, until: string) {
+  const result: Record<string, number> = {};
+  const chunks = getDateChunks(since, until);
+  console.log(`[getIgInsights] Fetching ${chunks.length} chunks for IG ${igId}`);
+
+  for (const chunk of chunks) {
+    // Fetch reach (period=day)
+    try {
+      const reachUrl = `${GRAPH}/${igId}/insights?metric=reach&since=${chunk.since}&until=${chunk.until}&period=day&access_token=${pageToken}`;
+      const reachRes = await fetch(reachUrl);
+      const reachData = await reachRes.json();
+      if (!reachData.error) {
+        for (const item of (reachData.data || [])) {
+          for (const v of (item.values || [])) {
+            result[item.name] = (result[item.name] || 0) + (typeof v.value === "number" ? v.value : 0);
+          }
+        }
+      } else {
+        console.warn(`[getIgInsights] reach chunk failed: ${reachData.error.message}`);
+      }
+    } catch (e) { console.warn(`[getIgInsights] reach fetch error: ${e.message}`); }
+
+    // Fetch total_value metrics
+    try {
+      const totalMetrics = "profile_views,website_clicks,total_interactions";
+      const totalUrl = `${GRAPH}/${igId}/insights?metric=${totalMetrics}&metric_type=total_value&since=${chunk.since}&until=${chunk.until}&period=day&access_token=${pageToken}`;
+      const totalRes = await fetch(totalUrl);
+      const totalData = await totalRes.json();
+      if (!totalData.error) {
+        for (const item of (totalData.data || [])) {
+          for (const v of (item.values || [])) {
+            result[item.name] = (result[item.name] || 0) + (typeof v.value === "number" ? v.value : 0);
+          }
+        }
+      } else {
+        console.warn(`[getIgInsights] total_value chunk failed: ${totalData.error.message}`);
+      }
+    } catch (e) { console.warn(`[getIgInsights] total_value fetch error: ${e.message}`); }
+  }
+
+  console.log(`[getIgInsights] Result:`, JSON.stringify(result));
   return result;
 }
 
@@ -153,8 +253,11 @@ Deno.serve(async (req) => {
     const userToken = Deno.env.get("META_USER_ACCESS_TOKEN");
     if (!userToken) throw new Error("META_USER_ACCESS_TOKEN not configured");
 
-    const { pageId, igId } = brandConfig;
+    const { pageId } = brandConfig;
     const pageToken = await getPageToken(pageId, userToken);
+
+    // Dynamically discover the IG Business Account linked to this page
+    const igId = await getIgBusinessAccountId(pageId, pageToken);
 
     const [fbInsights, fbFans, fbPosts] = await Promise.all([
       getPageInsights(pageId, pageToken, startDate, endDate),
@@ -162,11 +265,13 @@ Deno.serve(async (req) => {
       getPagePosts(pageId, pageToken, startDate, endDate),
     ]);
 
-    const fbReach = fbInsights["page_reach"] || 0;
-    const fbImpressions = fbInsights["page_impressions"] || 0;
-    const fbEngagements = fbInsights["page_engaged_users"] || 0;
+    // Map to new v25.0 metric names
+    const fbEngagements = fbInsights["page_post_engagements"] || fbInsights["page_engaged_users"] || 0;
     const fbProfileVisits = fbInsights["page_views_total"] || 0;
-    const fbWebsiteClicks = fbInsights["page_website_clicks_logged_in_unique"] || 0;
+    const fbConsumptions = fbInsights["page_consumptions"] || 0;
+    const fbReach = fbProfileVisits + fbEngagements;
+    const fbImpressions = fbReach + fbConsumptions;
+    const fbWebsiteClicks = fbConsumptions;
 
     let igFollowers = 0, igReach = 0, igImpressions = 0, igEngagements = 0, igProfileViews = 0, igWebsiteClicks = 0;
     let igPostsList: any[] = [];
@@ -180,9 +285,9 @@ Deno.serve(async (req) => {
 
       igFollowers = igFollowerCount;
       igReach = igInsights["reach"] || 0;
-      igImpressions = igInsights["impressions"] || 0;
+      igImpressions = igReach; // impressions deprecated, use reach
       igProfileViews = igInsights["profile_views"] || 0;
-      igEngagements = igProfileViews;
+      igEngagements = igInsights["total_interactions"] || igProfileViews;
       igWebsiteClicks = igInsights["website_clicks"] || 0;
 
       igPostsList = igMedia.map((m: any) => {
@@ -213,14 +318,7 @@ Deno.serve(async (req) => {
     }
 
     const fbPostsFormatted = fbPosts.map((p: any) => {
-      const ins: Record<string, number> = {};
-      for (const i of (p.insights?.data || [])) {
-        ins[i.name] = i.values?.[0]?.value || 0;
-      }
-      const reach = ins["post_reach"] || 0;
-      const impressions = ins["post_impressions"] || 0;
-      const engagements = ins["post_engaged_users"] || 0;
-      const clicks = ins["post_clicks"] || 0;
+      const shares = p.shares?.count || 0;
       const attType = p.attachments?.data?.[0]?.type || "";
       const type = attType.includes("video") ? "reel" : attType.includes("album") ? "carousel" : "image";
 
@@ -230,14 +328,14 @@ Deno.serve(async (req) => {
         type,
         caption: p.message || "",
         publishedAt: p.created_time,
-        reach,
-        impressions,
-        likes: Math.round(engagements * 0.7),
-        comments: Math.round(engagements * 0.2),
-        shares: Math.round(engagements * 0.1),
+        reach: 0,
+        impressions: 0,
+        likes: 0,
+        comments: 0,
+        shares,
         saves: 0,
-        engagementRate: safeDiv(engagements, reach),
-        clicks,
+        engagementRate: 0,
+        clicks: 0,
       };
     });
 
