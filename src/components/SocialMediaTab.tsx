@@ -9,7 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter,
 } from "@/components/ui/table";
-import { Loader2, Facebook, Instagram, ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
+import { Loader2, Facebook, Instagram, Linkedin, ChevronDown, ChevronUp, ExternalLink, HelpCircle } from "lucide-react";
 import { WaterFillLoader } from "./WaterFillLoader";
 import { Badge } from "@/components/ui/badge";
 import { AIRecommendations } from "./AIRecommendations";
@@ -27,8 +27,24 @@ const socialMediaBrandNames = [
   "Maidstone", "Swan", "Mr.Steam", "Vintage Tub", "Vintage Tub & Bath - Canada",
 ];
 
-// Brands that are parent companies without their own analytics
 const parentBrands = ["American Bath Group"];
+
+const LINKEDIN_DEMO_DATA: Record<string, { followers: number; impressions: number; reach: number; engagements: number; engagementRate: number; posts: number }> = {
+  "MAAX BATH": { followers: 4821, impressions: 18400, reach: 12300, engagements: 892, engagementRate: 4.8, posts: 14 },
+  "MAAX": { followers: 4821, impressions: 18400, reach: 12300, engagements: 892, engagementRate: 4.8, posts: 14 },
+  "DreamLine": { followers: 11200, impressions: 34700, reach: 22100, engagements: 1840, engagementRate: 5.3, posts: 22 },
+  "Coastal Shower Doors": { followers: 1340, impressions: 5200, reach: 3100, engagements: 210, engagementRate: 3.2, posts: 8 },
+  "Neptune": { followers: 2870, impressions: 9800, reach: 6400, engagements: 430, engagementRate: 4.1, posts: 11 },
+  "Swan": { followers: 3210, impressions: 11200, reach: 7800, engagements: 560, engagementRate: 4.5, posts: 13 },
+  "IMI": { followers: 890, impressions: 3100, reach: 1900, engagements: 120, engagementRate: 2.8, posts: 5 },
+  "Mr.Steam": { followers: 6540, impressions: 22100, reach: 14800, engagements: 1120, engagementRate: 5.1, posts: 18 },
+  "ABG Decorative Products": { followers: 1120, impressions: 4300, reach: 2700, engagements: 180, engagementRate: 3.6, posts: 7 },
+  "American Standard Bathing": { followers: 8930, impressions: 29400, reach: 19200, engagements: 1560, engagementRate: 5.8, posts: 24 },
+  "Maidstone": { followers: 670, impressions: 2100, reach: 1300, engagements: 88, engagementRate: 2.4, posts: 4 },
+  "Laurel Mountain": { followers: 520, impressions: 1800, reach: 1100, engagements: 65, engagementRate: 2.1, posts: 3 },
+  "Bootz": { followers: 740, impressions: 2600, reach: 1600, engagements: 95, engagementRate: 2.7, posts: 5 },
+  "Vintage Tub": { followers: 1850, impressions: 6200, reach: 3900, engagements: 280, engagementRate: 3.9, posts: 9 },
+};
 
 function formatNumber(n: number): string {
   if (n >= 1000000) return (n / 1000000).toFixed(1) + "M";
@@ -49,7 +65,7 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [platformFilter, setPlatformFilter] = useState<"all" | "facebook" | "instagram">("all");
+  const [platformFilter, setPlatformFilter] = useState<"all" | "facebook" | "instagram" | "linkedin">("all");
   const [sortKey, setSortKey] = useState<string>("publishedAt");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [currentPage, setCurrentPage] = useState(1);
@@ -74,7 +90,7 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
         brandName: brand.name,
         startDate: formatDate(dateFrom),
         endDate: formatDate(dateTo),
-        platform: platformFilter,
+        platform: platformFilter === "linkedin" ? "all" : platformFilter,
       },
     }).then(({ data: res, error: err }) => {
       if (cancelled) return;
@@ -171,15 +187,12 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
   const { overview, platformBreakdown, contentPerformance, dailyTrends, posts } = data;
   const totalFollowers = (overview.totalFollowers.facebook || 0) + (overview.totalFollowers.instagram || 0);
   const avgFollowerGrowth = parseFloat(((overview.followerGrowth.facebook + overview.followerGrowth.instagram) / 2).toFixed(1));
-
   const reachDelta = parseFloat(((overview.totalReach / Math.max(overview.totalImpressions, 1)) * 10 - 5).toFixed(1));
   const impressionsDelta = parseFloat(((overview.totalImpressions / Math.max(overview.totalReach, 1) - 2.2) * 8).toFixed(1));
   const engRateDelta = parseFloat((overview.engagementRate > 4 ? 1.2 : overview.engagementRate > 2 ? 0.3 : -0.8).toFixed(1));
   const profileVisitsDelta = parseFloat(((overview.profileVisits / Math.max(overview.totalReach, 1)) * 100 - 3.5).toFixed(1));
   const websiteClicksDelta = parseFloat(((overview.websiteClicks / Math.max(overview.profileVisits, 1)) * 100 - 25).toFixed(1));
 
-  const FB_COLOR = "hsl(221, 44%, 41%)";
-  const IG_COLOR = "hsl(340, 75%, 54%)";
   const typeColors: Record<string, string> = {
     Image: "hsl(221, 44%, 41%)",
     Reel: "hsl(340, 75%, 54%)",
@@ -187,6 +200,8 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
     Carousel: "hsl(45, 93%, 47%)",
     Story: "hsl(142, 71%, 45%)",
   };
+
+  const liDemo = LINKEDIN_DEMO_DATA[brand.name];
 
   return (
     <div className="space-y-6">
@@ -203,7 +218,7 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
       {/* Platform Comparison */}
       <div>
         <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Platform Comparison</h2>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {(["facebook", "instagram"] as const).map((p) => {
             const pb = platformBreakdown[p];
             const Icon = p === "facebook" ? Facebook : Instagram;
@@ -228,6 +243,49 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
               </div>
             );
           })}
+
+          {/* LinkedIn Coming Soon Card */}
+          <div className="rounded-lg border border-border bg-card p-6 shadow-card relative overflow-hidden">
+            <div className="absolute top-3 right-3 flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-400">
+              <HelpCircle className="h-3 w-3" />
+              Coming Soon
+            </div>
+            <div className="mb-4 flex items-center gap-2">
+              <Linkedin className="h-5 w-5 text-[#0A66C2]" />
+              <h3 className="text-sm font-semibold">LinkedIn</h3>
+              <span className="ml-auto text-xs text-muted-foreground">
+                {liDemo ? formatNumber(liDemo.followers) : "—"} followers
+              </span>
+            </div>
+            {liDemo ? (
+              <>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <span className="text-xs text-muted-foreground">Reach</span>
+                    <p className="font-semibold tabular-nums text-muted-foreground/60">{formatNumber(liDemo.reach)}</p>
+                  </div>
+                  <div>
+                    <span className="text-xs text-muted-foreground">Impressions</span>
+                    <p className="font-semibold tabular-nums text-muted-foreground/60">{formatNumber(liDemo.impressions)}</p>
+                  </div>
+                  <div>
+                    <span className="text-xs text-muted-foreground">Engagements</span>
+                    <p className="font-semibold tabular-nums text-muted-foreground/60">{formatNumber(liDemo.engagements)}</p>
+                  </div>
+                  <div>
+                    <span className="text-xs text-muted-foreground">Engagement Rate</span>
+                    <p className="font-semibold tabular-nums text-muted-foreground/60">{liDemo.engagementRate}%</p>
+                  </div>
+                </div>
+                <div className="mt-3 flex items-center gap-2">
+                  <Badge variant="outline" className="text-xs text-muted-foreground">Demo Data</Badge>
+                  <span className="text-xs text-muted-foreground">API access pending</span>
+                </div>
+              </>
+            ) : (
+              <p className="text-xs text-muted-foreground mt-2">No LinkedIn page mapped for this brand yet.</p>
+            )}
+          </div>
         </div>
       </div>
 
@@ -314,7 +372,7 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
                     onClick={() => setExpandedPost(isExpanded ? null : post.id)}
                   >
                     <TableCell>
-                      {post.platform === "facebook" ? <Facebook className="h-4 w-4" /> : <Instagram className="h-4 w-4" />}
+                      {post.platform === "facebook" ? <Facebook className="h-4 w-4" /> : post.platform === "linkedin" ? <Linkedin className="h-4 w-4 text-[#0A66C2]" /> : <Instagram className="h-4 w-4" />}
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline" className="text-xs capitalize">{post.type}</Badge>
@@ -334,13 +392,7 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
                     <TableCell className="text-right text-sm tabular-nums">{(post.clicks || 0).toLocaleString()}</TableCell>
                     <TableCell className="text-right">
                       {permalink && (
-                        <a
-                          href={permalink}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                          className="inline-flex text-muted-foreground hover:text-foreground"
-                        >
+                        <a href={permalink} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="inline-flex text-muted-foreground hover:text-foreground">
                           <ExternalLink className="h-4 w-4" />
                         </a>
                       )}
