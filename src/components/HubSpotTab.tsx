@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, AreaChart, Area, Legend,
 } from "recharts";
 import { fetchHubSpotData } from "@/lib/api-client";
@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 import { Loader2, ArrowRight, ArrowDown, TrendingUp, TrendingDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { format, startOfWeek, startOfMonth, startOfDay, parseISO, addDays, addWeeks, addMonths, isBefore, isEqual } from "date-fns";
 import { EmailPreviewModal } from "@/components/EmailPreviewModal";
-import { ContactCharts } from "@/components/ContactCharts";
+
 import { Button } from "@/components/ui/button";
 import { AIRecommendations } from "./AIRecommendations";
 
@@ -544,26 +544,7 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
         </div>
       )}
 
-      {/* ═══ SECTION 5 — Lifecycle Stage Breakdown ═══ */}
-      <section className="rounded-lg border border-border bg-card p-6 shadow-card">
-        <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Lifecycle Stage Breakdown</h3>
-        <ResponsiveContainer width="100%" height={280}>
-          <BarChart data={d.lifecycleStages} layout="vertical">
-            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" />
-            <XAxis type="number" tick={{ fontSize: 11 }} />
-            <YAxis type="category" dataKey="stage" tick={{ fontSize: 12 }} width={100} />
-            <Tooltip contentStyle={{ fontSize: 12 }} />
-            <Bar dataKey="count" radius={[0, 4, 4, 0]}>
-              {d.lifecycleStages.map((_: any, i: number) => (
-                <Cell key={i} fill={LIFECYCLE_COLORS[i % LIFECYCLE_COLORS.length]} />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      </section>
 
-      {/* ═══ SECTION 6 — Contact Charts ═══ */}
-      <ContactCharts brand={brand} dateFrom={dateFrom} dateTo={dateTo} />
 
       <AIRecommendations
         tabName="crm_email"

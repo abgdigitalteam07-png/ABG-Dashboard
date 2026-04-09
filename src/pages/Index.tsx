@@ -5,6 +5,7 @@ import { DashboardHeader } from "@/components/DashboardHeader";
 import { TabNav } from "@/components/TabNav";
 import { PerformanceTab } from "@/components/PerformanceTab";
 import { HubSpotTab } from "@/components/HubSpotTab";
+import { HubSpotCRMTab } from "@/components/HubSpotCRMTab";
 import { SocialMediaTab } from "@/components/SocialMediaTab";
 import { ReadMeTab } from "@/components/ReadMeTab";
 import { toast } from "sonner";
@@ -68,14 +69,20 @@ const Index = () => {
     },
     {
       id: "hubspot",
-      label: "HubSpot & Emails",
+      label: "Emails",
+      disabled: !selectedBrand.hasHubSpot,
+      tooltip: "No HubSpot data for this brand.",
+    },
+    {
+      id: "hubspot-crm",
+      label: "HubSpot CRM",
       disabled: !selectedBrand.hasHubSpot,
       tooltip: "No HubSpot data for this brand.",
     },
   ];
 
   const effectiveTab =
-    activeTab === "performance" && !selectedBrand.hasGA4 && !selectedBrand.hasGSC ? "hubspot" : activeTab;
+    activeTab === "performance" && !selectedBrand.hasGA4 && !selectedBrand.hasGSC ? "hubspot-crm" : activeTab;
 
   // Silent page_view logging
   const lastLogRef = useRef("");
@@ -108,12 +115,13 @@ const Index = () => {
 
       <main className="mx-auto max-w-[1400px]">
         <div className="px-2 pt-2">
-          <h1 className="px-4 pt-4 text-lg font-semibold text-foreground">{selectedBrand.name} {effectiveTab === "hubspot" ? "Emails " : ""}Performance Overview</h1>
+          <h1 className="px-4 pt-4 text-lg font-semibold text-foreground">{selectedBrand.name} {effectiveTab === "hubspot" ? "Emails" : effectiveTab === "hubspot-crm" ? "HubSpot CRM" : ""} Performance Overview</h1>
         </div>
 
         {effectiveTab === "performance" && <PerformanceTab brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />}
         {effectiveTab === "social" && <SocialMediaTab brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />}
         {effectiveTab === "hubspot" && <HubSpotTab brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />}
+        {effectiveTab === "hubspot-crm" && <HubSpotCRMTab brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />}
         {effectiveTab === "readme" && <ReadMeTab />}
       </main>
     </div>
