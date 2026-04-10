@@ -122,7 +122,7 @@ const Index = () => {
         {effectiveTab === "social" && <SocialMediaTab brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />}
         {effectiveTab === "hubspot" && <HubSpotTab brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />}
         {effectiveTab === "hubspot-crm" && <HubSpotCRMTab brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />}
-        {effectiveTab === "readme" && <ReadMeTab />}
+        {effectiveTab === "readme" && <ReadMeTab brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />}
       </main>
     </div>
   );

@@ -4,6 +4,7 @@ export interface Brand {
   ga4PropertyIds?: string[];
   gscSiteUrl?: string;
   hubspotBusinessUnitId?: string;
+  hubspotAccount?: "primary" | "secondary"; // secondary = MAAX Sauna / Vita Spa / American Whirlpool account
   hasGA4: boolean;
   hasGSC: boolean;
   hasHubSpot: boolean;
@@ -16,7 +17,7 @@ export const brands: Brand[] = [
   { id: "aker", name: "Aker", gscSiteUrl: "http://www.akerbymaax.com/", hubspotBusinessUnitId: "1982881", hasGA4: false, hasGSC: true, hasHubSpot: true },
   { id: "amazing-shower-door", name: "Amazing Shower Door", ga4PropertyIds: ["392147256"], hasGA4: true, hasGSC: false, hasHubSpot: false },
   { id: "american-bath-group", name: "American Bath Group", gscSiteUrl: "https://americanbathgroup.com/", hasGA4: false, hasGSC: true, hasHubSpot: false },
-  { id: "american-whirlpool", name: "American Whirlpool", ga4PropertyIds: ["391075012"], gscSiteUrl: "https://americanwhirlpool.com/", hasGA4: true, hasGSC: true, hasHubSpot: false },
+  { id: "american-whirlpool", name: "American Whirlpool", ga4PropertyIds: ["391075012"], gscSiteUrl: "https://americanwhirlpool.com/", hubspotAccount: "secondary", hasGA4: true, hasGSC: true, hasHubSpot: true },
   { id: "aquarius", name: "Aquarius", ga4PropertyIds: ["368656609"], gscSiteUrl: "https://aquariusproducts.com/", hubspotBusinessUnitId: "1982883", hasGA4: true, hasGSC: true, hasHubSpot: true },
   { id: "aquatic", name: "Aquatic", ga4PropertyIds: ["385631854"], gscSiteUrl: "https://aquaticbath.com/", hubspotBusinessUnitId: "1982884", hasGA4: true, hasGSC: true, hasHubSpot: true },
   { id: "bootz", name: "Bootz", ga4PropertyIds: ["353109505"], gscSiteUrl: "https://bootz.com/", hubspotBusinessUnitId: "1982886", hasGA4: true, hasGSC: true, hasHubSpot: true },
@@ -35,5 +36,6 @@ export const brands: Brand[] = [
   { id: "rbs", name: "RBS", gscSiteUrl: "https://renovativebathsystems.com/", hubspotBusinessUnitId: "1982893", hasGA4: false, hasGSC: true, hasHubSpot: true },
   { id: "swan", name: "Swan", ga4PropertyIds: ["353105661"], gscSiteUrl: "https://swanstone.com/", hubspotBusinessUnitId: "843133", hasGA4: true, hasGSC: true, hasHubSpot: true },
   { id: "vintage-ca", name: "Vintage.ca", hubspotBusinessUnitId: "2659249", hasGA4: false, hasGSC: false, hasHubSpot: true },
-  { id: "vita-spa", name: "Vita Spa", ga4PropertyIds: ["360436693"], gscSiteUrl: "https://vitaspa.com/", hasGA4: true, hasGSC: true, hasHubSpot: false },
+  { id: "vita-spa", name: "Vita Spa", ga4PropertyIds: ["360436693"], gscSiteUrl: "https://vitaspa.com/", hubspotAccount: "secondary", hasGA4: true, hasGSC: true, hasHubSpot: true },
+  { id: "maax-sauna", name: "MAAX Sauna", hubspotAccount: "secondary", hasGA4: false, hasGSC: false, hasHubSpot: true },
 ];
