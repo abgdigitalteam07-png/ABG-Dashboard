@@ -36,6 +36,17 @@ interface EmailRecord {
   spamRate: number;
 }
 
+// ─── Secondary account config ───
+// These brands live in a separate HubSpot account (HUBSPOT_ACCESS_TOKEN_2).
+// Emails are identified by their included segment (contact list) names — not business units.
+const SECONDARY_BRANDS = new Set(["American Whirlpool", "Vita Spa", "MAAX Sauna"]);
+
+const SECONDARY_SEGMENT_KEYWORDS: Record<string, string[]> = {
+  "American Whirlpool": ["american"],
+  "Vita Spa": ["vita"],
+  "MAAX Sauna": ["sauna"],
+};
+
 // ─── helpers ───
 
 async function hubspotFetch(path: string, token: string) {
@@ -87,7 +98,7 @@ function extractPublishDate(email: any): string | null {
   return null;
 }
 
-// ─── Brand → businessUnitId mapping ───
+// ─── Brand → businessUnitId mapping (primary account) ───
 
 const BRAND_TO_BU: Record<string, string[]> = {
   "ABG Hospitality": ["1982882"],
@@ -117,6 +128,60 @@ for (const [brand, ids] of Object.entries(BRAND_TO_BU)) {
   for (const id of ids) BU_TO_BRAND[id] = brand;
 }
 
+// ─── fetch all contact lists (segments) — used to resolve list IDs to names ───
+
+async function fetchAllContactLists(token: string): Promise<Record<string, string>> {
+  const listIdToName: Record<string, string> = {};
+  let offset = 0;
+
+  while (true) {
+    try {
+      const res = await hubspotFetch(`/contacts/v1/lists?count=250&offset=${offset}`, token);
+      for (const list of (res.lists || [])) {
+        listIdToName[String(list.listId)] = (list.name || "").toLowerCase();
+      }
+      if (!res["has-more"]) break;
+      offset += (res.lists || []).length;
+    } catch (e) {
+      console.error("Error fetching contact lists:", e);
+      break;
+    }
+  }
+
+  console.log(`Fetched ${Object.keys(listIdToName).length} contact lists`);
+  return listIdToName;
+}
+
+// ─── check if an email belongs to a secondary brand via segment name matching ───
+
+function emailMatchesSecondaryBrand(email: any, brandName: string, listIdToName: Record<string, string>): boolean {
+  const keywords = SECONDARY_SEGMENT_KEYWORDS[brandName] || [];
+
+  // Try to extract included list IDs from the email object (HubSpot may return in different fields)
+  const rawIds: string[] =
+    email?.includedListIds ||
+    email?.hs_email_included_list_ids ||
+    email?.contactListIds ||
+    [];
+
+  // Some HubSpot fields return semicolon-separated strings
+  const listIds: string[] = Array.isArray(rawIds)
+    ? rawIds.map(String)
+    : String(rawIds).split(";").map((s: string) => s.trim()).filter(Boolean);
+
+  // Check segment names
+  for (const listId of listIds) {
+    const segmentName = listIdToName[listId] || "";
+    if (keywords.some((kw) => segmentName.includes(kw))) {
+      return true;
+    }
+  }
+
+  // Fallback: check the email name itself (useful when segment data isn't available)
+  const emailName = (email?.name || "").toLowerCase();
+  return keywords.some((kw) => emailName.includes(kw));
+}
+
 // ─── fetch all published emails ───
 
 async function fetchAllEmails(token: string): Promise<any[]> {
@@ -126,7 +191,9 @@ async function fetchAllEmails(token: string): Promise<any[]> {
 
   while (page < 50) {
     let url =
-      "/marketing/v3/emails?limit=100&orderBy=-publishDate&isPublished=true&property=hs_publish_date&property=hs_published_by_name&property=brand&property=state&property=subcategory";
+      "/marketing/v3/emails?limit=100&orderBy=-publishDate&isPublished=true" +
+      "&property=hs_publish_date&property=hs_published_by_name&property=brand" +
+      "&property=state&property=subcategory&property=hs_email_included_list_ids";
     if (after) url += `&after=${after}`;
 
     try {
@@ -317,13 +384,16 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const token = Deno.env.get("HUBSPOT_ACCESS_TOKEN");
-    if (!token) throw new Error("HUBSPOT_ACCESS_TOKEN not configured");
-
     const body: HubSpotRequest = await req.json();
 
-    // Debug mode
-    if (body.debug === true) {
+    const isSecondary = SECONDARY_BRANDS.has(body.brandName || "");
+    const token = isSecondary
+      ? Deno.env.get("HUBSPOT_ACCESS_TOKEN_2")
+      : Deno.env.get("HUBSPOT_ACCESS_TOKEN");
+    if (!token) throw new Error(isSecondary ? "HUBSPOT_ACCESS_TOKEN_2 not configured" : "HUBSPOT_ACCESS_TOKEN not configured");
+
+    // Debug mode (primary account only)
+    if (body.debug === true && !isSecondary) {
       let businessUnits: any[] = [];
       try {
         const buRes = await hubspotFetch("/business-units/v3/business-units/user/me", token);
@@ -359,32 +429,44 @@ Deno.serve(async (req) => {
       });
     }
 
-    console.log(`Fetching HubSpot data for brand="${brandName}", ${startDate} to ${endDate}`);
+    console.log(`Fetching HubSpot data for brand="${brandName}" account=${isSecondary ? "secondary" : "primary"}, ${startDate} to ${endDate}`);
 
-    // ── Contacts / lifecycle (filtered by brand business unit) ──
-    const buIds = BRAND_TO_BU[brandName];
+    // ── Contacts / lifecycle ──
+    const buIds = isSecondary ? null : BRAND_TO_BU[brandName];
     const brandBuId = buIds ? buIds[0] : null;
+
+    const startMs = new Date(startDate + "T00:00:00Z").getTime();
+    const endMs = new Date(endDate + "T23:59:59Z").getTime();
 
     let totalContacts = 0;
     try {
-      const searchBody: any = { limit: 0 };
-      if (brandBuId && brandBuId !== "0") {
-        searchBody.filterGroups = [
-          {
-            filters: [
-              { propertyName: "hs_all_assigned_business_unit_ids", operator: "CONTAINS_TOKEN", value: brandBuId },
-            ],
-          },
-        ];
+      const contactFilters: any[] = [];
+
+      if (isSecondary) {
+        // Secondary account: filter by "brand" contact property
+        contactFilters.push({
+          propertyName: "brand",
+          operator: "EQ",
+          value: brandName,
+        });
+      } else if (brandBuId && brandBuId !== "0") {
+        contactFilters.push({
+          propertyName: "hs_all_assigned_business_unit_ids",
+          operator: "CONTAINS_TOKEN",
+          value: brandBuId,
+        });
       }
+
+      const searchBody: any = { limit: 0 };
+      if (contactFilters.length > 0) {
+        searchBody.filterGroups = [{ filters: contactFilters }];
+      }
+
       const res = await hubspotPost("/crm/v3/objects/contacts/search", token, searchBody);
       totalContacts = res.total || 0;
     } catch {
       /* ignore */
     }
-
-    const startMs = new Date(startDate + "T00:00:00Z").getTime();
-    const endMs = new Date(endDate + "T23:59:59Z").getTime();
 
     const lifecycleStages = [
       { stage: "Subscriber", count: 0 },
@@ -402,13 +484,17 @@ Deno.serve(async (req) => {
             { propertyName: "createdate", operator: "GTE", value: String(startMs) },
             { propertyName: "createdate", operator: "LTE", value: String(endMs) },
           ];
-          if (brandBuId && brandBuId !== "0") {
+
+          if (isSecondary) {
+            filters.push({ propertyName: "brand", operator: "EQ", value: brandName });
+          } else if (brandBuId && brandBuId !== "0") {
             filters.push({
               propertyName: "hs_all_assigned_business_unit_ids",
               operator: "CONTAINS_TOKEN",
               value: brandBuId,
             });
           }
+
           const data = await hubspotPost("/crm/v3/objects/contacts/search", token, {
             filterGroups: [{ filters }],
             limit: 0,
@@ -421,17 +507,28 @@ Deno.serve(async (req) => {
       }),
     );
 
-    // ── Filter emails by businessUnitId ──
+    // ── Fetch all emails from the appropriate account ──
     const allRawEmails = await fetchAllEmails(token);
     console.log(`Total emails before filter: ${allRawEmails.length}`);
 
-    // buIds already defined above for lifecycle filtering
-    const brandFiltered: any[] = [];
+    let brandFiltered: any[] = [];
 
-    for (const email of allRawEmails) {
-      const emailBuId = String(email.businessUnitId ?? "0");
-      if (buIds && buIds.includes(emailBuId)) {
-        brandFiltered.push(email);
+    if (isSecondary) {
+      // Secondary account: filter emails by included segment (contact list) names
+      // First fetch all contact lists to build a listId → listName map
+      const listIdToName = await fetchAllContactLists(token);
+
+      brandFiltered = allRawEmails.filter((email) =>
+        emailMatchesSecondaryBrand(email, brandName, listIdToName)
+      );
+      console.log(`Secondary brand filter by segment names: ${brandFiltered.length} emails matched for "${brandName}"`);
+    } else {
+      // Primary account: filter by businessUnitId
+      for (const email of allRawEmails) {
+        const emailBuId = String(email.businessUnitId ?? "0");
+        if (buIds && buIds.includes(emailBuId)) {
+          brandFiltered.push(email);
+        }
       }
     }
 

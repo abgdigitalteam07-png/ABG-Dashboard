@@ -27,6 +27,9 @@ const BRAND_TO_BU: Record<string, string> = {
   "American Bath Group": "0",
 };
 
+// Secondary HubSpot account brands — filtered by "brand" contact property, not business unit
+const SECONDARY_BRANDS = new Set(["American Whirlpool", "Vita Spa", "MAAX Sauna"]);
+
 async function hubspotPostWithRetry(path: string, token: string, body: unknown, maxRetries = 3): Promise<any> {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const res = await fetch(`https://api.hubapi.com${path}`, {
@@ -61,9 +64,6 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const token = Deno.env.get("HUBSPOT_ACCESS_TOKEN");
-    if (!token) throw new Error("HUBSPOT_ACCESS_TOKEN not configured");
-
     const { brandName, startDate, endDate }: ContactsRequest = await req.json();
     if (!brandName || !startDate || !endDate) {
       return new Response(JSON.stringify({ error: "Missing required params" }), {
@@ -72,12 +72,18 @@ Deno.serve(async (req) => {
       });
     }
 
-    const buId = BRAND_TO_BU[brandName];
+    // Pick token and filter strategy based on which HubSpot account the brand belongs to
+    const isSecondary = SECONDARY_BRANDS.has(brandName);
+    const token = isSecondary
+      ? Deno.env.get("HUBSPOT_ACCESS_TOKEN_2")
+      : Deno.env.get("HUBSPOT_ACCESS_TOKEN");
+    if (!token) throw new Error(isSecondary ? "HUBSPOT_ACCESS_TOKEN_2 not configured" : "HUBSPOT_ACCESS_TOKEN not configured");
+
+    const buId = isSecondary ? null : BRAND_TO_BU[brandName];
     const startMs = new Date(startDate + "T00:00:00Z").getTime();
     const endMs = new Date(endDate + "T23:59:59Z").getTime();
 
-    console.log(`Fetching contacts for brand="${brandName}" buId="${buId}" from ${startDate} to ${endDate}`);
-    console.log(`Date range in ms: ${startMs} to ${endMs}`);
+    console.log(`Fetching contacts for brand="${brandName}" account=${isSecondary ? "secondary" : "primary"} buId="${buId}" from ${startDate} to ${endDate}`);
 
     // ── 1. New contacts over time ──
     const contactsByDate: Record<string, { total: number; hubspot: number; salesforce: number }> = {};
@@ -92,7 +98,16 @@ Deno.serve(async (req) => {
         { propertyName: "createdate", operator: "GTE", value: String(startMs) },
         { propertyName: "createdate", operator: "LTE", value: String(endMs) },
       ];
-      if (buId && buId !== "0") {
+
+      if (isSecondary) {
+        // Secondary account: filter by "brand" contact property
+        filters.push({
+          propertyName: "brand",
+          operator: "EQ",
+          value: brandName,
+        });
+      } else if (buId && buId !== "0") {
+        // Primary account: filter by business unit ID
         filters.push({
           propertyName: "hs_all_assigned_business_unit_ids",
           operator: "CONTAINS_TOKEN",
@@ -109,6 +124,7 @@ Deno.serve(async (req) => {
           "hs_analytics_source",
           "hs_analytics_source_data_1",
           "jobtitle",
+          "brand",
         ],
         sorts: [{ propertyName: "createdate", direction: "ASCENDING" }],
         limit: 100,
