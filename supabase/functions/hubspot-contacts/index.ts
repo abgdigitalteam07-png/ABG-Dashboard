@@ -137,7 +137,20 @@ Deno.serve(async (req) => {
         await new Promise((r) => setTimeout(r, 150));
       }
 
-      const res = await hubspotPostWithRetry("/crm/v3/objects/contacts/search", token, searchBody);
+      let res: any;
+      try {
+        res = await hubspotPostWithRetry("/crm/v3/objects/contacts/search", token, searchBody);
+      } catch (e: unknown) {
+        // If the very first page fails (e.g. "brands" property doesn't exist in this account),
+        // return empty data gracefully instead of a 500.
+        if (page === 0) {
+          console.warn(`[hubspot-contacts] Search failed for "${brandName}", returning empty: ${(e as Error).message}`);
+          return new Response(JSON.stringify({ totalContacts: 0, contactsOverTime: [], jobTitles: [] }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        throw e;
+      }
       const results = res.results || [];
       totalFetched += results.length;
 
