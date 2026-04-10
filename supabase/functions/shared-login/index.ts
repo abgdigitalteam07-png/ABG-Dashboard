@@ -11,10 +11,10 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { email, password } = await req.json();
+    const { email } = await req.json();
 
-    if (!email || !password) {
-      return new Response(JSON.stringify({ error: "Email and password required" }), {
+    if (!email) {
+      return new Response(JSON.stringify({ error: "Email required" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -24,12 +24,11 @@ Deno.serve(async (req) => {
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
 
-    // Admin client to manage users
     const adminClient = createClient(supabaseUrl, serviceRoleKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    // Check shared password from app_config
+    // Get the internal shared password from app_config (users never see this)
     const { data: configRow, error: configError } = await adminClient
       .from("app_config")
       .select("value")
@@ -37,27 +36,22 @@ Deno.serve(async (req) => {
       .single();
 
     if (configError || !configRow) {
-      return new Response(JSON.stringify({ error: "Unable to verify credentials" }), {
+      return new Response(JSON.stringify({ error: "Unable to complete sign-in" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    if (password !== configRow.value) {
-      return new Response(JSON.stringify({ error: "Incorrect password" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    const internalPassword = configRow.value;
 
-    // Try to sign in with anon client
     const anonClient = createClient(supabaseUrl, anonKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
+    // Try to sign in with the internal password
     const { data: signInData, error: signInError } = await anonClient.auth.signInWithPassword({
       email,
-      password,
+      password: internalPassword,
     });
 
     if (!signInError && signInData.session) {
@@ -74,12 +68,12 @@ Deno.serve(async (req) => {
     );
 
     if (existingUser) {
-      // User exists but password is wrong (shared password changed) — update it
-      await adminClient.auth.admin.updateUserById(existingUser.id, { password });
+      // Update to current internal password and retry
+      await adminClient.auth.admin.updateUserById(existingUser.id, { password: internalPassword });
 
       const { data: retryData, error: retryError } = await anonClient.auth.signInWithPassword({
         email,
-        password,
+        password: internalPassword,
       });
 
       if (retryError) {
@@ -95,10 +89,10 @@ Deno.serve(async (req) => {
       });
     }
 
-    // User doesn't exist — create account
+    // New user — create account automatically
     const { data: signUpData, error: signUpError } = await adminClient.auth.admin.createUser({
       email,
-      password,
+      password: internalPassword,
       email_confirm: true,
     });
 
@@ -109,10 +103,9 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Sign in after creation
     const { data: finalData, error: finalError } = await anonClient.auth.signInWithPassword({
       email,
-      password,
+      password: internalPassword,
     });
 
     if (finalError) {

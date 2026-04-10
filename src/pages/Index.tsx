@@ -11,7 +11,7 @@ import { ReadMeTab } from "@/components/ReadMeTab";
 import { toast } from "sonner";
 
 const Index = () => {
-  const [selectedBrand, setSelectedBrand] = useState(brands[0]);
+  const [selectedBrand, setSelectedBrand] = useState(brands.find(b => b.name === "Bootz") ?? brands[0]);
   const welcomeShown = useRef(false);
 
   useEffect(() => {
@@ -33,9 +33,9 @@ const Index = () => {
   const [activeTab, setActiveTab] = useState("performance");
 
   const now = new Date();
-  const start365 = new Date(now);
-  start365.setDate(start365.getDate() - 365);
-  const [dateFrom, setDateFrom] = useState(start365);
+  const start60 = new Date(now);
+  start60.setDate(start60.getDate() - 60);
+  const [dateFrom, setDateFrom] = useState(start60);
   const [dateTo, setDateTo] = useState(now);
 
   const handleDateChange = useCallback((from: Date, to: Date) => {

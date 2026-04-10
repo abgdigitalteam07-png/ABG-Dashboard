@@ -5,7 +5,7 @@ import { isAllowedDomain } from "@/lib/allowed-domains";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { Lock, AlertCircle, Eye, EyeOff } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import { HelpButton } from "@/components/HelpButton";
 
 const ABG_LOGO_URL =
@@ -13,8 +13,6 @@ const ABG_LOGO_URL =
 
 export default function Login() {
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const navigate = useNavigate();
@@ -37,12 +35,7 @@ export default function Login() {
     }
 
     if (!isAllowedDomain(trimmed)) {
-      setError("Access restricted to ABG team members only.");
-      return;
-    }
-
-    if (!password) {
-      setError("Please enter the password.");
+      setError("Access restricted to ABG team members only. Need access? Contact mali@americanbathgroup.com");
       return;
     }
 
@@ -50,21 +43,16 @@ export default function Login() {
 
     try {
       const res = await supabase.functions.invoke("shared-login", {
-        body: { email: trimmed, password },
+        body: { email: trimmed },
       });
 
       if (res.error || !res.data?.session) {
         const msg = res.data?.error || res.error?.message || "Login failed. Please try again.";
         setSending(false);
-        if (msg.includes("Incorrect password")) {
-          setError("Incorrect password. Please contact your admin.");
-        } else {
-          setError(msg);
-        }
+        setError(msg);
         return;
       }
 
-      // Set the session from the edge function response
       const { error: setSessionError } = await supabase.auth.setSession({
         access_token: res.data.session.access_token,
         refresh_token: res.data.session.refresh_token,
@@ -123,31 +111,11 @@ export default function Login() {
               placeholder="you@americanbathgroup.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleLogin()}
               className="h-12 text-base"
               disabled={sending}
+              autoFocus
             />
-            <div className="relative">
-              <Input
-                type={showPassword ? "text" : "password"}
-                placeholder="Password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleLogin()}
-                className="h-12 text-base pr-10"
-                disabled={sending}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                {showPassword ? (
-                  <EyeOff className="h-4 w-4" />
-                ) : (
-                  <Eye className="h-4 w-4" />
-                )}
-              </button>
-            </div>
 
             {error && (
               <div className="flex items-start gap-2 text-destructive text-sm">
@@ -167,9 +135,7 @@ export default function Login() {
                   Signing in…
                 </span>
               ) : (
-                <span className="flex items-center gap-2">
-                  <Lock className="h-4 w-4" /> Sign In
-                </span>
+                "Access Dashboard"
               )}
             </Button>
           </div>
