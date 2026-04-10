@@ -439,36 +439,6 @@ Deno.serve(async (req) => {
     const endMs = new Date(endDate + "T23:59:59Z").getTime();
 
     let totalContacts = 0;
-    try {
-      const contactFilters: any[] = [];
-
-      if (isSecondary) {
-        // Secondary account: filter by "brands" multi-select property (HubSpot column: BRANDS)
-        // Must use CONTAINS_TOKEN (same as HubSpot UI "is any of") — EQ doesn't work for multi-select
-        contactFilters.push({
-          propertyName: "brands",
-          operator: "CONTAINS_TOKEN",
-          value: brandName,
-        });
-      } else if (brandBuId && brandBuId !== "0") {
-        contactFilters.push({
-          propertyName: "hs_all_assigned_business_unit_ids",
-          operator: "CONTAINS_TOKEN",
-          value: brandBuId,
-        });
-      }
-
-      const searchBody: any = { limit: 0 };
-      if (contactFilters.length > 0) {
-        searchBody.filterGroups = [{ filters: contactFilters }];
-      }
-
-      const res = await hubspotPost("/crm/v3/objects/contacts/search", token, searchBody);
-      totalContacts = res.total || 0;
-    } catch {
-      /* ignore */
-    }
-
     const lifecycleStages = [
       { stage: "Subscriber", count: 0 },
       { stage: "Lead", count: 0 },
@@ -477,37 +447,101 @@ Deno.serve(async (req) => {
       { stage: "Opportunity", count: 0 },
       { stage: "Customer", count: 0 },
     ];
-    await Promise.all(
-      lifecycleStages.map(async (ls) => {
-        try {
-          const filters: any[] = [
-            { propertyName: "lifecyclestage", operator: "EQ", value: ls.stage.toLowerCase().replace(/ /g, "") },
-            { propertyName: "createdate", operator: "GTE", value: String(startMs) },
-            { propertyName: "createdate", operator: "LTE", value: String(endMs) },
-          ];
 
-          if (isSecondary) {
-            // CONTAINS_TOKEN = "is any of" in HubSpot UI — correct operator for multi-select
-            filters.push({ propertyName: "brands", operator: "CONTAINS_TOKEN", value: brandName });
-          } else if (brandBuId && brandBuId !== "0") {
-            filters.push({
-              propertyName: "hs_all_assigned_business_unit_ids",
-              operator: "CONTAINS_TOKEN",
-              value: brandBuId,
-            });
+    if (isSecondary) {
+      // Secondary account: "brands" property is NOT searchable via HubSpot search API.
+      // Fetch all contacts in date range (by createdate only), then filter by brands value in code.
+      try {
+        let after: string | undefined;
+        const brandContactsInRange: any[] = [];
+
+        while (true) {
+          const searchBody: any = {
+            filterGroups: [{
+              filters: [
+                { propertyName: "createdate", operator: "GTE", value: String(startMs) },
+                { propertyName: "createdate", operator: "LTE", value: String(endMs) },
+              ],
+            }],
+            properties: ["createdate", "brands", "lifecyclestage"],
+            limit: 100,
+          };
+          if (after) searchBody.after = after;
+
+          const res = await hubspotPost("/crm/v3/objects/contacts/search", token, searchBody);
+          for (const c of (res.results || [])) {
+            const contactBrands = (c.properties?.brands || "").toLowerCase();
+            if (contactBrands.includes(brandName.toLowerCase())) {
+              brandContactsInRange.push(c);
+            }
           }
-
-          const data = await hubspotPost("/crm/v3/objects/contacts/search", token, {
-            filterGroups: [{ filters }],
-            limit: 0,
-          });
-          ls.count = data.total || 0;
-          console.log(`Lifecycle ${ls.stage}: ${ls.count} contacts`);
-        } catch (e) {
-          console.error(`Lifecycle ${ls.stage} error:`, e);
+          if (res.paging?.next?.after) {
+            after = res.paging.next.after;
+          } else {
+            break;
+          }
         }
-      }),
-    );
+
+        totalContacts = brandContactsInRange.length;
+
+        // Count lifecycle stages from the filtered contacts
+        for (const c of brandContactsInRange) {
+          const stage = (c.properties?.lifecyclestage || "").toLowerCase();
+          const match = lifecycleStages.find(ls => ls.stage.toLowerCase() === stage || ls.stage.toLowerCase().replace(/ /g, "") === stage);
+          if (match) match.count++;
+        }
+        console.log(`Secondary account: ${totalContacts} contacts for "${brandName}" in date range`);
+      } catch (e) {
+        console.error("Secondary account contacts fetch error:", e);
+      }
+    } else {
+      // Primary account: filter by business unit ID via search API
+      try {
+        const contactFilters: any[] = [];
+        if (brandBuId && brandBuId !== "0") {
+          contactFilters.push({
+            propertyName: "hs_all_assigned_business_unit_ids",
+            operator: "CONTAINS_TOKEN",
+            value: brandBuId,
+          });
+        }
+        const searchBody: any = { limit: 0 };
+        if (contactFilters.length > 0) {
+          searchBody.filterGroups = [{ filters: contactFilters }];
+        }
+        const res = await hubspotPost("/crm/v3/objects/contacts/search", token, searchBody);
+        totalContacts = res.total || 0;
+      } catch {
+        /* ignore */
+      }
+
+      await Promise.all(
+        lifecycleStages.map(async (ls) => {
+          try {
+            const filters: any[] = [
+              { propertyName: "lifecyclestage", operator: "EQ", value: ls.stage.toLowerCase().replace(/ /g, "") },
+              { propertyName: "createdate", operator: "GTE", value: String(startMs) },
+              { propertyName: "createdate", operator: "LTE", value: String(endMs) },
+            ];
+            if (brandBuId && brandBuId !== "0") {
+              filters.push({
+                propertyName: "hs_all_assigned_business_unit_ids",
+                operator: "CONTAINS_TOKEN",
+                value: brandBuId,
+              });
+            }
+            const data = await hubspotPost("/crm/v3/objects/contacts/search", token, {
+              filterGroups: [{ filters }],
+              limit: 0,
+            });
+            ls.count = data.total || 0;
+            console.log(`Lifecycle ${ls.stage}: ${ls.count} contacts`);
+          } catch (e) {
+            console.error(`Lifecycle ${ls.stage} error:`, e);
+          }
+        }),
+      );
+    }
 
     // ── Fetch all emails from the appropriate account ──
     const allRawEmails = await fetchAllEmails(token);
