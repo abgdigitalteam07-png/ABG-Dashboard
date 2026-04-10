@@ -443,10 +443,11 @@ Deno.serve(async (req) => {
       const contactFilters: any[] = [];
 
       if (isSecondary) {
-        // Secondary account: filter by "brands" contact property (HubSpot column: BRANDS)
+        // Secondary account: filter by "brands" multi-select property (HubSpot column: BRANDS)
+        // Must use CONTAINS_TOKEN (same as HubSpot UI "is any of") — EQ doesn't work for multi-select
         contactFilters.push({
           propertyName: "brands",
-          operator: "EQ",
+          operator: "CONTAINS_TOKEN",
           value: brandName,
         });
       } else if (brandBuId && brandBuId !== "0") {
@@ -486,7 +487,8 @@ Deno.serve(async (req) => {
           ];
 
           if (isSecondary) {
-            filters.push({ propertyName: "brands", operator: "EQ", value: brandName });
+            // CONTAINS_TOKEN = "is any of" in HubSpot UI — correct operator for multi-select
+            filters.push({ propertyName: "brands", operator: "CONTAINS_TOKEN", value: brandName });
           } else if (brandBuId && brandBuId !== "0") {
             filters.push({
               propertyName: "hs_all_assigned_business_unit_ids",
