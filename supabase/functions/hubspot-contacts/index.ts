@@ -100,9 +100,9 @@ Deno.serve(async (req) => {
       ];
 
       if (isSecondary) {
-        // Secondary account: filter by "brand" contact property
+        // Secondary account: filter by "brands" contact property (HubSpot column: BRANDS)
         filters.push({
-          propertyName: "brand",
+          propertyName: "brands",
           operator: "EQ",
           value: brandName,
         });
@@ -124,7 +124,7 @@ Deno.serve(async (req) => {
           "hs_analytics_source",
           "hs_analytics_source_data_1",
           "jobtitle",
-          "brand",
+          "brands",
         ],
         sorts: [{ propertyName: "createdate", direction: "ASCENDING" }],
         limit: 100,

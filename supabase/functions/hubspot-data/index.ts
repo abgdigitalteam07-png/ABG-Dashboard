@@ -443,9 +443,9 @@ Deno.serve(async (req) => {
       const contactFilters: any[] = [];
 
       if (isSecondary) {
-        // Secondary account: filter by "brand" contact property
+        // Secondary account: filter by "brands" contact property (HubSpot column: BRANDS)
         contactFilters.push({
-          propertyName: "brand",
+          propertyName: "brands",
           operator: "EQ",
           value: brandName,
         });
@@ -486,7 +486,7 @@ Deno.serve(async (req) => {
           ];
 
           if (isSecondary) {
-            filters.push({ propertyName: "brand", operator: "EQ", value: brandName });
+            filters.push({ propertyName: "brands", operator: "EQ", value: brandName });
           } else if (brandBuId && brandBuId !== "0") {
             filters.push({
               propertyName: "hs_all_assigned_business_unit_ids",
