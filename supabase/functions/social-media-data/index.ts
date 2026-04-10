@@ -40,8 +40,8 @@ async function fetchAllPageTokens(userToken: string): Promise<Record<string, str
   const tokens: Record<string, string> = {};
   let url: string | null = `${GRAPH}/me/accounts?fields=id,access_token&limit=100&access_token=${userToken}`;
   while (url) {
-    const res = await fetch(url);
-    const data = await res.json();
+    const res: Response = await fetch(url);
+    const data: any = await res.json();
     if (data.error) { console.error(`[fetchAllPageTokens] Error: ${data.error.message}`); break; }
     for (const page of (data.data || [])) tokens[page.id] = page.access_token;
     url = data.paging?.next || null;
@@ -66,7 +66,7 @@ async function getIgBusinessAccountId(pageId: string, pageToken: string): Promis
     console.log(`[getIgBusinessAccountId] Raw for ${pageId}:`, JSON.stringify(data));
     if (data.error) return null;
     return data.instagram_business_account?.id || null;
-  } catch (e) { console.warn(`[getIgBusinessAccountId] Error: ${e.message}`); return null; }
+  } catch (e: unknown) { console.warn(`[getIgBusinessAccountId] Error: ${(e as Error).message}`); return null; }
 }
 
 function getDateChunks(since: string, until: string, maxDays = 89): Array<{ since: string; until: string }> {
@@ -102,7 +102,7 @@ async function getPageInsights(pageId: string, pageToken: string, since: string,
           for (const v of (item.values || [])) total += typeof v.value === "number" ? v.value : 0;
           result[item.name] = (result[item.name] || 0) + total;
         }
-      } catch (e) { console.warn(`[getPageInsights] fetch error ${metric}: ${e.message}`); }
+      } catch (e: unknown) { console.warn(`[getPageInsights] fetch error ${metric}: ${(e as Error).message}`); }
     }
   }
   console.log(`[getPageInsights] Final:`, JSON.stringify(result));
@@ -120,8 +120,8 @@ async function getPagePosts(pageId: string, pageToken: string, since: string, un
   let url: string | null = `${GRAPH}/${pageId}/posts?fields=${fields}&since=${since}&until=${until}&limit=100&access_token=${pageToken}`;
   const allPosts: any[] = [];
   while (url && allPosts.length < 200) {
-    const res = await fetch(url);
-    const data = await res.json();
+    const res: Response = await fetch(url);
+    const data: any = await res.json();
     if (data.error) { console.warn(`[getPagePosts] Error: ${data.error.message}`); break; }
     allPosts.push(...(data.data || []));
     url = (allPosts.length < 200 && data.paging?.next) ? data.paging.next : null;
@@ -145,7 +145,7 @@ async function getIgInsights(igId: string, pageToken: string, since: string, unt
           for (const v of (item.values || [])) result[item.name] = (result[item.name] || 0) + (typeof v.value === "number" ? v.value : 0);
         }
       }
-    } catch (e) { console.warn(`[getIgInsights] reach error: ${e.message}`); }
+    } catch (e: unknown) { console.warn(`[getIgInsights] reach error: ${(e as Error).message}`); }
 
     try {
       const url = `${GRAPH}/${igId}/insights?metric=profile_views,website_clicks&metric_type=total_value&since=${chunk.since}&until=${chunk.until}&period=day&access_token=${pageToken}`;
@@ -156,7 +156,7 @@ async function getIgInsights(igId: string, pageToken: string, since: string, unt
           for (const v of (item.values || [])) result[item.name] = (result[item.name] || 0) + (typeof v.value === "number" ? v.value : 0);
         }
       }
-    } catch (e) { console.warn(`[getIgInsights] total_value error: ${e.message}`); }
+    } catch (e: unknown) { console.warn(`[getIgInsights] total_value error: ${(e as Error).message}`); }
   }
   console.log(`[getIgInsights] Result:`, JSON.stringify(result));
   return result;
@@ -173,8 +173,8 @@ async function getIgMedia(igId: string, pageToken: string, since: string, until:
   let url: string | null = `${GRAPH}/${igId}/media?fields=${fields}&since=${since}&until=${until}&limit=100&access_token=${pageToken}`;
   const allMedia: any[] = [];
   while (url && allMedia.length < 200) {
-    const res = await fetch(url);
-    const data = await res.json();
+    const res: Response = await fetch(url);
+    const data: any = await res.json();
     if (data.error) { console.warn(`[getIgMedia] Error: ${data.error.message}`); break; }
     allMedia.push(...(data.data || []));
     url = (allMedia.length < 200 && data.paging?.next) ? data.paging.next : null;
@@ -199,7 +199,7 @@ async function getIgMediaInsights(mediaId: string, mediaType: string, pageToken:
       if (item.name === "shares") result.shares = val;
     }
     result.impressions = result.reach; // impressions deprecated, approximate with reach
-  } catch (e) { console.warn(`[getIgMediaInsights] error ${mediaId}: ${e.message}`); }
+  } catch (e: unknown) { console.warn(`[getIgMediaInsights] error ${mediaId}: ${(e as Error).message}`); }
   return result;
 }
 
@@ -415,13 +415,13 @@ Deno.serve(async (req) => {
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     } catch (e) {
       clearTimeout(timeoutId);
-      if (e.name === "AbortError") {
+      if ((e as Error).name === "AbortError") {
         return new Response(JSON.stringify({ error: "Social media data is taking too long to load. Please try again with a shorter date range." }), { status: 504, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
       throw e;
     }
   } catch (err) {
     console.error("[social-media-data] Error:", err);
-    return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(JSON.stringify({ error: (err as Error).message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
 });
