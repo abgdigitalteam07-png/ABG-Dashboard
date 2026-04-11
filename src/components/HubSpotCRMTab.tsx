@@ -120,21 +120,26 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo }: HubSpotCRMTabProps) {
   // Build ordered lifecycle data for charts
   const allLifecycleData = useMemo(() => {
     if (!data?.lifecycleStages) return [];
+    // Build map using both the internal key (if provided) and the lowercased stage name
     const map: Record<string, number> = {};
     for (const s of data.lifecycleStages) {
+      if (s.key) map[s.key] = s.count;
       map[(s.stage || "").toLowerCase().replace(/\s/g, "")] = s.count;
     }
-    const ordered = ALL_LIFECYCLE_ORDER.map((key) => ({
-      stage: data.lifecycleStages.find(
-        (s: any) => (s.stage || "").toLowerCase().replace(/\s/g, "") === key
-      )?.stage || MARKETING_STAGE_LABELS[key] || key,
-      count: map[key] || 0,
-      key,
-    })).filter((s) => s.count > 0);
+    const ordered = ALL_LIFECYCLE_ORDER.map((key) => {
+      const match = data.lifecycleStages.find(
+        (s: any) => s.key === key || (s.stage || "").toLowerCase().replace(/\s/g, "") === key
+      );
+      return {
+        stage: match?.stage || MARKETING_STAGE_LABELS[key] || key,
+        count: map[key] || 0,
+        key,
+      };
+    }).filter((s) => s.count > 0);
     // Also include any stages not in our predefined list
     for (const s of data.lifecycleStages) {
-      const k = (s.stage || "").toLowerCase().replace(/\s/g, "");
-      if (!ALL_LIFECYCLE_ORDER.includes(k)) {
+      const k = s.key || (s.stage || "").toLowerCase().replace(/\s/g, "");
+      if (!ALL_LIFECYCLE_ORDER.includes(k) && s.count > 0) {
         ordered.push({ stage: s.stage, count: s.count, key: k });
       }
     }
@@ -145,6 +150,7 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo }: HubSpotCRMTabProps) {
     if (!data?.lifecycleStages) return [];
     const map: Record<string, number> = {};
     for (const s of data.lifecycleStages) {
+      if (s.key) map[s.key] = s.count;
       map[(s.stage || "").toLowerCase().replace(/\s/g, "")] = s.count;
     }
     return MARKETING_FUNNEL_STAGES.map((key, i) => ({

@@ -439,13 +439,15 @@ Deno.serve(async (req) => {
     const endMs = new Date(endDate + "T23:59:59Z").getTime();
 
     let totalContacts = 0;
+    // Use HubSpot's exact internal lifecycle stage values so the frontend key mapping works.
+    // Frontend ALL_LIFECYCLE_ORDER uses: subscriber, lead, marketingqualifiedlead, salesqualifiedlead, opportunity, customer
     const lifecycleStages = [
-      { stage: "Subscriber", count: 0 },
-      { stage: "Lead", count: 0 },
-      { stage: "MQL", count: 0 },
-      { stage: "SQL", count: 0 },
-      { stage: "Opportunity", count: 0 },
-      { stage: "Customer", count: 0 },
+      { stage: "subscriber",              label: "Subscriber", count: 0 },
+      { stage: "lead",                    label: "Lead",       count: 0 },
+      { stage: "marketingqualifiedlead",  label: "MQL",        count: 0 },
+      { stage: "salesqualifiedlead",      label: "SQL",        count: 0 },
+      { stage: "opportunity",             label: "Opportunity",count: 0 },
+      { stage: "customer",               label: "Customer",   count: 0 },
     ];
 
     if (isSecondary) {
@@ -484,10 +486,10 @@ Deno.serve(async (req) => {
 
         totalContacts = brandContactsInRange.length;
 
-        // Count lifecycle stages from the filtered contacts
+        // Count lifecycle stages — match by HubSpot internal stage value
         for (const c of brandContactsInRange) {
-          const stage = (c.properties?.lifecyclestage || "").toLowerCase();
-          const match = lifecycleStages.find(ls => ls.stage.toLowerCase() === stage || ls.stage.toLowerCase().replace(/ /g, "") === stage);
+          const stage = (c.properties?.lifecyclestage || "").toLowerCase().trim();
+          const match = lifecycleStages.find(ls => ls.stage === stage);
           if (match) match.count++;
         }
         console.log(`Secondary account: ${totalContacts} contacts for "${brandName}" in date range`);
@@ -519,7 +521,7 @@ Deno.serve(async (req) => {
         lifecycleStages.map(async (ls) => {
           try {
             const filters: any[] = [
-              { propertyName: "lifecyclestage", operator: "EQ", value: ls.stage.toLowerCase().replace(/ /g, "") },
+              { propertyName: "lifecyclestage", operator: "EQ", value: ls.stage }, // exact HubSpot internal name
               { propertyName: "createdate", operator: "GTE", value: String(startMs) },
               { propertyName: "createdate", operator: "LTE", value: String(endMs) },
             ];
@@ -665,7 +667,9 @@ Deno.serve(async (req) => {
       totalPending: s.totalPending,
       pendingRate,
       deliveredRate,
-      lifecycleStages,
+      // Return stage using label (e.g. "MQL") so frontend displays clean names,
+      // but also include the internal key so the frontend order/mapping works
+      lifecycleStages: lifecycleStages.map(ls => ({ stage: ls.label, count: ls.count, key: ls.stage })),
       emails: current.emails,
       deliveryOverTime,
       stateDistribution: Object.entries(stateDistribution).map(([name, value]) => ({ name, value })),
