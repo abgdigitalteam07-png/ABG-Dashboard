@@ -497,52 +497,54 @@ Deno.serve(async (req) => {
         console.error("Secondary account contacts fetch error:", e);
       }
     } else {
-      // Primary account: filter by business unit ID via search API
+      // Primary account: fetch ALL contacts for the brand, count lifecycle stages in code.
+      // This matches HubSpot's own dashboard — querying per-stage separately can miss contacts
+      // whose hs_all_assigned_business_unit_ids isn't cleanly set for every stage value.
       try {
-        const contactFilters: any[] = [];
+        const buFilters: any[] = [];
         if (brandBuId && brandBuId !== "0") {
-          contactFilters.push({
+          buFilters.push({
             propertyName: "hs_all_assigned_business_unit_ids",
             operator: "CONTAINS_TOKEN",
             value: brandBuId,
           });
         }
-        const searchBody: any = { limit: 0 };
-        if (contactFilters.length > 0) {
-          searchBody.filterGroups = [{ filters: contactFilters }];
-        }
-        const res = await hubspotPost("/crm/v3/objects/contacts/search", token, searchBody);
-        totalContacts = res.total || 0;
-      } catch {
-        /* ignore */
-      }
 
-      // Lifecycle breakdown = current stage of ALL contacts for this brand (no date filter).
-      // Date-filtering would exclude older contacts and show 0 for most brands.
-      await Promise.all(
-        lifecycleStages.map(async (ls) => {
-          try {
-            const filters: any[] = [
-              { propertyName: "lifecyclestage", operator: "EQ", value: ls.stage },
-            ];
-            if (brandBuId && brandBuId !== "0") {
-              filters.push({
-                propertyName: "hs_all_assigned_business_unit_ids",
-                operator: "CONTAINS_TOKEN",
-                value: brandBuId,
-              });
-            }
-            const data = await hubspotPost("/crm/v3/objects/contacts/search", token, {
-              filterGroups: [{ filters }],
-              limit: 0,
-            });
-            ls.count = data.total || 0;
-            console.log(`Lifecycle ${ls.stage}: ${ls.count} contacts`);
-          } catch (e) {
-            console.error(`Lifecycle ${ls.stage} error:`, e);
+        let after: string | undefined;
+        const allBrandContacts: any[] = [];
+
+        while (true) {
+          const searchBody: any = {
+            filterGroups: buFilters.length > 0 ? [{ filters: buFilters }] : [],
+            properties: ["lifecyclestage"],
+            limit: 100,
+          };
+          if (after) searchBody.after = after;
+
+          const res = await hubspotPost("/crm/v3/objects/contacts/search", token, searchBody);
+          allBrandContacts.push(...(res.results || []));
+
+          if (res.paging?.next?.after) {
+            after = res.paging.next.after;
+          } else {
+            break;
           }
-        }),
-      );
+        }
+
+        totalContacts = allBrandContacts.length;
+
+        // Count by lifecycle stage in code — exact match to what HubSpot dashboard shows
+        for (const c of allBrandContacts) {
+          const stage = (c.properties?.lifecyclestage || "").toLowerCase().trim();
+          const match = lifecycleStages.find(ls => ls.stage === stage);
+          if (match) match.count++;
+        }
+
+        console.log(`Primary account: ${totalContacts} total contacts for "${brandName}"`);
+        lifecycleStages.forEach(ls => console.log(`  ${ls.stage}: ${ls.count}`));
+      } catch (e) {
+        console.error("Primary account lifecycle fetch error:", e);
+      }
     }
 
     // ── Fetch all emails from the appropriate account ──
