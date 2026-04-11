@@ -21,9 +21,9 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import {
   ArrowLeft, Users, UserCheck, UserX, Activity, MoreHorizontal,
-  Send, Download, ChevronLeft, ChevronRight,
+  Send, Download, ChevronLeft, ChevronRight, BarChart2, Eye, LogIn,
 } from "lucide-react";
-import { format, formatDistanceToNow } from "date-fns";
+import { format, formatDistanceToNow, subDays, eachDayOfInterval, startOfDay } from "date-fns";
 
 const ABG_LOGO_URL =
   "https://24202603.fs1.hubspotusercontent-na1.net/hubfs/24202603/Swan/website/common/abg-logo-white-horizontal.png";
@@ -66,6 +66,7 @@ export default function Admin() {
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const [loginsLast7, setLoginsLast7] = useState(0);
+  const [activeAdminTab, setActiveAdminTab] = useState<"users" | "usage">("users");
 
   // Filters
   const [searchQuery, setSearchQuery] = useState("");
@@ -303,6 +304,41 @@ export default function Admin() {
   const activeUsers = users.filter((u) => u.is_active).length;
   const deactivatedUsers = users.filter((u) => !u.is_active).length;
 
+  // ── Daily Usage: last 30 days ──
+  const last30Days = useMemo(() => {
+    const today = startOfDay(new Date());
+    return eachDayOfInterval({ start: subDays(today, 29), end: today }).reverse();
+  }, []);
+
+  // Per-day breakdown: date → { unique users, total views, logins, rows }
+  const dailyUsage = useMemo(() => {
+    return last30Days.map((day) => {
+      const dayStr = format(day, "yyyy-MM-dd");
+      const dayEntries = activity.filter((a) => a.created_at.startsWith(dayStr));
+      const views = dayEntries.filter((a) => a.action === "page_view");
+      const logins = dayEntries.filter((a) => a.action === "login");
+      const uniqueUsers = [...new Set(dayEntries.map((a) => a.email))];
+      return { day, dayStr, views, logins, uniqueUsers };
+    });
+  }, [activity, last30Days]);
+
+  // Per-user summary
+  const userUsage = useMemo(() => {
+    const map: Record<string, { email: string; logins: number; views: number; lastSeen: string; brands: Set<string>; tabs: Set<string> }> = {};
+    for (const a of activity) {
+      if (!map[a.email]) map[a.email] = { email: a.email, logins: 0, views: 0, lastSeen: a.created_at, brands: new Set(), tabs: new Set() };
+      const u = map[a.email];
+      if (a.action === "login") u.logins++;
+      if (a.action === "page_view") {
+        u.views++;
+        if (a.metadata?.brand) u.brands.add(a.metadata.brand);
+        if (a.metadata?.tab) u.tabs.add(a.metadata.tab);
+      }
+      if (a.created_at > u.lastSeen) u.lastSeen = a.created_at;
+    }
+    return Object.values(map).sort((a, b) => b.views - a.views);
+  }, [activity]);
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -317,7 +353,133 @@ export default function Admin() {
       </header>
 
       <main className="max-w-[1400px] mx-auto px-4 py-6 space-y-6">
-        <h1 className="text-2xl font-bold text-foreground">Admin Panel</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold text-foreground">Admin Panel</h1>
+          {/* Tab switcher */}
+          <div className="flex rounded-xl border border-border bg-muted/40 p-1 gap-1">
+            {([
+              { id: "users", label: "Users & Activity", icon: Users },
+              { id: "usage", label: "Daily Usage", icon: BarChart2 },
+            ] as const).map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                onClick={() => setActiveAdminTab(id)}
+                className={`flex items-center gap-2 rounded-lg px-4 py-1.5 text-sm font-medium transition-all ${
+                  activeAdminTab === id
+                    ? "bg-white shadow-sm text-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Icon className="h-4 w-4" /> {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* ══ DAILY USAGE TAB ══ */}
+        {activeAdminTab === "usage" && (
+          <div className="space-y-6">
+            {/* Per-user summary */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Users className="h-4 w-4" /> User Activity Summary (last 500 events)
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/40">
+                      <TableHead>User</TableHead>
+                      <TableHead className="text-center w-24">Logins</TableHead>
+                      <TableHead className="text-center w-24">Page Views</TableHead>
+                      <TableHead>Brands Viewed</TableHead>
+                      <TableHead>Tabs Viewed</TableHead>
+                      <TableHead>Last Seen</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {userUsage.length === 0 ? (
+                      <TableRow><TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">No activity recorded yet.</TableCell></TableRow>
+                    ) : userUsage.map((u) => (
+                      <TableRow key={u.email} className="hover:bg-muted/40">
+                        <TableCell className="font-medium">{u.email}</TableCell>
+                        <TableCell className="text-center">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2.5 py-0.5 text-xs font-semibold text-green-700">
+                            <LogIn className="h-3 w-3" /> {u.logins}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-700">
+                            <Eye className="h-3 w-3" /> {u.views}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground max-w-[200px]">
+                          {[...u.brands].join(", ") || "—"}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {[...u.tabs].join(", ") || "—"}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                          {formatDistanceToNow(new Date(u.lastSeen), { addSuffix: true })}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+
+            {/* Daily breakdown — last 30 days */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Activity className="h-4 w-4" /> Daily Breakdown — Last 30 Days
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/40">
+                      <TableHead>Date</TableHead>
+                      <TableHead className="text-center">Unique Users</TableHead>
+                      <TableHead className="text-center">Logins</TableHead>
+                      <TableHead className="text-center">Page Views</TableHead>
+                      <TableHead>Who was active</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {dailyUsage.map(({ day, dayStr, views, logins, uniqueUsers }) => (
+                      <TableRow key={dayStr} className={`hover:bg-muted/40 ${uniqueUsers.length === 0 ? "opacity-40" : ""}`}>
+                        <TableCell className="font-medium whitespace-nowrap">
+                          {format(day, "EEE, MMM d")}
+                          {dayStr === format(new Date(), "yyyy-MM-dd") && (
+                            <span className="ml-2 inline-flex items-center rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">Today</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {uniqueUsers.length > 0 ? (
+                            <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-indigo-100 text-xs font-bold text-indigo-700 mx-auto">
+                              {uniqueUsers.length}
+                            </span>
+                          ) : "—"}
+                        </TableCell>
+                        <TableCell className="text-center text-sm">{logins.length || "—"}</TableCell>
+                        <TableCell className="text-center text-sm">{views.length || "—"}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground max-w-[400px]">
+                          {uniqueUsers.length > 0 ? uniqueUsers.join(", ") : "No activity"}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* ══ USERS & ACTIVITY TAB ══ */}
+        {activeAdminTab === "users" && <>
 
         {/* KPI Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -548,6 +710,7 @@ export default function Admin() {
             </div>
           </CardContent>
         </Card>
+        </>}
       </main>
 
       {/* Confirmation Dialog */}
