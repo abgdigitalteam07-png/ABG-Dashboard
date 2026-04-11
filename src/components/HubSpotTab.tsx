@@ -9,10 +9,15 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { Loader2, ArrowRight, ArrowDown, TrendingUp, TrendingDown, ChevronLeft, ChevronRight } from "lucide-react";
-import { format, startOfWeek, startOfMonth, startOfDay, parseISO, addDays, addWeeks, addMonths, isBefore, isEqual } from "date-fns";
+import {
+  ArrowRight, ArrowDown, TrendingUp, TrendingDown, ChevronLeft, ChevronRight,
+  Mail, BarChart2,
+} from "lucide-react";
+import {
+  format, startOfWeek, startOfMonth, startOfDay, startOfQuarter,
+  parseISO, addDays, addWeeks, addMonths, isBefore, isEqual,
+} from "date-fns";
 import { EmailPreviewModal } from "@/components/EmailPreviewModal";
-
 import { Button } from "@/components/ui/button";
 import { AIRecommendations } from "./AIRecommendations";
 
@@ -28,20 +33,71 @@ function fmt(n: number): string {
   return n.toLocaleString();
 }
 
+/* ── Skeleton pulse ── */
+function Skeleton({ className }: { className?: string }) {
+  return <div className={`animate-pulse rounded-md bg-muted ${className}`} />;
+}
+
+/* ── Section header ── */
+function SectionHeader({ icon: Icon, label, color }: { icon: React.ElementType; label: string; color: string }) {
+  return (
+    <div className="flex items-center gap-3">
+      <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${color}`}>
+        <Icon className="h-4 w-4 text-white" />
+      </div>
+      <h2 className="text-base font-bold text-foreground">{label}</h2>
+      <div className="flex-1 border-t border-border" />
+    </div>
+  );
+}
+
+/* ── Chart card wrapper ── */
+function ChartCard({ title, subtitle, children, headerRight }: { title: string; subtitle?: string; children: React.ReactNode; headerRight?: React.ReactNode }) {
+  return (
+    <div className="rounded-2xl border border-border bg-card p-6">
+      <div className="mb-5 flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+          {subtitle && <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>}
+        </div>
+        {headerRight}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/* ── Custom tooltip ── */
+function ChartTooltip({ active, payload, label }: any) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="rounded-xl border border-border bg-card px-3 py-2 shadow-lg text-xs">
+      <p className="mb-1 font-semibold text-muted-foreground">{label}</p>
+      {payload.map((p: any) => (
+        <div key={p.dataKey} className="flex items-center gap-2">
+          <span className="h-2 w-2 rounded-full" style={{ background: p.color }} />
+          <span className="text-foreground font-medium">{p.value}%</span>
+          <span className="text-muted-foreground">{p.name}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /* ── Delta badge ── */
 function DeltaBadge({ delta, invert }: { delta?: number | null; invert?: boolean }) {
   if (delta === null || delta === undefined) return null;
   const isGood = invert ? delta <= 0 : delta >= 0;
   const arrow = delta >= 0 ? "↑" : "↓";
   return (
-    <span className={cn("mt-0.5 flex items-center gap-0.5 text-[10px] font-medium tabular-nums", isGood ? "text-brand-green" : "text-brand-red")}>
+    <span className={cn("mt-0.5 flex items-center gap-0.5 text-[10px] font-medium tabular-nums", isGood ? "text-emerald-600" : "text-red-600")}>
       {delta >= 0 ? <TrendingUp className="h-2.5 w-2.5" /> : <TrendingDown className="h-2.5 w-2.5" />}
       {arrow} {Math.abs(delta).toFixed(2)}% vs prev period
     </span>
   );
 }
 
-/* ── KPI Funnel Card ── */
+/* ── KPI Funnel Card — upgraded visual ── */
 function FunnelCard({
   label, value, sub, variant = "positive", delta, invertDelta,
 }: {
@@ -50,16 +106,21 @@ function FunnelCard({
   delta?: number | null;
   invertDelta?: boolean;
 }) {
-  const bg = variant === "pending"
-    ? "bg-funnel-pending text-funnel-pending-foreground"
-    : variant === "negative"
-    ? "bg-funnel-negative text-funnel-negative-foreground"
-    : "bg-card text-card-foreground";
+  const styles = {
+    positive: "bg-card border-border",
+    pending: "bg-amber-50 border-amber-200 dark:bg-amber-900/20 dark:border-amber-700",
+    negative: "bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-700",
+  };
+  const textStyles = {
+    positive: "text-foreground",
+    pending: "text-amber-900 dark:text-amber-100",
+    negative: "text-red-900 dark:text-red-100",
+  };
   return (
-    <div className={cn("rounded-lg border border-border p-4 shadow-card", bg)}>
-      <p className="text-[11px] font-medium uppercase tracking-wider opacity-70">{label}</p>
-      <p className="mt-1 text-xl font-bold tabular-nums">{value}</p>
-      {sub && <p className="mt-0.5 text-[11px] opacity-60">{sub}</p>}
+    <div className={cn("rounded-2xl border p-5 shadow-sm transition-all hover:shadow-md", styles[variant])}>
+      <p className={cn("text-[11px] font-semibold uppercase tracking-wider opacity-70", textStyles[variant])}>{label}</p>
+      <p className={cn("mt-2 text-2xl font-bold tabular-nums tracking-tight", textStyles[variant])}>{value}</p>
+      {sub && <p className={cn("mt-0.5 text-[11px] opacity-60", textStyles[variant])}>{sub}</p>}
       <DeltaBadge delta={delta} invert={invertDelta} />
     </div>
   );
@@ -81,13 +142,41 @@ function VArrow() {
   );
 }
 
-const LIFECYCLE_COLORS = [
-  "hsl(215 16% 65%)", "hsl(217 91% 60%)", "hsl(262 83% 58%)",
-  "hsl(38 92% 50%)", "hsl(24 95% 53%)", "hsl(158 64% 52%)",
-];
-
 type ChartType = "line" | "area" | "bar" | "column";
-type TimeInterval = "daily" | "weekly" | "monthly";
+type Granularity = "day" | "week" | "month" | "quarter";
+
+/* ── Granularity Toggle ── */
+function GranularityToggle({ value, onChange }: { value: Granularity; onChange: (v: Granularity) => void }) {
+  const options: { label: string; value: Granularity }[] = [
+    { label: "Day", value: "day" },
+    { label: "Week", value: "week" },
+    { label: "Month", value: "month" },
+    { label: "Quarter", value: "quarter" },
+  ];
+  return (
+    <div className="flex rounded-lg border border-border bg-muted/40 p-0.5 text-xs">
+      {options.map((o) => (
+        <button
+          key={o.value}
+          onClick={() => onChange(o.value)}
+          className={`rounded-md px-3 py-1 font-medium transition-all ${
+            value === o.value
+              ? "bg-white shadow-sm text-foreground"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* ── Quarter key helper ── */
+function quarterKey(date: Date): string {
+  const q = Math.floor(date.getMonth() / 3) + 1;
+  return `Q${q} ${date.getFullYear()}`;
+}
 
 /* ── Performance score for ranking emails ── */
 function emailScore(e: any): number {
@@ -111,8 +200,8 @@ const PAGE_SIZE = 10;
 export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [chartType, setChartType] = useState<ChartType>("line");
-  const [interval, setInterval] = useState<TimeInterval>("weekly");
+  const [chartType, setChartType] = useState<ChartType>("area");
+  const [granularity, setGranularity] = useState<Granularity>("week");
   const [previewEmail, setPreviewEmail] = useState<any>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -139,7 +228,7 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
     return { ...data, brandName: brand.name };
   }, [data, brand]);
 
-  /* ── Aggregate chart data by interval ── */
+  /* ── Aggregate chart data by granularity ── */
   const chartData = useMemo(() => {
     if (!d) return [];
 
@@ -148,12 +237,14 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
       if (!email.publishDate) continue;
       let key: string;
       const date = parseISO(email.publishDate);
-      if (interval === "daily") {
+      if (granularity === "day") {
         key = format(startOfDay(date), "yyyy-MM-dd");
-      } else if (interval === "weekly") {
+      } else if (granularity === "week") {
         key = format(startOfWeek(date, { weekStartsOn: 1 }), "yyyy-MM-dd");
-      } else {
+      } else if (granularity === "month") {
         key = format(startOfMonth(date), "yyyy-MM");
+      } else {
+        key = quarterKey(startOfQuarter(date));
       }
       if (!buckets[key]) buckets[key] = { opens: 0, delivered: 0, clicks: 0 };
       buckets[key].opens += email.opens || 0;
@@ -161,15 +252,26 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
       buckets[key].clicks += email.clicks || 0;
     }
 
+    if (granularity === "quarter") {
+      // For quarters, just return bucket entries in order
+      return Object.entries(buckets)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([date, v]) => ({
+          date,
+          openRate: v.delivered > 0 ? parseFloat(((v.opens / v.delivered) * 100).toFixed(1)) : 0,
+          ctr: v.opens > 0 ? parseFloat(((v.clicks / v.opens) * 100).toFixed(1)) : 0,
+        }));
+    }
+
     const slots: string[] = [];
-    let cursor = interval === "daily"
+    let cursor = granularity === "day"
       ? startOfDay(dateFrom)
-      : interval === "weekly"
+      : granularity === "week"
         ? startOfWeek(dateFrom, { weekStartsOn: 1 })
         : startOfMonth(dateFrom);
     const end = dateTo;
-    const advance = interval === "daily" ? addDays : interval === "weekly" ? addWeeks : addMonths;
-    const fmtStr = interval === "monthly" ? "yyyy-MM" : "yyyy-MM-dd";
+    const advance = granularity === "day" ? addDays : granularity === "week" ? addWeeks : addMonths;
+    const fmtStr = granularity === "monthly" ? "yyyy-MM" : "yyyy-MM-dd";
 
     while (isBefore(cursor, end) || isEqual(cursor, end)) {
       slots.push(format(cursor, fmtStr));
@@ -184,7 +286,7 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
         ctr: v.opens > 0 ? parseFloat(((v.clicks / v.opens) * 100).toFixed(1)) : 0,
       };
     });
-  }, [d, interval, dateFrom, dateTo]);
+  }, [d, granularity, dateFrom, dateTo]);
 
   /* ── High & low performing emails ── */
   const { highPerf, lowPerf } = useMemo(() => {
@@ -225,11 +327,29 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-24">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="space-y-6 p-6">
+        <div className="flex items-center gap-3">
+          <Skeleton className="h-8 w-8 rounded-lg" />
+          <Skeleton className="h-5 w-40" />
+          <div className="flex-1 border-t border-border" />
+        </div>
+        <div className="grid grid-cols-2 gap-3 lg:flex lg:items-center lg:gap-0">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-2 lg:flex-1">
+              {i > 0 && <ArrowRight className="h-5 w-5 text-muted-foreground hidden lg:block" />}
+              <div className="flex-1 rounded-2xl border border-border bg-card p-5">
+                <Skeleton className="h-3 w-20 rounded" />
+                <Skeleton className="mt-3 h-8 w-24 rounded" />
+              </div>
+            </div>
+          ))}
+        </div>
+        <Skeleton className="h-80 w-full rounded-2xl" />
+        <Skeleton className="h-64 w-full rounded-2xl" />
       </div>
     );
   }
+
   if (!d) return null;
 
   const dl = d.deltas || {};
@@ -237,22 +357,45 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
   const weeks = daysBetween / 7;
   const avgEmailsPerWeek = weeks > 0 ? parseFloat((d.totalEmails / weeks).toFixed(1)) : 0;
 
-  const dateLabel = `FROM ${format(dateFrom, "MMM d, yyyy").toUpperCase()} TO ${format(dateTo, "MMM d, yyyy").toUpperCase()} | ${interval.toUpperCase()}`;
+  const axisStyle = { fontSize: 11, fill: "hsl(var(--muted-foreground))" };
+  const gridColor = "hsl(var(--border))";
 
   const renderChart = () => {
     const commonProps = { data: chartData };
-    const xAxis = <XAxis dataKey="date" tick={{ fontSize: 10 }} tickFormatter={(v: string) => { try { const d = parseISO(v); return format(d, "M/d/yyyy"); } catch { return v; } }} interval="preserveStartEnd" />;
-    const yAxis = <YAxis tick={{ fontSize: 10 }} domain={[0, 125]} tickFormatter={(v: number) => `${v}%`} />;
-    const grid = <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />;
-    const tooltip = <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} formatter={(v: number) => `${v}%`} />;
-    const legend = <Legend wrapperStyle={{ fontSize: 11 }} />;
+    const xAxisFormatter = (v: string) => {
+      if (granularity === "quarter") return v;
+      try { const dt = parseISO(v); return format(dt, granularity === "month" ? "MMM yy" : "M/d"); } catch { return v; }
+    };
+    const xAxis = (
+      <XAxis dataKey="date" tick={axisStyle} tickFormatter={xAxisFormatter}
+        interval="preserveStartEnd" tickLine={false} axisLine={false} />
+    );
+    const yAxis = (
+      <YAxis tick={axisStyle} domain={[0, 125]} tickFormatter={(v: number) => `${v}%`}
+        tickLine={false} axisLine={false} />
+    );
+    const grid = <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />;
+    const tooltip = <Tooltip content={<ChartTooltip />} />;
+    const legend = <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />;
 
     if (chartType === "area") {
       return (
-        <AreaChart {...commonProps}>
+        <AreaChart {...commonProps} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+          <defs>
+            <linearGradient id="gOpenRate" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.18} />
+              <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
+            </linearGradient>
+            <linearGradient id="gCtr" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="#F97316" stopOpacity={0.18} />
+              <stop offset="95%" stopColor="#F97316" stopOpacity={0} />
+            </linearGradient>
+          </defs>
           {grid}{xAxis}{yAxis}{tooltip}{legend}
-          <Area type="monotone" dataKey="openRate" name="Open Rate" stroke="hsl(var(--brand-blue))" fill="hsl(var(--brand-blue))" fillOpacity={0.15} strokeWidth={2} />
-          <Area type="monotone" dataKey="ctr" name="Click-through Rate" stroke="hsl(24, 95%, 53%)" fill="hsl(24, 95%, 53%)" fillOpacity={0.15} strokeWidth={2} />
+          <Area type="monotone" dataKey="openRate" name="Open Rate" stroke="#3B82F6" strokeWidth={2}
+            fill="url(#gOpenRate)" dot={false} activeDot={{ r: 4, strokeWidth: 0, fill: "#3B82F6" }} />
+          <Area type="monotone" dataKey="ctr" name="Click-through Rate" stroke="#F97316" strokeWidth={2}
+            fill="url(#gCtr)" dot={false} activeDot={{ r: 4, strokeWidth: 0, fill: "#F97316" }} />
         </AreaChart>
       );
     }
@@ -262,23 +405,23 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
           {grid}
           {chartType === "bar" ? (
             <>
-              <YAxis type="category" dataKey="date" tick={{ fontSize: 10 }} width={80} />
-              <XAxis type="number" domain={[0, 125]} tickFormatter={(v: number) => `${v}%`} tick={{ fontSize: 10 }} />
+              <YAxis type="category" dataKey="date" tick={axisStyle} width={80} tickLine={false} axisLine={false} />
+              <XAxis type="number" domain={[0, 125]} tickFormatter={(v: number) => `${v}%`} tick={axisStyle} tickLine={false} axisLine={false} />
             </>
           ) : (
             <>{xAxis}{yAxis}</>
           )}
           {tooltip}{legend}
-          <Bar dataKey="openRate" name="Open Rate" fill="hsl(var(--brand-blue))" radius={[2, 2, 0, 0]} />
-          <Bar dataKey="ctr" name="Click-through Rate" fill="hsl(24, 95%, 53%)" radius={[2, 2, 0, 0]} />
+          <Bar dataKey="openRate" name="Open Rate" fill="#3B82F6" radius={[2, 2, 0, 0]} />
+          <Bar dataKey="ctr" name="Click-through Rate" fill="#F97316" radius={[2, 2, 0, 0]} />
         </BarChart>
       );
     }
     return (
-      <LineChart {...commonProps}>
+      <LineChart {...commonProps} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
         {grid}{xAxis}{yAxis}{tooltip}{legend}
-        <Line type="monotone" dataKey="openRate" name="Open Rate" stroke="hsl(var(--brand-blue))" strokeWidth={2} dot={{ r: 3 }} />
-        <Line type="monotone" dataKey="ctr" name="Click-through Rate" stroke="hsl(24, 95%, 53%)" strokeWidth={2} dot={{ r: 3 }} />
+        <Line type="monotone" dataKey="openRate" name="Open Rate" stroke="#3B82F6" strokeWidth={2} dot={{ r: 3 }} />
+        <Line type="monotone" dataKey="ctr" name="Click-through Rate" stroke="#F97316" strokeWidth={2} dot={{ r: 3 }} />
       </LineChart>
     );
   };
@@ -289,14 +432,9 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
     { value: "column", label: "Column" },
     { value: "line", label: "Line" },
   ];
-  const intervals: { value: TimeInterval; label: string }[] = [
-    { value: "daily", label: "Daily" },
-    { value: "weekly", label: "Weekly" },
-    { value: "monthly", label: "Monthly" },
-  ];
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-8 p-6">
       {/* Email Preview Modal */}
       <EmailPreviewModal
         open={previewOpen}
@@ -305,8 +443,9 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
       />
 
       {/* ═══ SECTION 1 — KPI Funnel ═══ */}
-      <section>
-        <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Email Funnel</h2>
+      <section className="space-y-5">
+        <SectionHeader icon={Mail} label="Email Funnel" color="bg-orange-500" />
+
         <div className="grid grid-cols-2 gap-3 lg:flex lg:items-center lg:gap-0">
           <div className="lg:flex-1"><FunnelCard label="Sent" value={fmt(d.totalEmailsSent)} sub={`${d.totalEmails} emails`} delta={dl.sent} /></div>
           <HArrow />
@@ -337,214 +476,183 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
       </section>
 
       {/* ═══ SECTION 2 — Performance Over Time ═══ */}
-      <section className="rounded-lg border border-border bg-card p-6 shadow-card">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Open Rate & Click-through Rate Over Time</h3>
-            <p className="mt-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">{dateLabel}</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="flex rounded-md border border-border bg-muted/40 text-[11px]">
-              {chartTypes.map((ct) => (
-                <button
-                  key={ct.value}
-                  onClick={() => setChartType(ct.value)}
-                  className={cn(
-                    "px-2.5 py-1 transition-colors first:rounded-l-md last:rounded-r-md",
-                    chartType === ct.value ? "bg-primary text-primary-foreground" : "hover:bg-muted"
-                  )}
-                >
-                  {ct.label}
-                </button>
-              ))}
+      <section className="space-y-5">
+        <SectionHeader icon={BarChart2} label="Performance Over Time" color="bg-blue-600" />
+        <ChartCard
+          title="Open Rate & Click-through Rate"
+          subtitle={`${format(dateFrom, "MMM d, yyyy")} – ${format(dateTo, "MMM d, yyyy")}`}
+          headerRight={
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex rounded-lg border border-border bg-muted/40 p-0.5 text-xs">
+                {chartTypes.map((ct) => (
+                  <button
+                    key={ct.value}
+                    onClick={() => setChartType(ct.value)}
+                    className={cn(
+                      "rounded-md px-3 py-1 font-medium transition-all",
+                      chartType === ct.value ? "bg-white shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    {ct.label}
+                  </button>
+                ))}
+              </div>
+              <GranularityToggle value={granularity} onChange={setGranularity} />
             </div>
-            <div className="flex rounded-md border border-border bg-muted/40 text-[11px]">
-              {intervals.map((iv) => (
-                <button
-                  key={iv.value}
-                  onClick={() => setInterval(iv.value)}
-                  className={cn(
-                    "px-2.5 py-1 transition-colors first:rounded-l-md last:rounded-r-md",
-                    interval === iv.value ? "bg-primary text-primary-foreground" : "hover:bg-muted"
-                  )}
-                >
-                  {iv.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-        {chartData.length > 0 ? (
-          <ResponsiveContainer width="100%" height={280}>
-            {renderChart()}
-          </ResponsiveContainer>
-        ) : (
-          <p className="py-12 text-center text-sm text-muted-foreground">No data for chart</p>
-        )}
+          }
+        >
+          {chartData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={280}>
+              {renderChart()}
+            </ResponsiveContainer>
+          ) : (
+            <p className="py-12 text-center text-sm text-muted-foreground">No data for chart</p>
+          )}
+        </ChartCard>
       </section>
 
       {/* ═══ SECTION 3 — Email Performance Table ═══ */}
-      <section className="rounded-lg border border-border bg-card shadow-card overflow-hidden">
-        <div className="p-6 pb-3">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Email Performance</h3>
-        </div>
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-table-header">
-                <TableHead className="text-xs text-primary-foreground">Email Name</TableHead>
-                <TableHead className="text-xs text-primary-foreground">Brand</TableHead>
-                <TableHead className="text-xs text-primary-foreground">Sender</TableHead>
-                <TableHead className="text-xs text-primary-foreground">Publish Date</TableHead>
-                <TableHead className="text-right text-xs text-primary-foreground">Sent</TableHead>
-                <TableHead className="text-right text-xs text-primary-foreground">Delivered</TableHead>
-                <TableHead className="text-right text-xs text-primary-foreground">Open Rate</TableHead>
-                <TableHead className="text-right text-xs text-primary-foreground">Click Rate</TableHead>
-                <TableHead className="text-right text-xs text-primary-foreground">Hard Bounce</TableHead>
-                <TableHead className="text-right text-xs text-primary-foreground">Unsub Rate</TableHead>
-                <TableHead className="text-right text-xs text-primary-foreground">Spam Rate</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {d.emails.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={11} className="py-8 text-center text-sm text-muted-foreground">
-                    No emails found for "{d.brandName}" in selected date range.
-                  </TableCell>
+      <section className="space-y-5">
+        <SectionHeader icon={Mail} label="Email Performance" color="bg-indigo-600" />
+        <div className="rounded-2xl border border-border bg-card overflow-hidden">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/50 hover:bg-muted/50">
+                  <TableHead className="text-xs font-semibold pl-6">Email Name</TableHead>
+                  <TableHead className="text-xs font-semibold">Brand</TableHead>
+                  <TableHead className="text-xs font-semibold">Sender</TableHead>
+                  <TableHead className="text-xs font-semibold">Publish Date</TableHead>
+                  <TableHead className="text-right text-xs font-semibold">Sent</TableHead>
+                  <TableHead className="text-right text-xs font-semibold">Delivered</TableHead>
+                  <TableHead className="text-right text-xs font-semibold">Open Rate</TableHead>
+                  <TableHead className="text-right text-xs font-semibold">Click Rate</TableHead>
+                  <TableHead className="text-right text-xs font-semibold">Hard Bounce</TableHead>
+                  <TableHead className="text-right text-xs font-semibold">Unsub Rate</TableHead>
+                  <TableHead className="text-right text-xs font-semibold pr-6">Spam Rate</TableHead>
                 </TableRow>
-              ) : (
-                paginatedEmails.map((row: any, idx: number) => (
-                  <TableRow key={`${row.name}-${idx}`} className="hover:bg-muted/60">
-                    <TableCell className="max-w-[300px] whitespace-normal break-words" style={{ overflowWrap: "break-word", wordWrap: "break-word", lineHeight: 1.4 }}>
-                      <EmailNameLink email={{ ...row, brandName: row.brandName || d.brandName }} onClick={openPreview} />
+              </TableHeader>
+              <TableBody>
+                {d.emails.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={11} className="py-8 text-center text-sm text-muted-foreground">
+                      No emails found for "{d.brandName}" in selected date range.
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{row.brandName || d.brandName}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{row.sender || ""}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{row.publishDate}</TableCell>
-                    <TableCell className="text-right tabular-nums text-sm">{row.sent.toLocaleString()}</TableCell>
-                    <TableCell className="text-right tabular-nums text-sm">{row.delivered.toLocaleString()}</TableCell>
-                    <TableCell className="text-right tabular-nums text-sm">{row.openRate}%</TableCell>
-                    <TableCell className="text-right tabular-nums text-sm">{row.clickRate}%</TableCell>
-                    <TableCell className="text-right tabular-nums text-sm">{row.bounceRate}%</TableCell>
-                    <TableCell className="text-right tabular-nums text-sm">{row.unsubscribeRate}%</TableCell>
-                    <TableCell className="text-right tabular-nums text-sm">{row.spamRate}%</TableCell>
                   </TableRow>
-                ))
+                ) : (
+                  paginatedEmails.map((row: any, idx: number) => (
+                    <TableRow key={`${row.name}-${idx}`} className="hover:bg-muted/40 transition-colors">
+                      <TableCell className="max-w-[300px] whitespace-normal break-words pl-6" style={{ overflowWrap: "break-word", wordWrap: "break-word", lineHeight: 1.4 }}>
+                        <EmailNameLink email={{ ...row, brandName: row.brandName || d.brandName }} onClick={openPreview} />
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{row.brandName || d.brandName}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{row.sender || ""}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{row.publishDate}</TableCell>
+                      <TableCell className="text-right tabular-nums text-sm">{row.sent.toLocaleString()}</TableCell>
+                      <TableCell className="text-right tabular-nums text-sm">{row.delivered.toLocaleString()}</TableCell>
+                      <TableCell className="text-right tabular-nums text-sm">{row.openRate}%</TableCell>
+                      <TableCell className="text-right tabular-nums text-sm">{row.clickRate}%</TableCell>
+                      <TableCell className="text-right tabular-nums text-sm">{row.bounceRate}%</TableCell>
+                      <TableCell className="text-right tabular-nums text-sm">{row.unsubscribeRate}%</TableCell>
+                      <TableCell className="text-right tabular-nums text-sm pr-6">{row.spamRate}%</TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+              {emailTotals && (
+                <TableFooter>
+                  <TableRow className="bg-muted/80 font-semibold">
+                    <TableCell className="text-sm pl-6">Totals / Averages</TableCell>
+                    <TableCell />
+                    <TableCell />
+                    <TableCell />
+                    <TableCell className="text-right tabular-nums text-sm">{emailTotals.totalSent.toLocaleString()}</TableCell>
+                    <TableCell className="text-right tabular-nums text-sm">{emailTotals.totalDelivered.toLocaleString()}</TableCell>
+                    <TableCell className="text-right tabular-nums text-sm">{emailTotals.avgOpen}%</TableCell>
+                    <TableCell className="text-right tabular-nums text-sm">{emailTotals.avgClick}%</TableCell>
+                    <TableCell className="text-right tabular-nums text-sm">{emailTotals.avgBounce}%</TableCell>
+                    <TableCell className="text-right tabular-nums text-sm">{emailTotals.avgUnsub}%</TableCell>
+                    <TableCell className="text-right tabular-nums text-sm pr-6">{emailTotals.avgSpam}%</TableCell>
+                  </TableRow>
+                </TableFooter>
               )}
-            </TableBody>
-            {emailTotals && (
-              <TableFooter>
-                <TableRow className="bg-muted/80 font-semibold sticky bottom-0">
-                  <TableCell className="text-sm">Totals / Averages</TableCell>
-                  <TableCell />
-                  <TableCell />
-                  <TableCell />
-                  <TableCell className="text-right tabular-nums text-sm">{emailTotals.totalSent.toLocaleString()}</TableCell>
-                  <TableCell className="text-right tabular-nums text-sm">{emailTotals.totalDelivered.toLocaleString()}</TableCell>
-                  <TableCell className="text-right tabular-nums text-sm">{emailTotals.avgOpen}%</TableCell>
-                  <TableCell className="text-right tabular-nums text-sm">{emailTotals.avgClick}%</TableCell>
-                  <TableCell className="text-right tabular-nums text-sm">{emailTotals.avgBounce}%</TableCell>
-                  <TableCell className="text-right tabular-nums text-sm">{emailTotals.avgUnsub}%</TableCell>
-                  <TableCell className="text-right tabular-nums text-sm">{emailTotals.avgSpam}%</TableCell>
-                </TableRow>
-              </TableFooter>
-            )}
-          </Table>
-        </div>
-        {/* Pagination */}
-        {d.emails.length > PAGE_SIZE && (
-          <div className="flex items-center justify-between border-t border-border px-6 py-3">
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                disabled={showAll || currentPage === 1}
-                className="h-8 text-xs"
-              >
-                <ChevronLeft className="h-3.5 w-3.5 mr-1" /> Previous
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                disabled={showAll || currentPage === totalPages}
-                className="h-8 text-xs"
-              >
-                Next <ChevronRight className="h-3.5 w-3.5 ml-1" />
+            </Table>
+          </div>
+          {/* Pagination */}
+          {d.emails.length > PAGE_SIZE && (
+            <div className="flex items-center justify-between border-t border-border px-6 py-3">
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={showAll || currentPage === 1} className="h-8 text-xs">
+                  <ChevronLeft className="h-3.5 w-3.5 mr-1" /> Previous
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} disabled={showAll || currentPage === totalPages} className="h-8 text-xs">
+                  Next <ChevronRight className="h-3.5 w-3.5 ml-1" />
+                </Button>
+              </div>
+              <span className="text-xs text-muted-foreground">
+                {showAll ? `Showing all ${d.emails.length} emails` : `Page ${currentPage} of ${totalPages}`}
+              </span>
+              <Button variant="ghost" size="sm" onClick={() => { setShowAll(!showAll); setCurrentPage(1); }} className="h-8 text-xs">
+                {showAll ? "Paginate" : "Show All"}
               </Button>
             </div>
-            <span className="text-xs text-muted-foreground">
-              {showAll ? `Showing all ${d.emails.length} emails` : `Page ${currentPage} of ${totalPages}`}
-            </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => { setShowAll(!showAll); setCurrentPage(1); }}
-              className="h-8 text-xs"
-            >
-              {showAll ? "Paginate" : "Show All"}
-            </Button>
-          </div>
-        )}
+          )}
+        </div>
       </section>
 
       {/* ═══ SECTION 4 — High & Low Performing Emails ═══ */}
       {d.emails.length > 0 && (
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-          {/* High performing */}
-          <section className="rounded-lg border border-border bg-card p-6 shadow-card">
-            <h3 className="text-sm font-semibold text-foreground">High performing emails</h3>
-            <p className="mb-4 text-xs text-muted-foreground">These emails scored well in all deliverability metrics.</p>
-            <div className="space-y-4">
-              {highPerf.map((email: any, i: number) => (
-                <div key={i} className="flex gap-3">
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-green/10 text-xs font-bold text-brand-green">{i + 1}</span>
-                  <div className="min-w-0">
-                    <EmailNameLink email={{ ...email, brandName: email.brandName || d.brandName }} onClick={openPreview} />
-                    <p className="text-[11px] text-muted-foreground">
-                      Published {email.publishDate}. Sent to {email.sent.toLocaleString()}.
-                    </p>
-                    {email.sender && (
-                      <p className="text-[11px] text-muted-foreground">Published by: {email.sender}</p>
-                    )}
-                    <p className="text-[11px] text-muted-foreground">
-                      {email.clickRate}% clicks, {email.openRate}% opens, {email.bounceRate}% hard bounces, {email.unsubscribeRate}% unsubscribes.
-                    </p>
+        <section className="space-y-5">
+          <SectionHeader icon={BarChart2} label="Email Rankings" color="bg-emerald-600" />
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+            {/* High performing */}
+            <ChartCard title="High Performing Emails" subtitle="These emails scored well across all deliverability metrics.">
+              <div className="space-y-4">
+                {highPerf.map((email: any, i: number) => (
+                  <div key={i} className="flex gap-3">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-xs font-bold text-emerald-700">{i + 1}</span>
+                    <div className="min-w-0">
+                      <EmailNameLink email={{ ...email, brandName: email.brandName || d.brandName }} onClick={openPreview} />
+                      <p className="text-[11px] text-muted-foreground">
+                        Published {email.publishDate}. Sent to {email.sent.toLocaleString()}.
+                      </p>
+                      {email.sender && (
+                        <p className="text-[11px] text-muted-foreground">Published by: {email.sender}</p>
+                      )}
+                      <p className="text-[11px] text-muted-foreground">
+                        {email.clickRate}% clicks, {email.openRate}% opens, {email.bounceRate}% hard bounces, {email.unsubscribeRate}% unsubscribes.
+                      </p>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          </section>
+                ))}
+              </div>
+            </ChartCard>
 
-          {/* Low performing */}
-          <section className="rounded-lg border border-border bg-card p-6 shadow-card">
-            <h3 className="text-sm font-semibold text-foreground">Low performing emails</h3>
-            <p className="mb-4 text-xs text-muted-foreground">These emails scored poorly in at least one deliverability metric.</p>
-            <div className="space-y-4">
-              {lowPerf.map((email: any, i: number) => (
-                <div key={i} className="flex gap-3">
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-red/10 text-xs font-bold text-brand-red">{i + 1}</span>
-                  <div className="min-w-0">
-                    <EmailNameLink email={{ ...email, brandName: email.brandName || d.brandName }} onClick={openPreview} />
-                    <p className="text-[11px] text-muted-foreground">
-                      Published {email.publishDate}. Sent to {email.sent.toLocaleString()}.
-                    </p>
-                    {email.sender && (
-                      <p className="text-[11px] text-muted-foreground">Published by: {email.sender}</p>
-                    )}
-                    <p className="text-[11px] text-muted-foreground">
-                      {email.clickRate}% clicks, {email.openRate}% opens, {email.bounceRate}% hard bounces, {email.unsubscribeRate}% unsubscribes.
-                    </p>
+            {/* Low performing */}
+            <ChartCard title="Low Performing Emails" subtitle="These emails scored poorly in at least one deliverability metric.">
+              <div className="space-y-4">
+                {lowPerf.map((email: any, i: number) => (
+                  <div key={i} className="flex gap-3">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-red-50 text-xs font-bold text-red-700">{i + 1}</span>
+                    <div className="min-w-0">
+                      <EmailNameLink email={{ ...email, brandName: email.brandName || d.brandName }} onClick={openPreview} />
+                      <p className="text-[11px] text-muted-foreground">
+                        Published {email.publishDate}. Sent to {email.sent.toLocaleString()}.
+                      </p>
+                      {email.sender && (
+                        <p className="text-[11px] text-muted-foreground">Published by: {email.sender}</p>
+                      )}
+                      <p className="text-[11px] text-muted-foreground">
+                        {email.clickRate}% clicks, {email.openRate}% opens, {email.bounceRate}% hard bounces, {email.unsubscribeRate}% unsubscribes.
+                      </p>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        </div>
+                ))}
+              </div>
+            </ChartCard>
+          </div>
+        </section>
       )}
-
-
 
       <AIRecommendations
         tabName="crm_email"

@@ -3,11 +3,13 @@ import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend,
 } from "recharts";
-import { supabase } from "@/integrations/supabase/client";
+import { callFunction } from "@/lib/api-client";
 import { Brand } from "@/lib/brands";
-import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { format, parseISO, startOfWeek, startOfMonth, startOfDay, addDays, addWeeks, addMonths, isBefore, isEqual } from "date-fns";
+import {
+  format, parseISO, startOfWeek, startOfMonth, startOfDay, startOfQuarter,
+  addDays, addWeeks, addMonths, isBefore, isEqual,
+} from "date-fns";
 
 interface ContactChartsProps {
   brand: Brand;
@@ -15,7 +17,7 @@ interface ContactChartsProps {
   dateTo: Date;
 }
 
-type TimeInterval = "daily" | "weekly" | "monthly";
+type Granularity = "day" | "week" | "month" | "quarter";
 
 interface DayData {
   date: string;
@@ -29,13 +31,86 @@ interface JobTitle {
   count: number;
 }
 
+/* ── Skeleton pulse ── */
+function Skeleton({ className }: { className?: string }) {
+  return <div className={`animate-pulse rounded-md bg-muted ${className}`} />;
+}
+
+/* ── Granularity Toggle ── */
+function GranularityToggle({ value, onChange }: { value: Granularity; onChange: (v: Granularity) => void }) {
+  const options: { label: string; value: Granularity }[] = [
+    { label: "Day", value: "day" },
+    { label: "Week", value: "week" },
+    { label: "Month", value: "month" },
+    { label: "Quarter", value: "quarter" },
+  ];
+  return (
+    <div className="flex rounded-lg border border-border bg-muted/40 p-0.5 text-xs">
+      {options.map((o) => (
+        <button
+          key={o.value}
+          onClick={() => onChange(o.value)}
+          className={`rounded-md px-3 py-1 font-medium transition-all ${
+            value === o.value
+              ? "bg-white shadow-sm text-foreground"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* ── Chart card wrapper ── */
+function ChartCard({ title, subtitle, children, headerRight }: {
+  title: string; subtitle?: string; children: React.ReactNode; headerRight?: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl border border-border bg-card p-6">
+      <div className="mb-5 flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+          {subtitle && <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>}
+        </div>
+        {headerRight}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/* ── Custom tooltip ── */
+function ChartTooltip({ active, payload, label }: any) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="rounded-xl border border-border bg-card px-3 py-2 shadow-lg text-xs">
+      <p className="mb-1 font-semibold text-muted-foreground">{label}</p>
+      {payload.map((p: any) => (
+        <div key={p.dataKey} className="flex items-center gap-2">
+          <span className="h-2 w-2 rounded-full" style={{ background: p.color || p.fill }} />
+          <span className="text-foreground font-medium">{(p.value || 0).toLocaleString()}</span>
+          <span className="text-muted-foreground">{p.name}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ── Quarter key helper ── */
+function quarterKey(date: Date): string {
+  const q = Math.floor(date.getMonth() / 3) + 1;
+  return `Q${q} ${date.getFullYear()}`;
+}
+
 export function ContactCharts({ brand, dateFrom, dateTo }: ContactChartsProps) {
   const [contactsOverTime, setContactsOverTime] = useState<DayData[]>([]);
   const [totalContacts, setTotalContacts] = useState(0);
   const [jobTitles, setJobTitles] = useState<JobTitle[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [interval, setInterval] = useState<TimeInterval>("weekly");
+  const [granularity, setGranularity] = useState<Granularity>("week");
 
   useEffect(() => {
     if (!brand.hasHubSpot) {
@@ -47,40 +122,44 @@ export function ContactCharts({ brand, dateFrom, dateTo }: ContactChartsProps) {
     setLoading(true);
     setError(null);
 
-    supabase.functions
-      .invoke("hubspot-contacts", {
-        body: {
-          brandName: brand.name,
-          startDate: dateFrom.toISOString().split("T")[0],
-          endDate: dateTo.toISOString().split("T")[0],
-        },
-      })
-      .then(({ data, error: err }) => {
+    callFunction("hubspot-contacts", {
+      brandName: brand.name,
+      startDate: dateFrom.toISOString().split("T")[0],
+      endDate: dateTo.toISOString().split("T")[0],
+    })
+      .then((data: any) => {
         if (cancelled) return;
-        if (err || data?.error) {
-          setError(err?.message || data?.error || "Failed to load");
+        if (data?.error) {
+          setError(data.error || "Failed to load");
         } else {
           setContactsOverTime(data?.contactsOverTime || []);
           setTotalContacts(data?.totalContacts || 0);
           setJobTitles(data?.jobTitles || []);
         }
         setLoading(false);
+      })
+      .catch((err: any) => {
+        if (cancelled) return;
+        setError(err?.message || "Failed to load");
+        setLoading(false);
       });
 
     return () => { cancelled = true; };
   }, [brand.id, dateFrom.getTime(), dateTo.getTime()]);
 
-  // Aggregate by interval
+  // Aggregate by granularity
   const aggregatedContacts = useMemo(() => {
     if (!contactsOverTime.length) return [];
 
     const buckets: Record<string, { total: number; hubspot: number; salesforce: number }> = {};
+
     for (const day of contactsOverTime) {
       const date = parseISO(day.date);
       let key: string;
-      if (interval === "daily") key = format(startOfDay(date), "yyyy-MM-dd");
-      else if (interval === "weekly") key = format(startOfWeek(date, { weekStartsOn: 1 }), "yyyy-MM-dd");
-      else key = format(startOfMonth(date), "yyyy-MM");
+      if (granularity === "day") key = format(startOfDay(date), "yyyy-MM-dd");
+      else if (granularity === "week") key = format(startOfWeek(date, { weekStartsOn: 1 }), "yyyy-MM-dd");
+      else if (granularity === "month") key = format(startOfMonth(date), "yyyy-MM");
+      else key = quarterKey(startOfQuarter(date));
 
       if (!buckets[key]) buckets[key] = { total: 0, hubspot: 0, salesforce: 0 };
       buckets[key].total += day.total;
@@ -88,15 +167,21 @@ export function ContactCharts({ brand, dateFrom, dateTo }: ContactChartsProps) {
       buckets[key].salesforce += day.salesforce;
     }
 
-    // Fill in missing slots
+    if (granularity === "quarter") {
+      return Object.entries(buckets)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([date, v]) => ({ date, ...v }));
+    }
+
+    // Fill in missing slots for non-quarter granularities
     const slots: string[] = [];
-    let cursor = interval === "daily"
+    let cursor = granularity === "day"
       ? startOfDay(dateFrom)
-      : interval === "weekly"
+      : granularity === "week"
         ? startOfWeek(dateFrom, { weekStartsOn: 1 })
         : startOfMonth(dateFrom);
-    const advance = interval === "daily" ? addDays : interval === "weekly" ? addWeeks : addMonths;
-    const fmtStr = interval === "monthly" ? "yyyy-MM" : "yyyy-MM-dd";
+    const advance = granularity === "day" ? addDays : granularity === "week" ? addWeeks : addMonths;
+    const fmtStr = granularity === "month" ? "yyyy-MM" : "yyyy-MM-dd";
     while (isBefore(cursor, dateTo) || isEqual(cursor, dateTo)) {
       slots.push(format(cursor, fmtStr));
       cursor = advance(cursor, 1);
@@ -106,94 +191,35 @@ export function ContactCharts({ brand, dateFrom, dateTo }: ContactChartsProps) {
       date,
       ...(buckets[date] || { total: 0, hubspot: 0, salesforce: 0 }),
     }));
-  }, [contactsOverTime, interval, dateFrom, dateTo]);
+  }, [contactsOverTime, granularity, dateFrom, dateTo]);
 
-  const intervals: { value: TimeInterval; label: string }[] = [
-    { value: "daily", label: "Daily" },
-    { value: "weekly", label: "Weekly" },
-    { value: "monthly", label: "Monthly" },
-  ];
+  const axisStyle = { fontSize: 10, fill: "hsl(var(--muted-foreground))" };
+  const gridColor = "hsl(var(--border))";
+
+  const xTickFormatter = (v: string) => {
+    if (granularity === "quarter") return v;
+    try { return format(parseISO(v), granularity === "month" ? "MMM yy" : "M/d"); } catch { return v; }
+  };
 
   if (!brand.hasHubSpot) return null;
 
   return (
     <>
-      {/* ── Separator ── */}
-      <div className="border-t border-border" />
-
       {/* ── Total Contacts Card ── */}
-      <section className="rounded-lg border border-border bg-card p-4 shadow-card">
-        <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Total Contacts Created</p>
-        <p className="mt-1 text-2xl font-bold tabular-nums">{totalContacts.toLocaleString()}</p>
+      <div className="rounded-2xl border border-border bg-card p-5">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Total Contacts Created</p>
+        <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">
+          {loading ? <span className="inline-block h-9 w-24 animate-pulse rounded-md bg-muted" /> : totalContacts.toLocaleString()}
+        </p>
         <p className="mt-0.5 text-[11px] text-muted-foreground">In selected date range</p>
-      </section>
+      </div>
 
       {/* ── New Contacts Over Time ── */}
-      <section className="rounded-lg border border-border bg-card p-6 shadow-card">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            New Contacts Created Over Time
-          </h3>
-          <div className="flex rounded-md border border-border bg-muted/40 text-[11px]">
-            {intervals.map((iv) => (
-              <button
-                key={iv.value}
-                onClick={() => setInterval(iv.value)}
-                className={cn(
-                  "px-2.5 py-1 transition-colors first:rounded-l-md last:rounded-r-md",
-                  interval === iv.value ? "bg-primary text-primary-foreground" : "hover:bg-muted"
-                )}
-              >
-                {iv.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {loading ? (
-          <div className="space-y-2">
-            <Skeleton className="h-[280px] w-full" />
-          </div>
-        ) : error ? (
-          <p className="py-12 text-center text-sm text-muted-foreground">{error}</p>
-        ) : aggregatedContacts.length === 0 ? (
-          <p className="py-12 text-center text-sm text-muted-foreground">
-            No data available for {brand.name}
-          </p>
-        ) : (
-          <ResponsiveContainer width="100%" height={280}>
-            <AreaChart data={aggregatedContacts}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-              <XAxis
-                dataKey="date"
-                tick={{ fontSize: 10 }}
-                tickFormatter={(v) => { try { return format(parseISO(v), "M/d"); } catch { return v; } }}
-                interval="preserveStartEnd"
-              />
-              <YAxis tick={{ fontSize: 10 }} />
-              <Tooltip contentStyle={{ fontSize: 12 }} />
-              <Area
-                type="monotone"
-                dataKey="total"
-                name="New Contacts"
-                stroke="hsl(var(--brand-blue))"
-                fill="hsl(var(--brand-blue))"
-                fillOpacity={0.15}
-                strokeWidth={2}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        )}
-      </section>
-
-      {/* ── Source Breakdown ── */}
-      <section className="rounded-lg border border-border bg-card p-6 shadow-card">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Contacts Source Breakdown
-          </h3>
-        </div>
-
+      <ChartCard
+        title="New Contacts Created Over Time"
+        subtitle="Contact acquisition trend by time period"
+        headerRight={<GranularityToggle value={granularity} onChange={setGranularity} />}
+      >
         {loading ? (
           <Skeleton className="h-[280px] w-full" />
         ) : error ? (
@@ -204,32 +230,61 @@ export function ContactCharts({ brand, dateFrom, dateTo }: ContactChartsProps) {
           </p>
         ) : (
           <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={aggregatedContacts}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-              <XAxis
-                dataKey="date"
-                tick={{ fontSize: 10 }}
-                tickFormatter={(v) => { try { return format(parseISO(v), "M/d"); } catch { return v; } }}
-                interval="preserveStartEnd"
+            <AreaChart data={aggregatedContacts} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+              <defs>
+                <linearGradient id="gContacts" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.18} />
+                  <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
+              <XAxis dataKey="date" tick={axisStyle} tickFormatter={xTickFormatter}
+                interval="preserveStartEnd" tickLine={false} axisLine={false} />
+              <YAxis tick={axisStyle} tickLine={false} axisLine={false} />
+              <Tooltip content={<ChartTooltip />} />
+              <Area
+                type="monotone"
+                dataKey="total"
+                name="New Contacts"
+                stroke="#3B82F6"
+                strokeWidth={2}
+                fill="url(#gContacts)"
+                dot={false}
+                activeDot={{ r: 4, strokeWidth: 0, fill: "#3B82F6" }}
               />
-              <YAxis tick={{ fontSize: 10 }} />
-              <Tooltip contentStyle={{ fontSize: 12 }} />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
+            </AreaChart>
+          </ResponsiveContainer>
+        )}
+      </ChartCard>
+
+      {/* ── Source Breakdown ── */}
+      <ChartCard title="Contacts Source Breakdown" subtitle="HubSpot vs Salesforce origin">
+        {loading ? (
+          <Skeleton className="h-[280px] w-full" />
+        ) : error ? (
+          <p className="py-12 text-center text-sm text-muted-foreground">{error}</p>
+        ) : aggregatedContacts.length === 0 ? (
+          <p className="py-12 text-center text-sm text-muted-foreground">
+            No data available for {brand.name}
+          </p>
+        ) : (
+          <ResponsiveContainer width="100%" height={280}>
+            <BarChart data={aggregatedContacts} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
+              <XAxis dataKey="date" tick={axisStyle} tickFormatter={xTickFormatter}
+                interval="preserveStartEnd" tickLine={false} axisLine={false} />
+              <YAxis tick={axisStyle} tickLine={false} axisLine={false} />
+              <Tooltip content={<ChartTooltip />} />
+              <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
               <Bar dataKey="hubspot" name="HubSpot" stackId="source" fill="#F97316" radius={[0, 0, 0, 0]} />
               <Bar dataKey="salesforce" name="Salesforce" stackId="source" fill="#374151" radius={[2, 2, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         )}
-      </section>
+      </ChartCard>
 
       {/* ── Job Title Distribution ── */}
-      <section className="rounded-lg border border-border bg-card p-6 shadow-card">
-        <div className="mb-4">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Contact Distribution by Job Title
-          </h3>
-        </div>
-
+      <ChartCard title="Contact Distribution by Job Title" subtitle="Top job titles in your contact database">
         {loading ? (
           <Skeleton className="h-[400px] w-full" />
         ) : error ? (
@@ -240,21 +295,16 @@ export function ContactCharts({ brand, dateFrom, dateTo }: ContactChartsProps) {
           </p>
         ) : (
           <ResponsiveContainer width="100%" height={Math.max(300, jobTitles.length * 28)}>
-            <BarChart data={jobTitles} layout="vertical" margin={{ left: 20 }}>
-              <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" />
-              <XAxis type="number" tick={{ fontSize: 10 }} />
-              <YAxis
-                type="category"
-                dataKey="title"
-                tick={{ fontSize: 11 }}
-                width={180}
-              />
-              <Tooltip contentStyle={{ fontSize: 12 }} />
-              <Bar dataKey="count" name="Contacts" fill="hsl(var(--brand-blue))" radius={[0, 4, 4, 0]} />
+            <BarChart data={jobTitles} layout="vertical" margin={{ left: 20, right: 16, top: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={gridColor} />
+              <XAxis type="number" tick={axisStyle} tickLine={false} axisLine={false} />
+              <YAxis type="category" dataKey="title" tick={axisStyle} width={180} tickLine={false} axisLine={false} />
+              <Tooltip content={<ChartTooltip />} />
+              <Bar dataKey="count" name="Contacts" fill="#3B82F6" radius={[0, 4, 4, 0]} />
             </BarChart>
           </ResponsiveContainer>
         )}
-      </section>
+      </ChartCard>
     </>
   );
 }

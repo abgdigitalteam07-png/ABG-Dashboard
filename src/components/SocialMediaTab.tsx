@@ -1,19 +1,21 @@
 import { useState, useEffect, useMemo } from "react";
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
-  LineChart, Line, Cell,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  AreaChart, Area, Legend, Cell,
 } from "recharts";
-import { ScoreCard } from "./ScoreCard";
 import { Brand } from "@/lib/brands";
-import { supabase } from "@/integrations/supabase/client";
+import { callFunction } from "@/lib/api-client";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter,
 } from "@/components/ui/table";
-import { Loader2, Facebook, Instagram, Linkedin, ChevronDown, ChevronUp, ExternalLink, HelpCircle } from "lucide-react";
-import { WaterFillLoader } from "./WaterFillLoader";
+import {
+  TrendingUp, TrendingDown, Facebook, Instagram, Linkedin, ChevronDown, ChevronUp,
+  ExternalLink, HelpCircle, Users, Eye, MousePointer, Activity, BarChart2, Share2,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { AIRecommendations } from "./AIRecommendations";
-import { format } from "date-fns";
+import { format, parseISO, startOfWeek, startOfMonth, startOfDay, startOfQuarter,
+  addDays, addWeeks, addMonths, isBefore, isEqual } from "date-fns";
 
 interface SocialMediaTabProps {
   brand: Brand;
@@ -52,13 +54,140 @@ function formatNumber(n: number): string {
   return n.toLocaleString();
 }
 
-function formatDate(d: Date): string {
+function formatDateStr(d: Date): string {
   return d.toISOString().split("T")[0];
 }
 
-function formatDisplayDate(dateStr: string): string {
-  const d = new Date(dateStr);
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+/* ── Skeleton pulse ── */
+function Skeleton({ className }: { className?: string }) {
+  return <div className={`animate-pulse rounded-md bg-muted ${className}`} />;
+}
+
+/* ── Stat card ── */
+interface StatCardProps {
+  title: string;
+  value: string;
+  delta?: number;
+  icon: React.ElementType;
+  iconColor: string;
+  iconBg: string;
+  loading?: boolean;
+}
+
+function StatCard({ title, value, delta, icon: Icon, iconColor, iconBg, loading }: StatCardProps) {
+  if (loading) {
+    return (
+      <div className="rounded-2xl border border-border bg-card p-5">
+        <div className="flex items-center justify-between">
+          <Skeleton className="h-8 w-8 rounded-lg" />
+          <Skeleton className="h-5 w-16 rounded-full" />
+        </div>
+        <Skeleton className="mt-4 h-7 w-24" />
+        <Skeleton className="mt-1.5 h-3.5 w-16" />
+      </div>
+    );
+  }
+  const positive = delta === undefined || delta >= 0;
+  return (
+    <div className="group rounded-2xl border border-border bg-card p-5 transition-all hover:border-primary/20 hover:shadow-md">
+      <div className="flex items-start justify-between">
+        <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${iconBg}`}>
+          <Icon className={`h-5 w-5 ${iconColor}`} />
+        </div>
+        {delta !== undefined && (
+          <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${
+            positive ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-600"
+          }`}>
+            {positive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+            {positive ? "+" : ""}{delta.toFixed(1)}%
+          </span>
+        )}
+      </div>
+      <p className="mt-4 text-2xl font-bold tabular-nums tracking-tight text-foreground">{value}</p>
+      <p className="mt-0.5 text-xs font-medium text-muted-foreground">{title}</p>
+    </div>
+  );
+}
+
+/* ── Chart card wrapper ── */
+function ChartCard({ title, subtitle, children, headerRight }: { title: string; subtitle?: string; children: React.ReactNode; headerRight?: React.ReactNode }) {
+  return (
+    <div className="rounded-2xl border border-border bg-card p-6">
+      <div className="mb-5 flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+          {subtitle && <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>}
+        </div>
+        {headerRight}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/* ── Section header ── */
+function SectionHeader({ icon: Icon, label, color }: { icon: React.ElementType; label: string; color: string }) {
+  return (
+    <div className="flex items-center gap-3">
+      <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${color}`}>
+        <Icon className="h-4 w-4 text-white" />
+      </div>
+      <h2 className="text-base font-bold text-foreground">{label}</h2>
+      <div className="flex-1 border-t border-border" />
+    </div>
+  );
+}
+
+/* ── Custom tooltip ── */
+function ChartTooltip({ active, payload, label }: any) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="rounded-xl border border-border bg-card px-3 py-2 shadow-lg text-xs">
+      <p className="mb-1 font-semibold text-muted-foreground">{label}</p>
+      {payload.map((p: any) => (
+        <div key={p.dataKey} className="flex items-center gap-2">
+          <span className="h-2 w-2 rounded-full" style={{ background: p.color }} />
+          <span className="text-foreground font-medium">{typeof p.value === "number" ? p.value.toLocaleString() : p.value}</span>
+          <span className="text-muted-foreground">{p.name}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ── Granularity Toggle ── */
+type Granularity = "day" | "week" | "month" | "quarter";
+
+function GranularityToggle({ value, onChange }: { value: Granularity; onChange: (v: Granularity) => void }) {
+  const options: { label: string; value: Granularity }[] = [
+    { label: "Day", value: "day" },
+    { label: "Week", value: "week" },
+    { label: "Month", value: "month" },
+    { label: "Quarter", value: "quarter" },
+  ];
+  return (
+    <div className="flex rounded-lg border border-border bg-muted/40 p-0.5 text-xs">
+      {options.map((o) => (
+        <button
+          key={o.value}
+          onClick={() => onChange(o.value)}
+          className={`rounded-md px-3 py-1 font-medium transition-all ${
+            value === o.value
+              ? "bg-white shadow-sm text-foreground"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* ── Quarter key helper ── */
+function quarterKey(date: Date): string {
+  const q = Math.floor(date.getMonth() / 3) + 1;
+  return `Q${q} ${date.getFullYear()}`;
 }
 
 export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps) {
@@ -70,6 +199,7 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [currentPage, setCurrentPage] = useState(1);
   const [expandedPost, setExpandedPost] = useState<string | null>(null);
+  const [granularity, setGranularity] = useState<Granularity>("day");
   const pageSize = 10;
 
   const hasSocialMedia = socialMediaBrandNames.includes(brand.name);
@@ -85,26 +215,28 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
     setLoading(true);
     setError(null);
 
-    supabase.functions.invoke("social-media-data", {
-      body: {
-        brandName: brand.name,
-        startDate: formatDate(dateFrom),
-        endDate: formatDate(dateTo),
-        platform: platformFilter === "linkedin" ? "all" : platformFilter,
-      },
-    }).then(({ data: res, error: err }) => {
-      if (cancelled) return;
-      if (err || res?.error) {
+    callFunction("social-media-data", {
+      brandName: brand.name,
+      startDate: formatDateStr(dateFrom),
+      endDate: formatDateStr(dateTo),
+      platform: platformFilter === "linkedin" ? "all" : platformFilter,
+    })
+      .then((res: any) => {
+        if (cancelled) return;
         if (res?.error === "no_social_media") {
           setData(null);
+        } else if (res?.error) {
+          setError(res.error);
         } else {
-          setError(err?.message || res?.error || "Failed to load data");
+          setData(res);
         }
-      } else {
-        setData(res);
-      }
-      setLoading(false);
-    });
+        setLoading(false);
+      })
+      .catch((err: any) => {
+        if (cancelled) return;
+        setError(err?.message || "Failed to load data");
+        setLoading(false);
+      });
 
     return () => { cancelled = true; };
   }, [brand.name, dateFrom.getTime(), dateTo.getTime(), platformFilter]);
@@ -148,6 +280,35 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
     else { setSortKey(key); setSortDir("desc"); }
   };
 
+  /* ── Aggregate daily trends by granularity ── */
+  const aggregatedTrends = useMemo(() => {
+    if (!data?.dailyTrends?.length) return [];
+    if (granularity === "day") return data.dailyTrends;
+
+    const buckets: Record<string, { reach: number; engagementRate: number; count: number }> = {};
+    for (const day of data.dailyTrends) {
+      const date = new Date(day.date);
+      let key: string;
+      if (granularity === "week") {
+        key = format(startOfWeek(date, { weekStartsOn: 1 }), "yyyy-MM-dd");
+      } else if (granularity === "month") {
+        key = format(startOfMonth(date), "yyyy-MM");
+      } else {
+        key = quarterKey(startOfQuarter(date));
+      }
+      if (!buckets[key]) buckets[key] = { reach: 0, engagementRate: 0, count: 0 };
+      buckets[key].reach += day.reach || 0;
+      buckets[key].engagementRate += day.engagementRate || 0;
+      buckets[key].count += 1;
+    }
+
+    return Object.entries(buckets).map(([date, v]) => ({
+      date,
+      reach: v.reach,
+      engagementRate: v.count > 0 ? parseFloat((v.engagementRate / v.count).toFixed(2)) : 0,
+    }));
+  }, [data, granularity]);
+
   const SortHeader = ({ label, field, className = "" }: { label: string; field: string; className?: string }) => (
     <TableHead className={`text-xs cursor-pointer select-none hover:text-foreground ${className}`} onClick={() => handleSort(field)}>
       <span className="inline-flex items-center gap-1">
@@ -160,7 +321,10 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
   if (!hasSocialMedia) {
     return (
       <div className="flex flex-col items-center justify-center py-24 text-center">
-        <p className="text-sm font-medium text-muted-foreground">
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted">
+          <Share2 className="h-7 w-7 text-muted-foreground" />
+        </div>
+        <p className="mt-4 text-sm font-medium text-foreground">
           {isParentBrand
             ? "American Bath Group is the parent company. Please select an individual brand to view social media data."
             : `No social media data available for ${brand.name}.`}
@@ -171,7 +335,23 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
   }
 
   if (loading) {
-    return <WaterFillLoader message="Loading social media data…" fullScreen={false} />;
+    return (
+      <div className="space-y-6 p-6">
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="rounded-2xl border border-border bg-card p-5">
+              <div className="flex items-center justify-between">
+                <Skeleton className="h-10 w-10 rounded-xl" />
+                <Skeleton className="h-5 w-16 rounded-full" />
+              </div>
+              <Skeleton className="mt-4 h-7 w-24" />
+              <Skeleton className="mt-1.5 h-3.5 w-16" />
+            </div>
+          ))}
+        </div>
+        <Skeleton className="h-64 w-full rounded-2xl" />
+      </div>
+    );
   }
 
   if (error) {
@@ -203,27 +383,40 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
 
   const liDemo = LINKEDIN_DEMO_DATA[brand.name];
 
-  return (
-    <div className="space-y-6">
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-        <ScoreCard title="Total Followers" value={formatNumber(totalFollowers)} delta={avgFollowerGrowth} />
-        <ScoreCard title="Total Reach" value={formatNumber(overview.totalReach)} delta={reachDelta} />
-        <ScoreCard title="Total Impressions" value={formatNumber(overview.totalImpressions)} delta={impressionsDelta} />
-        <ScoreCard title="Engagement Rate" value={`${overview.engagementRate}%`} delta={engRateDelta} />
-        <ScoreCard title="Profile Visits" value={formatNumber(overview.profileVisits)} delta={profileVisitsDelta} />
-        <ScoreCard title="Website Clicks" value={formatNumber(overview.websiteClicks)} delta={websiteClicksDelta} />
-      </div>
+  const axisStyle = { fontSize: 11, fill: "hsl(var(--muted-foreground))" };
+  const gridColor = "hsl(var(--border))";
 
-      {/* Platform Comparison */}
-      <div>
-        <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Platform Comparison</h2>
+  return (
+    <div className="space-y-8 p-6">
+
+      {/* ── KPI Stats ── */}
+      <section className="space-y-5">
+        <SectionHeader icon={BarChart2} label="Overview" color="bg-pink-600" />
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
+          <StatCard title="Total Followers" value={formatNumber(totalFollowers)} delta={avgFollowerGrowth}
+            icon={Users} iconBg="bg-blue-50" iconColor="text-blue-600" />
+          <StatCard title="Total Reach" value={formatNumber(overview.totalReach)} delta={reachDelta}
+            icon={Eye} iconBg="bg-violet-50" iconColor="text-violet-600" />
+          <StatCard title="Impressions" value={formatNumber(overview.totalImpressions)} delta={impressionsDelta}
+            icon={Activity} iconBg="bg-indigo-50" iconColor="text-indigo-600" />
+          <StatCard title="Engagement Rate" value={`${overview.engagementRate}%`} delta={engRateDelta}
+            icon={TrendingUp} iconBg="bg-emerald-50" iconColor="text-emerald-600" />
+          <StatCard title="Profile Visits" value={formatNumber(overview.profileVisits)} delta={profileVisitsDelta}
+            icon={Users} iconBg="bg-sky-50" iconColor="text-sky-600" />
+          <StatCard title="Website Clicks" value={formatNumber(overview.websiteClicks)} delta={websiteClicksDelta}
+            icon={MousePointer} iconBg="bg-orange-50" iconColor="text-orange-600" />
+        </div>
+      </section>
+
+      {/* ── Platform Comparison ── */}
+      <section className="space-y-5">
+        <SectionHeader icon={Share2} label="Platform Comparison" color="bg-blue-600" />
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           {(["facebook", "instagram"] as const).map((p) => {
             const pb = platformBreakdown[p];
             const Icon = p === "facebook" ? Facebook : Instagram;
             return (
-              <div key={p} className="rounded-lg border border-border bg-card p-6 shadow-card">
+              <div key={p} className="rounded-2xl border border-border bg-card p-6">
                 <div className="mb-4 flex items-center gap-2">
                   <Icon className="h-5 w-5" />
                   <h3 className="text-sm font-semibold capitalize">{p}</h3>
@@ -245,7 +438,7 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
           })}
 
           {/* LinkedIn Coming Soon Card */}
-          <div className="rounded-lg border border-border bg-card p-6 shadow-card relative overflow-hidden">
+          <div className="rounded-2xl border border-border bg-card p-6 relative overflow-hidden">
             <div className="absolute top-3 right-3 flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-400">
               <HelpCircle className="h-3 w-3" />
               Coming Soon
@@ -287,20 +480,19 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
             )}
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* Content Performance Charts */}
-      <div>
-        <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Content Performance</h2>
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <div className="rounded-lg border border-border bg-card p-6 shadow-card">
-            <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Performance by Content Type</h3>
+      {/* ── Content Performance Charts ── */}
+      <section className="space-y-5">
+        <SectionHeader icon={BarChart2} label="Content Performance" color="bg-violet-600" />
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+          <ChartCard title="Performance by Content Type" subtitle="Average engagement rate per content type">
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={contentPerformance.byType} layout="vertical" margin={{ left: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" />
-                <XAxis type="number" tick={{ fontSize: 11 }} />
-                <YAxis dataKey="type" type="category" tick={{ fontSize: 11 }} width={80} />
-                <Tooltip contentStyle={{ fontSize: 12 }} formatter={(v: number) => `${v}%`} />
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={gridColor} />
+                <XAxis type="number" tick={axisStyle} tickLine={false} axisLine={false} />
+                <YAxis dataKey="type" type="category" tick={axisStyle} width={80} tickLine={false} axisLine={false} />
+                <Tooltip content={<ChartTooltip />} formatter={(v: number) => `${v}%`} />
                 <Bar dataKey="avgEngagement" name="Avg Engagement Rate %" radius={[0, 4, 4, 0]}>
                   {contentPerformance.byType.map((entry: any, i: number) => (
                     <Cell key={i} fill={typeColors[entry.type] || "hsl(var(--primary))"} />
@@ -315,147 +507,170 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
                 </span>
               ))}
             </div>
-          </div>
+          </ChartCard>
 
-          <div className="rounded-lg border border-border bg-card p-6 shadow-card">
-            <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Best Day to Post</h3>
+          <ChartCard title="Best Day to Post" subtitle="Day with highest average engagement">
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={contentPerformance.byDayOfWeek}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                <XAxis dataKey="day" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} />
-                <Tooltip contentStyle={{ fontSize: 12 }} formatter={(v: number) => `${v}%`} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
+                <XAxis dataKey="day" tick={axisStyle} tickLine={false} axisLine={false} />
+                <YAxis tick={axisStyle} tickLine={false} axisLine={false} />
+                <Tooltip content={<ChartTooltip />} formatter={(v: number) => `${v}%`} />
                 <Bar dataKey="avgEngagement" name="Avg Engagement Rate %" radius={[4, 4, 0, 0]}>
                   {contentPerformance.byDayOfWeek.map((entry: any, i: number) => {
                     const maxEng = Math.max(...contentPerformance.byDayOfWeek.map((d: any) => d.avgEngagement));
                     return (
-                      <Cell key={i} fill={entry.avgEngagement === maxEng && entry.avgEngagement > 0 ? "hsl(var(--brand-green))" : "hsl(var(--brand-blue))"} />
+                      <Cell key={i} fill={entry.avgEngagement === maxEng && entry.avgEngagement > 0 ? "#10B981" : "#3B82F6"} />
                     );
                   })}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
-          </div>
+          </ChartCard>
         </div>
-      </div>
+      </section>
 
-      {/* Post Performance Table */}
-      <div className="rounded-lg border border-border bg-card shadow-card overflow-hidden">
-        <div className="p-6 pb-3">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Post Performance</h3>
-        </div>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <SortHeader label="Platform" field="platform" />
-              <SortHeader label="Type" field="type" />
-              <TableHead className="text-xs">Caption</TableHead>
-              <SortHeader label="Date" field="publishedAt" className="text-right" />
-              <SortHeader label="Reach" field="reach" className="text-right" />
-              <SortHeader label="Impressions" field="impressions" className="text-right" />
-              <SortHeader label="Engagements" field="totalEngagements" className="text-right" />
-              <SortHeader label="Eng. Rate" field="engagementRate" className="text-right" />
-              <SortHeader label="Clicks" field="clicks" className="text-right" />
-              <TableHead className="text-xs w-10"></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {paginatedPosts.map((post: any) => {
-              const totalEng = (post.likes || 0) + (post.comments || 0) + (post.shares || 0) + (post.saves || 0);
-              const isExpanded = expandedPost === post.id;
-              const permalink = post.permalink || post.permalink_url || "";
-              return (
-                <>
-                  <TableRow
-                    key={post.id}
-                    className="hover:bg-muted/60 cursor-pointer"
-                    onClick={() => setExpandedPost(isExpanded ? null : post.id)}
-                  >
-                    <TableCell>
-                      {post.platform === "facebook" ? <Facebook className="h-4 w-4" /> : post.platform === "linkedin" ? <Linkedin className="h-4 w-4 text-[#0A66C2]" /> : <Instagram className="h-4 w-4" />}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="text-xs capitalize">{post.type}</Badge>
-                    </TableCell>
-                    <TableCell className="max-w-[200px] whitespace-normal break-words text-xs" style={{ lineHeight: 1.4 }}>
-                      {post.caption.length > 60 ? post.caption.slice(0, 60) + "..." : post.caption}
-                    </TableCell>
-                    <TableCell className="text-right text-sm tabular-nums">{formatDisplayDate(post.publishedAt)}</TableCell>
-                    <TableCell className="text-right text-sm tabular-nums">{(post.reach || 0).toLocaleString()}</TableCell>
-                    <TableCell className="text-right text-sm tabular-nums">{(post.impressions || 0).toLocaleString()}</TableCell>
-                    <TableCell className="text-right text-sm tabular-nums">{totalEng.toLocaleString()}</TableCell>
-                    <TableCell className="text-right text-sm tabular-nums">
-                      <span className={(post.engagementRate || 0) >= 5 ? "text-brand-green" : (post.engagementRate || 0) < 2 ? "text-brand-red" : ""}>
-                        {(post.engagementRate || 0)}%
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right text-sm tabular-nums">{(post.clicks || 0).toLocaleString()}</TableCell>
-                    <TableCell className="text-right">
-                      {permalink && (
-                        <a href={permalink} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="inline-flex text-muted-foreground hover:text-foreground">
-                          <ExternalLink className="h-4 w-4" />
-                        </a>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                  {isExpanded && (
-                    <TableRow key={`${post.id}-detail`} className="bg-muted/30">
-                      <TableCell colSpan={10} className="p-4">
-                        <p className="mb-2 text-sm">{post.caption}</p>
-                        <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
-                          <span>👍 {(post.likes || 0).toLocaleString()} likes</span>
-                          <span>💬 {(post.comments || 0).toLocaleString()} comments</span>
-                          <span>🔄 {(post.shares || 0).toLocaleString()} shares</span>
-                          <span>🔖 {(post.saves || 0).toLocaleString()} saves</span>
-                        </div>
+      {/* ── Daily Trends ── */}
+      {dailyTrends && dailyTrends.length > 0 && (
+        <ChartCard
+          title="Trends Over Time"
+          subtitle="Reach and engagement rate over selected period"
+          headerRight={
+            <GranularityToggle value={granularity} onChange={setGranularity} />
+          }
+        >
+          <ResponsiveContainer width="100%" height={260}>
+            <AreaChart data={aggregatedTrends} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+              <defs>
+                <linearGradient id="gReach" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.18} />
+                  <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
+                </linearGradient>
+                <linearGradient id="gEngRate" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#F97316" stopOpacity={0.18} />
+                  <stop offset="95%" stopColor="#F97316" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
+              <XAxis
+                dataKey="date"
+                tick={axisStyle}
+                tickLine={false}
+                axisLine={false}
+                tickFormatter={(v) => granularity === "quarter" ? v : granularity === "month" ? v.slice(0, 7) : v.slice(5)}
+              />
+              <YAxis yAxisId="left" tick={axisStyle} tickLine={false} axisLine={false} />
+              <YAxis yAxisId="right" orientation="right" tick={axisStyle} tickLine={false} axisLine={false} />
+              <Tooltip content={<ChartTooltip />} />
+              <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
+              <Area yAxisId="left" type="monotone" dataKey="reach" name="Reach"
+                stroke="#3B82F6" strokeWidth={2} fill="url(#gReach)" dot={false}
+                activeDot={{ r: 4, strokeWidth: 0, fill: "#3B82F6" }} />
+              <Area yAxisId="right" type="monotone" dataKey="engagementRate" name="Engagement Rate %"
+                stroke="#F97316" strokeWidth={2} fill="url(#gEngRate)" dot={false}
+                activeDot={{ r: 4, strokeWidth: 0, fill: "#F97316" }} />
+            </AreaChart>
+          </ResponsiveContainer>
+        </ChartCard>
+      )}
+
+      {/* ── Post Performance Table ── */}
+      <ChartCard title="Post Performance" subtitle="All posts sorted by selected column">
+        <div className="-mx-6 -mb-6 overflow-hidden rounded-b-2xl">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-muted/50 hover:bg-muted/50">
+                <SortHeader label="Platform" field="platform" className="pl-6" />
+                <SortHeader label="Type" field="type" />
+                <TableHead className="text-xs">Caption</TableHead>
+                <SortHeader label="Date" field="publishedAt" className="text-right" />
+                <SortHeader label="Reach" field="reach" className="text-right" />
+                <SortHeader label="Impressions" field="impressions" className="text-right" />
+                <SortHeader label="Engagements" field="totalEngagements" className="text-right" />
+                <SortHeader label="Eng. Rate" field="engagementRate" className="text-right" />
+                <SortHeader label="Clicks" field="clicks" className="text-right" />
+                <TableHead className="text-xs w-10 pr-6"></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {paginatedPosts.map((post: any) => {
+                const totalEng = (post.likes || 0) + (post.comments || 0) + (post.shares || 0) + (post.saves || 0);
+                const isExpanded = expandedPost === post.id;
+                const permalink = post.permalink || post.permalink_url || "";
+                return (
+                  <>
+                    <TableRow
+                      key={post.id}
+                      className="hover:bg-muted/60 cursor-pointer transition-colors"
+                      onClick={() => setExpandedPost(isExpanded ? null : post.id)}
+                    >
+                      <TableCell className="pl-6">
+                        {post.platform === "facebook" ? <Facebook className="h-4 w-4" /> : post.platform === "linkedin" ? <Linkedin className="h-4 w-4 text-[#0A66C2]" /> : <Instagram className="h-4 w-4" />}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-xs capitalize">{post.type}</Badge>
+                      </TableCell>
+                      <TableCell className="max-w-[200px] whitespace-normal break-words text-xs" style={{ lineHeight: 1.4 }}>
+                        {post.caption.length > 60 ? post.caption.slice(0, 60) + "..." : post.caption}
+                      </TableCell>
+                      <TableCell className="text-right text-sm tabular-nums">{new Date(post.publishedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</TableCell>
+                      <TableCell className="text-right text-sm tabular-nums">{(post.reach || 0).toLocaleString()}</TableCell>
+                      <TableCell className="text-right text-sm tabular-nums">{(post.impressions || 0).toLocaleString()}</TableCell>
+                      <TableCell className="text-right text-sm tabular-nums">{totalEng.toLocaleString()}</TableCell>
+                      <TableCell className="text-right text-sm tabular-nums">
+                        <span className={(post.engagementRate || 0) >= 5 ? "text-emerald-600" : (post.engagementRate || 0) < 2 ? "text-red-600" : ""}>
+                          {(post.engagementRate || 0)}%
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right text-sm tabular-nums">{(post.clicks || 0).toLocaleString()}</TableCell>
+                      <TableCell className="text-right pr-6">
+                        {permalink && (
+                          <a href={permalink} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="inline-flex text-muted-foreground hover:text-foreground">
+                            <ExternalLink className="h-4 w-4" />
+                          </a>
+                        )}
                       </TableCell>
                     </TableRow>
-                  )}
-                </>
-              );
-            })}
-          </TableBody>
-          {postTotals && (
-            <TableFooter>
-              <TableRow className="bg-muted/80 font-semibold sticky bottom-0">
-                <TableCell colSpan={4} className="text-sm">Total / Average</TableCell>
-                <TableCell className="text-right tabular-nums text-sm">{postTotals.reach.toLocaleString()}</TableCell>
-                <TableCell className="text-right tabular-nums text-sm">{postTotals.impressions.toLocaleString()}</TableCell>
-                <TableCell className="text-right tabular-nums text-sm">{postTotals.engagements.toLocaleString()}</TableCell>
-                <TableCell className="text-right tabular-nums text-sm">{postTotals.avgEngRate}%</TableCell>
-                <TableCell className="text-right tabular-nums text-sm">{postTotals.clicks.toLocaleString()}</TableCell>
-                <TableCell></TableCell>
-              </TableRow>
-            </TableFooter>
+                    {isExpanded && (
+                      <TableRow key={`${post.id}-detail`} className="bg-muted/30">
+                        <TableCell colSpan={10} className="p-4 pl-6">
+                          <p className="mb-2 text-sm">{post.caption}</p>
+                          <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+                            <span>Likes: {(post.likes || 0).toLocaleString()}</span>
+                            <span>Comments: {(post.comments || 0).toLocaleString()}</span>
+                            <span>Shares: {(post.shares || 0).toLocaleString()}</span>
+                            <span>Saves: {(post.saves || 0).toLocaleString()}</span>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </>
+                );
+              })}
+            </TableBody>
+            {postTotals && (
+              <TableFooter>
+                <TableRow className="bg-muted/80 font-semibold">
+                  <TableCell colSpan={4} className="text-sm pl-6">Total / Average</TableCell>
+                  <TableCell className="text-right tabular-nums text-sm">{postTotals.reach.toLocaleString()}</TableCell>
+                  <TableCell className="text-right tabular-nums text-sm">{postTotals.impressions.toLocaleString()}</TableCell>
+                  <TableCell className="text-right tabular-nums text-sm">{postTotals.engagements.toLocaleString()}</TableCell>
+                  <TableCell className="text-right tabular-nums text-sm">{postTotals.avgEngRate}%</TableCell>
+                  <TableCell className="text-right tabular-nums text-sm">{postTotals.clicks.toLocaleString()}</TableCell>
+                  <TableCell className="pr-6"></TableCell>
+                </TableRow>
+              </TableFooter>
+            )}
+          </Table>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between border-t border-border px-6 py-3">
+              <button onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={currentPage === 1} className="rounded px-3 py-1 text-xs font-medium text-muted-foreground hover:bg-muted disabled:opacity-40">Previous</button>
+              <span className="text-xs text-muted-foreground">Page {currentPage} of {totalPages}</span>
+              <button onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="rounded px-3 py-1 text-xs font-medium text-muted-foreground hover:bg-muted disabled:opacity-40">Next</button>
+            </div>
           )}
-        </Table>
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between border-t border-border px-6 py-3">
-            <button onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={currentPage === 1} className="rounded px-3 py-1 text-xs font-medium text-muted-foreground hover:bg-muted disabled:opacity-40">Previous</button>
-            <span className="text-xs text-muted-foreground">Page {currentPage} of {totalPages}</span>
-            <button onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="rounded px-3 py-1 text-xs font-medium text-muted-foreground hover:bg-muted disabled:opacity-40">Next</button>
-          </div>
-        )}
-      </div>
-
-      {/* Daily Trends */}
-      {dailyTrends && dailyTrends.length > 0 && (
-        <div className="rounded-lg border border-border bg-card p-6 shadow-card">
-          <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Daily Trends</h3>
-          <ResponsiveContainer width="100%" height={260}>
-            <LineChart data={dailyTrends}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-              <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={(v) => v.slice(5)} />
-              <YAxis yAxisId="left" tick={{ fontSize: 11 }} />
-              <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} />
-              <Tooltip contentStyle={{ fontSize: 12 }} />
-              <Legend wrapperStyle={{ fontSize: 12 }} />
-              <Line yAxisId="left" type="linear" dataKey="reach" name="Daily Reach" stroke="hsl(var(--brand-blue))" strokeWidth={2} dot={false} />
-              <Line yAxisId="right" type="linear" dataKey="engagementRate" name="Engagement Rate %" stroke="hsl(var(--brand-orange))" strokeWidth={2} dot={false} />
-            </LineChart>
-          </ResponsiveContainer>
         </div>
-      )}
+      </ChartCard>
 
       <AIRecommendations
         tabName="social_media"

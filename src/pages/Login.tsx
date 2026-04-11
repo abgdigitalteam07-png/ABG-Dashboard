@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { callFunction } from "@/lib/api-client";
 import { isAllowedDomain } from "@/lib/allowed-domains";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,20 +43,18 @@ export default function Login() {
     setSending(true);
 
     try {
-      const res = await supabase.functions.invoke("shared-login", {
-        body: { email: trimmed },
-      });
+      const res = await callFunction("shared-login", { email: trimmed });
 
-      if (res.error || !res.data?.session) {
-        const msg = res.data?.error || res.error?.message || "Login failed. Please try again.";
+      if (!res?.session) {
+        const msg = res?.error || "Login failed. Please try again.";
         setSending(false);
         setError(msg);
         return;
       }
 
       const { error: setSessionError } = await supabase.auth.setSession({
-        access_token: res.data.session.access_token,
-        refresh_token: res.data.session.refresh_token,
+        access_token: res.session.access_token,
+        refresh_token: res.session.refresh_token,
       });
 
       if (setSessionError) {
