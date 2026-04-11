@@ -517,13 +517,13 @@ Deno.serve(async (req) => {
         /* ignore */
       }
 
+      // Lifecycle breakdown = current stage of ALL contacts for this brand (no date filter).
+      // Date-filtering would exclude older contacts and show 0 for most brands.
       await Promise.all(
         lifecycleStages.map(async (ls) => {
           try {
             const filters: any[] = [
-              { propertyName: "lifecyclestage", operator: "EQ", value: ls.stage }, // exact HubSpot internal name
-              { propertyName: "createdate", operator: "GTE", value: String(startMs) },
-              { propertyName: "createdate", operator: "LTE", value: String(endMs) },
+              { propertyName: "lifecyclestage", operator: "EQ", value: ls.stage },
             ];
             if (brandBuId && brandBuId !== "0") {
               filters.push({
