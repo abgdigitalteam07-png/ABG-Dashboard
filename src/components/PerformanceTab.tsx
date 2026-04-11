@@ -1,14 +1,17 @@
 import { useState, useEffect, useMemo } from "react";
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, Legend, LineChart, Line,
 } from "recharts";
-import { ScoreCard } from "./ScoreCard";
 import { fetchGA4Data, fetchGSCData } from "@/lib/api-client";
 import { Brand } from "@/lib/brands";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter,
 } from "@/components/ui/table";
-import { Loader2 } from "lucide-react";
+import {
+  TrendingUp, TrendingDown, Users, Eye, MousePointer, Search,
+  Activity, Globe, BarChart2, Percent,
+} from "lucide-react";
 import { TrafficAcquisitionTable } from "./TrafficAcquisitionTable";
 import { AIRecommendations } from "./AIRecommendations";
 import { format } from "date-fns";
@@ -19,10 +22,107 @@ interface PerformanceTabProps {
   dateTo: Date;
 }
 
-function formatNumber(n: number): string {
-  if (n >= 1000000) return (n / 1000000).toFixed(1) + "M";
-  if (n >= 1000) return (n / 1000).toFixed(1) + "K";
+function fmt(n: number): string {
+  if (!n) return "0";
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + "K";
   return n.toLocaleString();
+}
+
+/* ── Skeleton pulse ── */
+function Skeleton({ className }: { className?: string }) {
+  return <div className={`animate-pulse rounded-md bg-muted ${className}`} />;
+}
+
+/* ── Stat card ── */
+interface StatCardProps {
+  title: string;
+  value: string;
+  delta?: number;
+  icon: React.ElementType;
+  iconColor: string;
+  iconBg: string;
+  loading?: boolean;
+}
+
+function StatCard({ title, value, delta, icon: Icon, iconColor, iconBg, loading }: StatCardProps) {
+  if (loading) {
+    return (
+      <div className="rounded-2xl border border-border bg-card p-5">
+        <div className="flex items-center justify-between">
+          <Skeleton className="h-8 w-8 rounded-lg" />
+          <Skeleton className="h-5 w-16 rounded-full" />
+        </div>
+        <Skeleton className="mt-4 h-7 w-24" />
+        <Skeleton className="mt-1.5 h-3.5 w-16" />
+      </div>
+    );
+  }
+
+  const positive = delta === undefined || delta >= 0;
+
+  return (
+    <div className="group rounded-2xl border border-border bg-card p-5 transition-all hover:border-primary/20 hover:shadow-md">
+      <div className="flex items-start justify-between">
+        <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${iconBg}`}>
+          <Icon className={`h-5 w-5 ${iconColor}`} />
+        </div>
+        {delta !== undefined && (
+          <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${
+            positive ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-600"
+          }`}>
+            {positive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+            {positive ? "+" : ""}{delta.toFixed(1)}%
+          </span>
+        )}
+      </div>
+      <p className="mt-4 text-2xl font-bold tabular-nums tracking-tight text-foreground">{value}</p>
+      <p className="mt-0.5 text-xs font-medium text-muted-foreground">{title}</p>
+    </div>
+  );
+}
+
+/* ── Chart card wrapper ── */
+function ChartCard({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-2xl border border-border bg-card p-6">
+      <div className="mb-5">
+        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+        {subtitle && <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/* ── Section header ── */
+function SectionHeader({ icon: Icon, label, color }: { icon: React.ElementType; label: string; color: string }) {
+  return (
+    <div className="flex items-center gap-3">
+      <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${color}`}>
+        <Icon className="h-4 w-4 text-white" />
+      </div>
+      <h2 className="text-base font-bold text-foreground">{label}</h2>
+      <div className="flex-1 border-t border-border" />
+    </div>
+  );
+}
+
+/* ── Custom tooltip ── */
+function ChartTooltip({ active, payload, label }: any) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="rounded-xl border border-border bg-card px-3 py-2 shadow-lg text-xs">
+      <p className="mb-1 font-semibold text-muted-foreground">{label}</p>
+      {payload.map((p: any) => (
+        <div key={p.dataKey} className="flex items-center gap-2">
+          <span className="h-2 w-2 rounded-full" style={{ background: p.color }} />
+          <span className="text-foreground font-medium">{fmt(p.value)}</span>
+          <span className="text-muted-foreground">{p.name}</span>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export function PerformanceTab({ brand, dateFrom, dateTo }: PerformanceTabProps) {
@@ -33,6 +133,8 @@ export function PerformanceTab({ brand, dateFrom, dateTo }: PerformanceTabProps)
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setGa4(null);
+    setGsc(null);
 
     Promise.all([
       brand.hasGA4 ? fetchGA4Data(brand, dateFrom, dateTo) : Promise.resolve(null),
@@ -54,202 +156,236 @@ export function PerformanceTab({ brand, dateFrom, dateTo }: PerformanceTabProps)
     return {
       sessions: pages.reduce((s: number, r: any) => s + (r.sessions || 0), 0),
       views: pages.reduce((s: number, r: any) => s + (r.views || 0), 0),
-      avgDuration: pages[0]?.avgDuration
-        ? (() => {
-            const durations = pages.map((r: any) => {
-              const parts = (r.avgDuration || "0s").match(/(\d+)m\s*(\d+)s|(\d+)s/);
-              if (!parts) return 0;
-              if (parts[3]) return parseInt(parts[3]);
-              return parseInt(parts[1] || "0") * 60 + parseInt(parts[2] || "0");
-            });
-            const avg = durations.reduce((a: number, b: number) => a + b, 0) / durations.length;
-            const m = Math.floor(avg / 60);
-            const s = Math.round(avg % 60);
-            return m > 0 ? `${m}m ${s.toString().padStart(2, "0")}s` : `${s}s`;
-          })()
-        : "0s",
     };
   }, [ga4]);
 
   const topQueriesTotals = useMemo(() => {
     if (!gsc?.topQueries?.length) return null;
-    const queries = gsc.topQueries;
-    const len = queries.length;
+    const q = gsc.topQueries;
     return {
-      clicks: queries.reduce((s: number, r: any) => s + (r.clicks || 0), 0),
-      impressions: queries.reduce((s: number, r: any) => s + (r.impressions || 0), 0),
-      ctr: (queries.reduce((s: number, r: any) => s + (parseFloat(r.ctr) || 0), 0) / len).toFixed(1),
-      position: (queries.reduce((s: number, r: any) => s + (r.position || 0), 0) / len).toFixed(1),
+      clicks: q.reduce((s: number, r: any) => s + (r.clicks || 0), 0),
+      impressions: q.reduce((s: number, r: any) => s + (r.impressions || 0), 0),
+      ctr: (q.reduce((s: number, r: any) => s + (parseFloat(r.ctr) || 0), 0) / q.length).toFixed(1),
+      position: (q.reduce((s: number, r: any) => s + (r.position || 0), 0) / q.length).toFixed(1),
     };
   }, [gsc]);
 
   if (!brand.hasGA4 && !brand.hasGSC) {
-    const isParent = brand.name === "American Bath Group";
     return (
       <div className="flex flex-col items-center justify-center py-24 text-center">
-        <p className="text-sm font-medium text-muted-foreground">
-          {isParent
-            ? "American Bath Group is the parent company. Please select an individual brand to view analytics data."
-            : `No GA4/GSC property linked for ${brand.name}.`}
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted">
+          <BarChart2 className="h-7 w-7 text-muted-foreground" />
+        </div>
+        <p className="mt-4 text-sm font-medium text-foreground">
+          {brand.name === "American Bath Group"
+            ? "Select an individual brand to view analytics."
+            : `No GA4 or GSC property linked for ${brand.name}.`}
         </p>
-        {!isParent && <p className="mt-1 text-xs text-muted-foreground">This brand is HubSpot-only.</p>}
+        <p className="mt-1 text-xs text-muted-foreground">This brand is HubSpot-only.</p>
       </div>
     );
   }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-24">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
+  const axisStyle = { fontSize: 11, fill: "hsl(var(--muted-foreground))" };
+  const gridColor = "hsl(var(--border))";
 
   return (
-    <div className="space-y-6 p-6">
-      {brand.hasGA4 && ga4 && (
-        <>
-          <div>
-            <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Google Analytics</h2>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <ScoreCard title="Sessions" value={formatNumber(ga4.sessions)} delta={ga4.sessionsDelta} />
-              <ScoreCard title="Organic Sessions" value={formatNumber(ga4.organicSessions)} delta={ga4.organicSessionsDelta} />
-              <ScoreCard title="Page Views" value={formatNumber(ga4.pageViews)} delta={ga4.pageViewsDelta} />
-              <ScoreCard title="1-Day Active Users" value={formatNumber(ga4.activeUsers1Day)} delta={ga4.activeUsers1DayDelta} />
-            </div>
+    <div className="space-y-8 p-6">
+
+      {/* ── Google Analytics ── */}
+      {brand.hasGA4 && (
+        <section className="space-y-5">
+          <SectionHeader icon={Activity} label="Google Analytics" color="bg-blue-600" />
+
+          {/* KPI grid */}
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <StatCard loading={loading} title="Sessions" value={fmt(ga4?.sessions)} delta={ga4?.sessionsDelta}
+              icon={Users} iconBg="bg-blue-50" iconColor="text-blue-600" />
+            <StatCard loading={loading} title="Organic Sessions" value={fmt(ga4?.organicSessions)} delta={ga4?.organicSessionsDelta}
+              icon={TrendingUp} iconBg="bg-indigo-50" iconColor="text-indigo-600" />
+            <StatCard loading={loading} title="Page Views" value={fmt(ga4?.pageViews)} delta={ga4?.pageViewsDelta}
+              icon={Eye} iconBg="bg-violet-50" iconColor="text-violet-600" />
+            <StatCard loading={loading} title="1-Day Active Users" value={fmt(ga4?.activeUsers1Day)} delta={ga4?.activeUsers1DayDelta}
+              icon={Activity} iconBg="bg-sky-50" iconColor="text-sky-600" />
           </div>
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <div className="rounded-lg border border-border bg-card p-6 shadow-card">
-              <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Sessions Over Time</h3>
-              <ResponsiveContainer width="100%" height={260}>
-                <LineChart data={ga4.sessionsOverTime}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                  <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={(v) => v.slice(5)} />
-                  <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip contentStyle={{ fontSize: 12 }} />
-                  <Line type="linear" dataKey="value" name="Sessions" stroke="hsl(var(--brand-blue))" strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
-                </LineChart>
-              </ResponsiveContainer>
+
+          {/* Charts */}
+          {!loading && ga4 && (
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+              <ChartCard title="Sessions Over Time" subtitle="Daily visit volume">
+                <ResponsiveContainer width="100%" height={240}>
+                  <AreaChart data={ga4.sessionsOverTime} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="gSessions" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.18} />
+                        <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid vertical={false} stroke={gridColor} strokeDasharray="3 3" />
+                    <XAxis dataKey="date" tick={axisStyle} tickFormatter={(v) => v.slice(5)} tickLine={false} axisLine={false} />
+                    <YAxis tick={axisStyle} tickLine={false} axisLine={false} />
+                    <Tooltip content={<ChartTooltip />} />
+                    <Area type="monotone" dataKey="value" name="Sessions" stroke="#3B82F6" strokeWidth={2}
+                      fill="url(#gSessions)" dot={false} activeDot={{ r: 4, strokeWidth: 0, fill: "#3B82F6" }} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </ChartCard>
+
+              <ChartCard title="Active Users & Page Views" subtitle="Engagement depth over time">
+                <ResponsiveContainer width="100%" height={240}>
+                  <AreaChart data={ga4.activeUsersOverTime} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="gUsers" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#F97316" stopOpacity={0.18} />
+                        <stop offset="95%" stopColor="#F97316" stopOpacity={0} />
+                      </linearGradient>
+                      <linearGradient id="gViews" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#94A3B8" stopOpacity={0.15} />
+                        <stop offset="95%" stopColor="#94A3B8" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid vertical={false} stroke={gridColor} strokeDasharray="3 3" />
+                    <XAxis dataKey="date" tick={axisStyle} tickFormatter={(v) => v.slice(5)} tickLine={false} axisLine={false} />
+                    <YAxis tick={axisStyle} tickLine={false} axisLine={false} />
+                    <Tooltip content={<ChartTooltip />} />
+                    <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
+                    <Area type="monotone" dataKey="activeUsers" name="Active Users" stroke="#F97316" strokeWidth={2}
+                      fill="url(#gUsers)" dot={false} activeDot={{ r: 4, strokeWidth: 0, fill: "#F97316" }} />
+                    <Area type="monotone" dataKey="views" name="Views" stroke="#94A3B8" strokeWidth={2}
+                      fill="url(#gViews)" dot={false} activeDot={{ r: 4, strokeWidth: 0, fill: "#94A3B8" }} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </ChartCard>
             </div>
-            <div className="rounded-lg border border-border bg-card p-6 shadow-card">
-              <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Active Users & Views Over Time</h3>
-              <ResponsiveContainer width="100%" height={260}>
-                <LineChart data={ga4.activeUsersOverTime}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                  <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={(v) => v.slice(5)} />
-                  <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip contentStyle={{ fontSize: 12 }} />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Line type="linear" dataKey="activeUsers" name="Active Users" stroke="hsl(var(--brand-orange))" strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
-                  <Line type="linear" dataKey="views" name="Views" stroke="hsl(var(--chart-views))" strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-          <div className="rounded-lg border border-border bg-card shadow-card overflow-hidden">
-            <div className="p-6 pb-3">
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Top Pages</h3>
-            </div>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="text-xs">Page</TableHead>
-                  <TableHead className="text-right text-xs">Sessions</TableHead>
-                  <TableHead className="text-right text-xs">Views</TableHead>
-                  <TableHead className="text-right text-xs">Avg Duration</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {ga4.topPages.map((row: any) => (
-                  <TableRow key={row.page} className="hover:bg-muted/60">
-                    <TableCell className="font-mono text-xs">{row.page}</TableCell>
-                    <TableCell className="text-right tabular-nums text-sm">{row.sessions.toLocaleString()}</TableCell>
-                    <TableCell className="text-right tabular-nums text-sm">{row.views.toLocaleString()}</TableCell>
-                    <TableCell className="text-right tabular-nums text-sm">{row.avgDuration}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-              {topPagesTotals && (
-                <TableFooter>
-                  <TableRow className="bg-muted/80 font-semibold sticky bottom-0">
-                    <TableCell className="text-sm">Total</TableCell>
-                    <TableCell className="text-right tabular-nums text-sm">{topPagesTotals.sessions.toLocaleString()}</TableCell>
-                    <TableCell className="text-right tabular-nums text-sm">{topPagesTotals.views.toLocaleString()}</TableCell>
-                    <TableCell className="text-right tabular-nums text-sm">{topPagesTotals.avgDuration}</TableCell>
-                  </TableRow>
-                </TableFooter>
-              )}
-            </Table>
-          </div>
-          <TrafficAcquisitionTable brand={brand} dateFrom={dateFrom} dateTo={dateTo} />
-        </>
+          )}
+
+          {/* Top Pages */}
+          {!loading && ga4?.topPages?.length > 0 && (
+            <ChartCard title="Top Pages" subtitle="Pages ranked by traffic">
+              <div className="-mx-6 -mb-6 overflow-hidden rounded-b-2xl">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/50 hover:bg-muted/50">
+                      <TableHead className="text-xs font-semibold pl-6">Page</TableHead>
+                      <TableHead className="text-right text-xs font-semibold">Sessions</TableHead>
+                      <TableHead className="text-right text-xs font-semibold">Views</TableHead>
+                      <TableHead className="text-right text-xs font-semibold pr-6">Avg Duration</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {ga4.topPages.map((row: any, i: number) => (
+                      <TableRow key={row.page} className="hover:bg-muted/40 transition-colors">
+                        <TableCell className="pl-6">
+                          <div className="flex items-center gap-2.5">
+                            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-muted text-[10px] font-bold text-muted-foreground">{i + 1}</span>
+                            <span className="font-mono text-xs text-foreground truncate max-w-[280px]">{row.page}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums text-sm font-medium">{row.sessions.toLocaleString()}</TableCell>
+                        <TableCell className="text-right tabular-nums text-sm">{row.views.toLocaleString()}</TableCell>
+                        <TableCell className="text-right tabular-nums text-sm pr-6 text-muted-foreground">{row.avgDuration}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                  {topPagesTotals && (
+                    <TableFooter>
+                      <TableRow>
+                        <TableCell className="pl-6 text-sm font-semibold">Total</TableCell>
+                        <TableCell className="text-right tabular-nums text-sm font-semibold">{topPagesTotals.sessions.toLocaleString()}</TableCell>
+                        <TableCell className="text-right tabular-nums text-sm font-semibold">{topPagesTotals.views.toLocaleString()}</TableCell>
+                        <TableCell className="pr-6" />
+                      </TableRow>
+                    </TableFooter>
+                  )}
+                </Table>
+              </div>
+            </ChartCard>
+          )}
+
+          {!loading && <TrafficAcquisitionTable brand={brand} dateFrom={dateFrom} dateTo={dateTo} />}
+        </section>
       )}
 
-      {brand.hasGSC && gsc && (
-        <>
-          <div className="mt-8">
-            <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Search Console</h2>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <ScoreCard title="Total Clicks" value={formatNumber(gsc.totalClicks)} delta={gsc.totalClicksDelta} />
-              <ScoreCard title="Total Impressions" value={formatNumber(gsc.totalImpressions)} delta={gsc.totalImpressionsDelta} />
-              <ScoreCard title="Average CTR" value={`${gsc.averageCTR}%`} delta={gsc.averageCTRDelta} />
-              <ScoreCard title="Average Position" value={gsc.averagePosition.toFixed(1)} delta={gsc.averagePositionDelta} />
-            </div>
+      {/* ── Search Console ── */}
+      {brand.hasGSC && (
+        <section className="space-y-5">
+          <SectionHeader icon={Search} label="Google Search Console" color="bg-violet-600" />
+
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <StatCard loading={loading} title="Total Clicks" value={fmt(gsc?.totalClicks)} delta={gsc?.totalClicksDelta}
+              icon={MousePointer} iconBg="bg-violet-50" iconColor="text-violet-600" />
+            <StatCard loading={loading} title="Impressions" value={fmt(gsc?.totalImpressions)} delta={gsc?.totalImpressionsDelta}
+              icon={Globe} iconBg="bg-purple-50" iconColor="text-purple-600" />
+            <StatCard loading={loading} title="Avg CTR" value={gsc ? `${gsc.averageCTR}%` : "—"} delta={gsc?.averageCTRDelta}
+              icon={Percent} iconBg="bg-fuchsia-50" iconColor="text-fuchsia-600" />
+            <StatCard loading={loading} title="Avg Position" value={gsc ? gsc.averagePosition.toFixed(1) : "—"} delta={gsc?.averagePositionDelta}
+              icon={BarChart2} iconBg="bg-pink-50" iconColor="text-pink-600" />
           </div>
-          <div className="rounded-lg border border-border bg-card p-6 shadow-card">
-            <h3 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Clicks & Impressions Over Time</h3>
-            <ResponsiveContainer width="100%" height={260}>
-              <LineChart data={gsc.clicksImpressionsOverTime}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={(v) => v.slice(5)} />
-                <YAxis yAxisId="left" tick={{ fontSize: 11 }} />
-                <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} />
-                <Tooltip contentStyle={{ fontSize: 12 }} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Line yAxisId="left" type="linear" dataKey="clicks" name="Clicks" stroke="hsl(var(--brand-blue))" strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
-                <Line yAxisId="right" type="linear" dataKey="impressions" name="Impressions" stroke="hsl(var(--brand-orange))" strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="rounded-lg border border-border bg-card shadow-card overflow-hidden">
-            <div className="p-6 pb-3">
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Top Queries</h3>
-            </div>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="text-xs">Query</TableHead>
-                  <TableHead className="text-right text-xs">Clicks</TableHead>
-                  <TableHead className="text-right text-xs">Impressions</TableHead>
-                  <TableHead className="text-right text-xs">CTR</TableHead>
-                  <TableHead className="text-right text-xs">Position</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {gsc.topQueries.map((row: any) => (
-                  <TableRow key={row.query} className="hover:bg-muted/60">
-                    <TableCell className="text-sm">{row.query}</TableCell>
-                    <TableCell className="text-right tabular-nums text-sm">{row.clicks.toLocaleString()}</TableCell>
-                    <TableCell className="text-right tabular-nums text-sm">{row.impressions.toLocaleString()}</TableCell>
-                    <TableCell className="text-right tabular-nums text-sm">{row.ctr}%</TableCell>
-                    <TableCell className="text-right tabular-nums text-sm">{row.position.toFixed(1)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-              {topQueriesTotals && (
-                <TableFooter>
-                  <TableRow className="bg-muted/80 font-semibold sticky bottom-0">
-                    <TableCell className="text-sm">Total / Average</TableCell>
-                    <TableCell className="text-right tabular-nums text-sm">{topQueriesTotals.clicks.toLocaleString()}</TableCell>
-                    <TableCell className="text-right tabular-nums text-sm">{topQueriesTotals.impressions.toLocaleString()}</TableCell>
-                    <TableCell className="text-right tabular-nums text-sm">{topQueriesTotals.ctr}%</TableCell>
-                    <TableCell className="text-right tabular-nums text-sm">{topQueriesTotals.position}</TableCell>
-                  </TableRow>
-                </TableFooter>
-              )}
-            </Table>
-          </div>
-        </>
+
+          {!loading && gsc && (
+            <ChartCard title="Clicks & Impressions Over Time" subtitle="Search visibility trend">
+              <ResponsiveContainer width="100%" height={240}>
+                <LineChart data={gsc.clicksImpressionsOverTime} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                  <CartesianGrid vertical={false} stroke={gridColor} strokeDasharray="3 3" />
+                  <XAxis dataKey="date" tick={axisStyle} tickFormatter={(v) => v.slice(5)} tickLine={false} axisLine={false} />
+                  <YAxis yAxisId="left" tick={axisStyle} tickLine={false} axisLine={false} />
+                  <YAxis yAxisId="right" orientation="right" tick={axisStyle} tickLine={false} axisLine={false} />
+                  <Tooltip content={<ChartTooltip />} />
+                  <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
+                  <Line yAxisId="left" type="monotone" dataKey="clicks" name="Clicks"
+                    stroke="#7C3AED" strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
+                  <Line yAxisId="right" type="monotone" dataKey="impressions" name="Impressions"
+                    stroke="#EC4899" strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </ChartCard>
+          )}
+
+          {!loading && gsc?.topQueries?.length > 0 && (
+            <ChartCard title="Top Queries" subtitle="Search terms driving traffic">
+              <div className="-mx-6 -mb-6 overflow-hidden rounded-b-2xl">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/50 hover:bg-muted/50">
+                      <TableHead className="pl-6 text-xs font-semibold">Query</TableHead>
+                      <TableHead className="text-right text-xs font-semibold">Clicks</TableHead>
+                      <TableHead className="text-right text-xs font-semibold">Impressions</TableHead>
+                      <TableHead className="text-right text-xs font-semibold">CTR</TableHead>
+                      <TableHead className="text-right text-xs font-semibold pr-6">Position</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {gsc.topQueries.map((row: any, i: number) => (
+                      <TableRow key={row.query} className="hover:bg-muted/40 transition-colors">
+                        <TableCell className="pl-6">
+                          <div className="flex items-center gap-2.5">
+                            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-muted text-[10px] font-bold text-muted-foreground">{i + 1}</span>
+                            <span className="text-sm text-foreground">{row.query}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums text-sm font-medium">{row.clicks.toLocaleString()}</TableCell>
+                        <TableCell className="text-right tabular-nums text-sm">{row.impressions.toLocaleString()}</TableCell>
+                        <TableCell className="text-right tabular-nums text-sm">{row.ctr}%</TableCell>
+                        <TableCell className="text-right tabular-nums text-sm pr-6 text-muted-foreground">{row.position.toFixed(1)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                  {topQueriesTotals && (
+                    <TableFooter>
+                      <TableRow>
+                        <TableCell className="pl-6 text-sm font-semibold">Total / Avg</TableCell>
+                        <TableCell className="text-right tabular-nums text-sm font-semibold">{topQueriesTotals.clicks.toLocaleString()}</TableCell>
+                        <TableCell className="text-right tabular-nums text-sm font-semibold">{topQueriesTotals.impressions.toLocaleString()}</TableCell>
+                        <TableCell className="text-right tabular-nums text-sm font-semibold">{topQueriesTotals.ctr}%</TableCell>
+                        <TableCell className="text-right tabular-nums text-sm pr-6">{topQueriesTotals.position}</TableCell>
+                      </TableRow>
+                    </TableFooter>
+                  )}
+                </Table>
+              </div>
+            </ChartCard>
+          )}
+        </section>
       )}
 
       <AIRecommendations
