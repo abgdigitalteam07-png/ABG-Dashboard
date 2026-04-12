@@ -289,8 +289,18 @@ export function ContactCharts({ brand, dateFrom, dateTo, externalStateDistributi
       </ChartCard>
 
       {/* ── State Map ── */}
-      {!loading && !error && (externalStateDistribution ?? stateDistribution).length > 0 && (
-        <USStateMap stateDistribution={externalStateDistribution ?? stateDistribution} />
+      {!loading && !error && (
+        <USStateMap
+          stateDistribution={
+            externalStateDistribution && externalStateDistribution.length > 0
+              ? externalStateDistribution
+              : stateDistribution.length > 0
+                ? stateDistribution
+                : totalContacts > 0
+                  ? [{ state: "UNKNOWN", count: totalContacts }]
+                  : []
+          }
+        />
       )}
 
       {/* ── Job Title Distribution ── */}
