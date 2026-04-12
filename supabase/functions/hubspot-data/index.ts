@@ -441,6 +441,35 @@ Deno.serve(async (req) => {
     let totalContacts = 0;
     const stateCounts: Record<string, number> = {};
     let unknownStateCount = 0;
+
+    // Map full US state names (as returned by HubSpot ip_state) to 2-letter codes
+    const STATE_NAME_TO_CODE: Record<string, string> = {
+      "alabama":"AL","alaska":"AK","arizona":"AZ","arkansas":"AR","california":"CA",
+      "colorado":"CO","connecticut":"CT","delaware":"DE","florida":"FL","georgia":"GA",
+      "hawaii":"HI","idaho":"ID","illinois":"IL","indiana":"IN","iowa":"IA",
+      "kansas":"KS","kentucky":"KY","louisiana":"LA","maine":"ME","maryland":"MD",
+      "massachusetts":"MA","michigan":"MI","minnesota":"MN","mississippi":"MS","missouri":"MO",
+      "montana":"MT","nebraska":"NE","nevada":"NV","new hampshire":"NH","new jersey":"NJ",
+      "new mexico":"NM","new york":"NY","north carolina":"NC","north dakota":"ND","ohio":"OH",
+      "oklahoma":"OK","oregon":"OR","pennsylvania":"PA","rhode island":"RI","south carolina":"SC",
+      "south dakota":"SD","tennessee":"TN","texas":"TX","utah":"UT","vermont":"VT",
+      "virginia":"VA","washington":"WA","west virginia":"WV","wisconsin":"WI","wyoming":"WY",
+      "district of columbia":"DC","d.c.":"DC","dc":"DC",
+      // also handle 2-letter codes already returned by ip_state_code
+      "al":"AL","ak":"AK","az":"AZ","ar":"AR","ca":"CA","co":"CO","ct":"CT","de":"DE",
+      "fl":"FL","ga":"GA","hi":"HI","id":"ID","il":"IL","in":"IN","ia":"IA","ks":"KS",
+      "ky":"KY","la":"LA","me":"ME","md":"MD","ma":"MA","mi":"MI","mn":"MN","ms":"MS",
+      "mo":"MO","mt":"MT","ne":"NE","nv":"NV","nh":"NH","nj":"NJ","nm":"NM","ny":"NY",
+      "nc":"NC","nd":"ND","oh":"OH","ok":"OK","or":"OR","pa":"PA","ri":"RI","sc":"SC",
+      "sd":"SD","tn":"TN","tx":"TX","ut":"UT","vt":"VT","va":"VA","wa":"WA","wv":"WV",
+      "wi":"WI","wy":"WY",
+    };
+
+    function resolveStateCode(raw: string): string | null {
+      const v = raw.trim().toLowerCase();
+      return STATE_NAME_TO_CODE[v] || null;
+    }
+
     // Use HubSpot's exact internal lifecycle stage values so the frontend key mapping works.
     // Frontend ALL_LIFECYCLE_ORDER uses: subscriber, lead, marketingqualifiedlead, salesqualifiedlead, opportunity, customer
     const lifecycleStages = [
@@ -467,7 +496,7 @@ Deno.serve(async (req) => {
                 { propertyName: "createdate", operator: "LTE", value: String(endMs) },
               ],
             }],
-            properties: ["createdate", "brands", "lifecyclestage", "ip_state_code"],
+            properties: ["createdate", "brands", "lifecyclestage", "ip_state", "ip_state_code"],
             limit: 100,
           };
           if (after) searchBody.after = after;
@@ -493,12 +522,10 @@ Deno.serve(async (req) => {
           const stage = (c.properties?.lifecyclestage || "").toLowerCase().trim();
           const match = lifecycleStages.find(ls => ls.stage === stage);
           if (match) match.count++;
-          const sc = (c.properties?.ip_state_code || "").trim().toUpperCase();
-          if (sc && sc.length === 2) {
-            stateCounts[sc] = (stateCounts[sc] || 0) + 1;
-          } else {
-            unknownStateCount++;
-          }
+          const raw = c.properties?.ip_state || c.properties?.ip_state_code || "";
+          const code = resolveStateCode(raw);
+          if (code) { stateCounts[code] = (stateCounts[code] || 0) + 1; }
+          else { unknownStateCount++; }
         }
         console.log(`Secondary account: ${totalContacts} contacts for "${brandName}" in date range`);
       } catch (e) {
@@ -524,7 +551,7 @@ Deno.serve(async (req) => {
         while (true) {
           const searchBody: any = {
             filterGroups: buFilters.length > 0 ? [{ filters: buFilters }] : [],
-            properties: ["lifecyclestage", "ip_state_code"],
+            properties: ["lifecyclestage", "ip_state", "ip_state_code"],
             limit: 100,
           };
           if (after) searchBody.after = after;
@@ -546,13 +573,10 @@ Deno.serve(async (req) => {
           const stage = (c.properties?.lifecyclestage || "").toLowerCase().trim();
           const match = lifecycleStages.find(ls => ls.stage === stage);
           if (match) match.count++;
-          // Count by state
-          const sc = (c.properties?.ip_state_code || "").trim().toUpperCase();
-          if (sc && sc.length === 2) {
-            stateCounts[sc] = (stateCounts[sc] || 0) + 1;
-          } else {
-            unknownStateCount++;
-          }
+          const raw = c.properties?.ip_state || c.properties?.ip_state_code || "";
+          const code = resolveStateCode(raw);
+          if (code) { stateCounts[code] = (stateCounts[code] || 0) + 1; }
+          else { unknownStateCount++; }
         }
 
         console.log(`Primary account: ${totalContacts} total contacts for "${brandName}"`);
