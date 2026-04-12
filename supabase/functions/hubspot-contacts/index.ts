@@ -64,19 +64,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const body = await req.json();
-
-    // Temporary bootstrap: set admin role
-    if (body.__bootstrap === "ABG_SET_ADMIN_2026") {
-      const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
-      const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-      const { error } = await admin.from("user_profiles").update({ role: "admin" }).eq("email", body.email);
-      return new Response(JSON.stringify(error ? { error: error.message } : { success: true }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const { brandName, startDate, endDate }: ContactsRequest = body;
+    const { brandName, startDate, endDate }: ContactsRequest = await req.json();
     if (!brandName || !startDate || !endDate) {
       return new Response(JSON.stringify({ error: "Missing required params" }), {
         status: 400,
