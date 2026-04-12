@@ -532,32 +532,75 @@ Deno.serve(async (req) => {
         console.error("Secondary account contacts fetch error:", e);
       }
     } else {
-      // Primary account: fetch ALL contacts for the brand, count lifecycle stages in code.
-      // This matches HubSpot's own dashboard — querying per-stage separately can miss contacts
-      // whose hs_all_assigned_business_unit_ids isn't cleanly set for every stage value.
+      // Primary account — two independent fetches:
+      // 1. Per-stage counts via search totals (fast, 6 calls, matches HubSpot dashboard exactly)
+      // 2. Paginated fetch for state distribution (up to 5 000 contacts to stay within timeout)
+
+      const buFilters: any[] = [];
+      if (brandBuId && brandBuId !== "0") {
+        buFilters.push({
+          propertyName: "hs_all_assigned_business_unit_ids",
+          operator: "CONTAINS_TOKEN",
+          value: brandBuId,
+        });
+      }
+
+      // ── 1. Lifecycle stage counts via search totals ──
       try {
-        const buFilters: any[] = [];
-        if (brandBuId && brandBuId !== "0") {
-          buFilters.push({
-            propertyName: "hs_all_assigned_business_unit_ids",
-            operator: "CONTAINS_TOKEN",
-            value: brandBuId,
-          });
-        }
+        // Get total contacts first (no stage filter)
+        const totalRes = await hubspotPost("/crm/v3/objects/contacts/search", token, {
+          filterGroups: buFilters.length > 0 ? [{ filters: buFilters }] : [],
+          properties: [],
+          limit: 1,
+        });
+        totalContacts = totalRes.total ?? 0;
+        console.log(`Primary account: ${totalContacts} total contacts for "${brandName}"`);
 
+        // Count each stage individually using search total — matches HubSpot's own dashboard
+        await Promise.all(lifecycleStages.map(async (ls) => {
+          try {
+            const stageFilters = [
+              ...buFilters,
+              { propertyName: "lifecyclestage", operator: "EQ", value: ls.stage },
+            ];
+            const res = await hubspotPost("/crm/v3/objects/contacts/search", token, {
+              filterGroups: [{ filters: stageFilters }],
+              properties: [],
+              limit: 1,
+            });
+            ls.count = res.total ?? 0;
+            console.log(`  ${ls.stage}: ${ls.count}`);
+          } catch (e) {
+            console.error(`  stage count error for ${ls.stage}:`, e);
+          }
+        }));
+      } catch (e) {
+        console.error("Primary account lifecycle count error:", e);
+      }
+
+      // ── 2. State distribution — paginate up to 5 000 contacts ──
+      try {
         let after: string | undefined;
-        const allBrandContacts: any[] = [];
+        let pagesFetched = 0;
+        const MAX_PAGES = 50; // 50 × 100 = 5 000 contacts max
 
-        while (true) {
+        while (pagesFetched < MAX_PAGES) {
           const searchBody: any = {
             filterGroups: buFilters.length > 0 ? [{ filters: buFilters }] : [],
-            properties: ["lifecyclestage", "ip_state", "ip_state_code"],
+            properties: ["ip_state", "ip_state_code"],
             limit: 100,
           };
           if (after) searchBody.after = after;
 
           const res = await hubspotPost("/crm/v3/objects/contacts/search", token, searchBody);
-          allBrandContacts.push(...(res.results || []));
+          pagesFetched++;
+
+          for (const c of (res.results || [])) {
+            const raw = c.properties?.ip_state || c.properties?.ip_state_code || "";
+            const code = resolveStateCode(raw);
+            if (code) { stateCounts[code] = (stateCounts[code] || 0) + 1; }
+            else { unknownStateCount++; }
+          }
 
           if (res.paging?.next?.after) {
             after = res.paging.next.after;
@@ -566,23 +609,10 @@ Deno.serve(async (req) => {
           }
         }
 
-        totalContacts = allBrandContacts.length;
-
-        // Count by lifecycle stage in code — exact match to what HubSpot dashboard shows
-        for (const c of allBrandContacts) {
-          const stage = (c.properties?.lifecyclestage || "").toLowerCase().trim();
-          const match = lifecycleStages.find(ls => ls.stage === stage);
-          if (match) match.count++;
-          const raw = c.properties?.ip_state || c.properties?.ip_state_code || "";
-          const code = resolveStateCode(raw);
-          if (code) { stateCounts[code] = (stateCounts[code] || 0) + 1; }
-          else { unknownStateCount++; }
-        }
-
-        console.log(`Primary account: ${totalContacts} total contacts for "${brandName}"`);
-        lifecycleStages.forEach(ls => console.log(`  ${ls.stage}: ${ls.count}`));
+        const knownCount = Object.values(stateCounts).reduce((a, b) => a + b, 0);
+        console.log(`State distribution: ${knownCount} known, ${unknownStateCount} unknown (${pagesFetched} pages)`);
       } catch (e) {
-        console.error("Primary account lifecycle fetch error:", e);
+        console.error("Primary account state distribution error:", e);
       }
     }
 
