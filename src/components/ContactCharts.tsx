@@ -16,6 +16,8 @@ interface ContactChartsProps {
   brand: Brand;
   dateFrom: Date;
   dateTo: Date;
+  externalStateDistribution?: { state: string; count: number }[];
+  externalUnknownStateCount?: number;
 }
 
 type Granularity = "day" | "week" | "month" | "quarter";
@@ -105,7 +107,7 @@ function quarterKey(date: Date): string {
   return `Q${q} ${date.getFullYear()}`;
 }
 
-export function ContactCharts({ brand, dateFrom, dateTo }: ContactChartsProps) {
+export function ContactCharts({ brand, dateFrom, dateTo, externalStateDistribution, externalUnknownStateCount }: ContactChartsProps) {
   const [contactsOverTime, setContactsOverTime] = useState<DayData[]>([]);
   const [totalContacts, setTotalContacts] = useState(0);
   const [jobTitles, setJobTitles] = useState<JobTitle[]>([]);
@@ -287,8 +289,8 @@ export function ContactCharts({ brand, dateFrom, dateTo }: ContactChartsProps) {
       </ChartCard>
 
       {/* ── State Map ── */}
-      {!loading && !error && stateDistribution.length > 0 && (
-        <USStateMap stateDistribution={stateDistribution} />
+      {!loading && !error && (externalStateDistribution ?? stateDistribution).length > 0 && (
+        <USStateMap stateDistribution={externalStateDistribution ?? stateDistribution} />
       )}
 
       {/* ── Job Title Distribution ── */}

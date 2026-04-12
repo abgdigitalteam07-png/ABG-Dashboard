@@ -326,7 +326,13 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo }: HubSpotCRMTabProps) {
       {/* ═══ SECTION 3 — Contact Charts ═══ */}
       <section className="space-y-5">
         <SectionHeader icon={Users} label="Contact Analytics" color="bg-emerald-600" />
-        <ContactCharts brand={brand} dateFrom={dateFrom} dateTo={dateTo} />
+        <ContactCharts
+          brand={brand}
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          externalStateDistribution={data?.contactStateDistribution}
+          externalUnknownStateCount={data?.contactUnknownStateCount}
+        />
       </section>
 
     </div>

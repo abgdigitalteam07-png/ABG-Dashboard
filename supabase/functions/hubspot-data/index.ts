@@ -439,6 +439,8 @@ Deno.serve(async (req) => {
     const endMs = new Date(endDate + "T23:59:59Z").getTime();
 
     let totalContacts = 0;
+    const stateCounts: Record<string, number> = {};
+    let unknownStateCount = 0;
     // Use HubSpot's exact internal lifecycle stage values so the frontend key mapping works.
     // Frontend ALL_LIFECYCLE_ORDER uses: subscriber, lead, marketingqualifiedlead, salesqualifiedlead, opportunity, customer
     const lifecycleStages = [
@@ -465,7 +467,7 @@ Deno.serve(async (req) => {
                 { propertyName: "createdate", operator: "LTE", value: String(endMs) },
               ],
             }],
-            properties: ["createdate", "brands", "lifecyclestage"],
+            properties: ["createdate", "brands", "lifecyclestage", "ip_state_code"],
             limit: 100,
           };
           if (after) searchBody.after = after;
@@ -486,11 +488,17 @@ Deno.serve(async (req) => {
 
         totalContacts = brandContactsInRange.length;
 
-        // Count lifecycle stages — match by HubSpot internal stage value
+        // Count lifecycle stages and states
         for (const c of brandContactsInRange) {
           const stage = (c.properties?.lifecyclestage || "").toLowerCase().trim();
           const match = lifecycleStages.find(ls => ls.stage === stage);
           if (match) match.count++;
+          const sc = (c.properties?.ip_state_code || "").trim().toUpperCase();
+          if (sc && sc.length === 2) {
+            stateCounts[sc] = (stateCounts[sc] || 0) + 1;
+          } else {
+            unknownStateCount++;
+          }
         }
         console.log(`Secondary account: ${totalContacts} contacts for "${brandName}" in date range`);
       } catch (e) {
@@ -516,7 +524,7 @@ Deno.serve(async (req) => {
         while (true) {
           const searchBody: any = {
             filterGroups: buFilters.length > 0 ? [{ filters: buFilters }] : [],
-            properties: ["lifecyclestage"],
+            properties: ["lifecyclestage", "ip_state_code"],
             limit: 100,
           };
           if (after) searchBody.after = after;
@@ -538,6 +546,13 @@ Deno.serve(async (req) => {
           const stage = (c.properties?.lifecyclestage || "").toLowerCase().trim();
           const match = lifecycleStages.find(ls => ls.stage === stage);
           if (match) match.count++;
+          // Count by state
+          const sc = (c.properties?.ip_state_code || "").trim().toUpperCase();
+          if (sc && sc.length === 2) {
+            stateCounts[sc] = (stateCounts[sc] || 0) + 1;
+          } else {
+            unknownStateCount++;
+          }
         }
 
         console.log(`Primary account: ${totalContacts} total contacts for "${brandName}"`);
@@ -672,6 +687,8 @@ Deno.serve(async (req) => {
       // Return stage using label (e.g. "MQL") so frontend displays clean names,
       // but also include the internal key so the frontend order/mapping works
       lifecycleStages: lifecycleStages.map(ls => ({ stage: ls.label, count: ls.count, key: ls.stage })),
+      contactStateDistribution: Object.entries(stateCounts).sort(([,a],[,b]) => b-a).map(([state, count]) => ({ state, count })),
+      contactUnknownStateCount: unknownStateCount,
       emails: current.emails,
       deliveryOverTime,
       stateDistribution: Object.entries(stateDistribution).map(([name, value]) => ({ name, value })),
