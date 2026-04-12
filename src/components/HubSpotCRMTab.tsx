@@ -14,18 +14,6 @@ interface HubSpotCRMTabProps {
   dateTo: Date;
 }
 
-// Lifecycle stage ordering for the full breakdown
-const ALL_LIFECYCLE_ORDER = [
-  "subscriber",
-  "lead",
-  "marketingqualifiedlead",
-  "salesqualifiedlead",
-  "opportunity",
-  "customer",
-  "evangelist",
-  "other",
-];
-
 // Marketing funnel: Subscriber → MQL only
 const MARKETING_FUNNEL_STAGES = [
   "subscriber",
@@ -45,15 +33,23 @@ const MARKETING_FUNNEL_COLORS = [
   "#10B981",
 ];
 
-const LIFECYCLE_COLORS = [
-  "#94A3B8",
-  "#3B82F6",
-  "#7C3AED",
+// Sales funnel: SQL → Opportunity → Customer
+const SALES_FUNNEL_STAGES = [
+  "salesqualifiedlead",
+  "opportunity",
+  "customer",
+];
+
+const SALES_STAGE_LABELS: Record<string, string> = {
+  salesqualifiedlead: "SQL",
+  opportunity: "Opportunity",
+  customer: "Customer",
+};
+
+const SALES_FUNNEL_COLORS = [
   "#F59E0B",
   "#F97316",
   "#10B981",
-  "#EF4444",
-  "#06B6D4",
 ];
 
 /* ── Skeleton pulse ── */
@@ -120,41 +116,19 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo }: HubSpotCRMTabProps) {
     return () => { cancelled = true; };
   }, [brand.id, dateFrom.getTime(), dateTo.getTime()]);
 
-  // Build ordered lifecycle data for charts
-  const allLifecycleData = useMemo(() => {
-    if (!data?.lifecycleStages) return [];
+  // Build lifecycle stage map helper
+  function buildStageMap(stages: any[]): Record<string, number> {
     const map: Record<string, number> = {};
-    for (const s of data.lifecycleStages) {
+    for (const s of stages) {
       if (s.key) map[s.key] = s.count;
       map[(s.stage || "").toLowerCase().replace(/\s/g, "")] = s.count;
     }
-    const ordered = ALL_LIFECYCLE_ORDER.map((key) => {
-      const match = data.lifecycleStages.find(
-        (s: any) => s.key === key || (s.stage || "").toLowerCase().replace(/\s/g, "") === key
-      );
-      return {
-        stage: match?.stage || MARKETING_STAGE_LABELS[key] || key,
-        count: map[key] || 0,
-        key,
-      };
-    }).filter((s) => s.count > 0);
-    // Also include any stages not in our predefined list
-    for (const s of data.lifecycleStages) {
-      const k = s.key || (s.stage || "").toLowerCase().replace(/\s/g, "");
-      if (!ALL_LIFECYCLE_ORDER.includes(k) && s.count > 0) {
-        ordered.push({ stage: s.stage, count: s.count, key: k });
-      }
-    }
-    return ordered;
-  }, [data]);
+    return map;
+  }
 
   const marketingFunnelData = useMemo(() => {
     if (!data?.lifecycleStages) return [];
-    const map: Record<string, number> = {};
-    for (const s of data.lifecycleStages) {
-      if (s.key) map[s.key] = s.count;
-      map[(s.stage || "").toLowerCase().replace(/\s/g, "")] = s.count;
-    }
+    const map = buildStageMap(data.lifecycleStages);
     return MARKETING_FUNNEL_STAGES.map((key, i) => ({
       key,
       label: MARKETING_STAGE_LABELS[key],
@@ -163,6 +137,21 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo }: HubSpotCRMTabProps) {
       conversionRate:
         i > 0 && map[MARKETING_FUNNEL_STAGES[i - 1]] > 0
           ? (map[key] / map[MARKETING_FUNNEL_STAGES[i - 1]]) * 100
+          : undefined,
+    }));
+  }, [data]);
+
+  const salesFunnelData = useMemo(() => {
+    if (!data?.lifecycleStages) return [];
+    const map = buildStageMap(data.lifecycleStages);
+    return SALES_FUNNEL_STAGES.map((key, i) => ({
+      key,
+      label: SALES_STAGE_LABELS[key],
+      count: map[key] || 0,
+      color: SALES_FUNNEL_COLORS[i],
+      conversionRate:
+        i > 0 && map[SALES_FUNNEL_STAGES[i - 1]] > 0
+          ? (map[key] / map[SALES_FUNNEL_STAGES[i - 1]]) * 100
           : undefined,
     }));
   }, [data]);
@@ -270,35 +259,65 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo }: HubSpotCRMTabProps) {
         </ChartCard>
       </section>
 
-      {/* ═══ SECTION 2 — Overall Lifecycle Stage Breakdown ═══ */}
+      {/* ═══ SECTION 2 — Sales Lifecycle Stage ═══ */}
       <section className="space-y-5">
-        <SectionHeader icon={BarChart2} label="Lifecycle Stage Breakdown" color="bg-violet-600" />
+        <SectionHeader icon={BarChart2} label="Sales Lifecycle Stage" color="bg-amber-500" />
 
         <ChartCard
-          title="Full Contact Distribution"
-          subtitle="Contact distribution across all lifecycle stages"
+          title="SQL to Customer Funnel"
+          subtitle="Contact journey from Sales Qualified Lead to Customer"
         >
-          {allLifecycleData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={Math.max(220, allLifecycleData.length * 44)}>
-              <BarChart
-                data={allLifecycleData}
-                layout="vertical"
-                margin={{ left: 0, right: 16, top: 0, bottom: 0 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={gridColor} />
-                <XAxis type="number" tick={axisStyle} tickLine={false} axisLine={false} />
-                <YAxis type="category" dataKey="stage" tick={axisStyle} width={160} tickLine={false} axisLine={false} />
-                <Tooltip content={<ChartTooltip />} />
-                <Bar dataKey="count" name="Contacts" radius={[0, 4, 4, 0]}>
-                  {allLifecycleData.map((_: any, i: number) => (
-                    <Cell key={i} fill={LIFECYCLE_COLORS[i % LIFECYCLE_COLORS.length]} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch sm:gap-0">
+            {salesFunnelData.map((stage, i) => (
+              <div key={stage.key} className={cn("flex items-center", i > 0 && "sm:flex-row")}>
+                {i > 0 && (
+                  <div className="hidden items-center px-3 sm:flex">
+                    <ArrowRight className="h-5 w-5 text-muted-foreground" />
+                  </div>
+                )}
+                <div
+                  className="flex-1 rounded-2xl border p-5 transition-all hover:shadow-md"
+                  style={{ borderColor: stage.color, background: `${stage.color}15` }}
+                >
+                  <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: stage.color }}>
+                    {stage.label}
+                  </p>
+                  <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">
+                    {stage.count.toLocaleString()}
+                  </p>
+                  {stage.conversionRate !== undefined && (
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      {stage.conversionRate.toFixed(1)}% from prev stage
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {salesFunnelData.some((s) => s.count > 0) ? (
+            <div className="mt-6">
+              <ResponsiveContainer width="100%" height={160}>
+                <BarChart
+                  data={salesFunnelData.map((s) => ({ name: s.label, count: s.count, color: s.color }))}
+                  layout="vertical"
+                  margin={{ left: 0, right: 16, top: 0, bottom: 0 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={gridColor} />
+                  <XAxis type="number" tick={axisStyle} tickLine={false} axisLine={false} />
+                  <YAxis type="category" dataKey="name" tick={axisStyle} width={90} tickLine={false} axisLine={false} />
+                  <Tooltip content={<ChartTooltip />} />
+                  <Bar dataKey="count" name="Contacts" radius={[0, 4, 4, 0]}>
+                    {salesFunnelData.map((s, i) => (
+                      <Cell key={i} fill={s.color} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           ) : (
-            <p className="py-12 text-center text-sm text-muted-foreground">
-              No lifecycle stage data available for {brand.name}
+            <p className="mt-6 py-8 text-center text-sm text-muted-foreground">
+              No sales stage data available for {brand.name}
             </p>
           )}
         </ChartCard>
