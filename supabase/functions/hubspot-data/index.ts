@@ -532,9 +532,9 @@ Deno.serve(async (req) => {
         console.error("Secondary account contacts fetch error:", e);
       }
     } else {
-      // Primary account — two independent fetches:
-      // 1. Per-stage counts via search totals (fast, 6 calls, matches HubSpot dashboard exactly)
-      // 2. Paginated fetch for state distribution (up to 5 000 contacts to stay within timeout)
+      // Primary account — all counts are date-filtered to match the selected date range.
+      // We use search-total API calls (fast, no data transfer) rather than fetching contact objects,
+      // because ip_state is not reliably returned in search result properties.
 
       const buFilters: any[] = [];
       if (brandBuId && brandBuId !== "0") {
@@ -545,26 +545,35 @@ Deno.serve(async (req) => {
         });
       }
 
-      // ── 1. Lifecycle stage counts via search totals ──
+      // Date range filters (applied to all queries so numbers match the selected period)
+      const dateFilters = [
+        { propertyName: "createdate", operator: "GTE", value: String(startMs) },
+        { propertyName: "createdate", operator: "LTE", value: String(endMs) },
+      ];
+      const baseFilters = [...buFilters, ...dateFilters];
+
+      // ── 1. Total contacts in date range ──
       try {
-        // Get total contacts first (no stage filter)
         const totalRes = await hubspotPost("/crm/v3/objects/contacts/search", token, {
-          filterGroups: buFilters.length > 0 ? [{ filters: buFilters }] : [],
+          filterGroups: baseFilters.length > 0 ? [{ filters: baseFilters }] : [],
           properties: [],
           limit: 1,
         });
         totalContacts = totalRes.total ?? 0;
-        console.log(`Primary account: ${totalContacts} total contacts for "${brandName}"`);
+        console.log(`Primary account: ${totalContacts} contacts in range for "${brandName}"`);
+      } catch (e) {
+        console.error("Primary account total count error:", e);
+      }
 
-        // Count each stage individually using search total — matches HubSpot's own dashboard
+      // ── 2. Lifecycle stage counts (date-filtered, 6 parallel calls) ──
+      try {
         await Promise.all(lifecycleStages.map(async (ls) => {
           try {
-            const stageFilters = [
-              ...buFilters,
-              { propertyName: "lifecyclestage", operator: "EQ", value: ls.stage },
-            ];
             const res = await hubspotPost("/crm/v3/objects/contacts/search", token, {
-              filterGroups: [{ filters: stageFilters }],
+              filterGroups: [{ filters: [
+                ...baseFilters,
+                { propertyName: "lifecyclestage", operator: "EQ", value: ls.stage },
+              ]}],
               properties: [],
               limit: 1,
             });
@@ -578,39 +587,48 @@ Deno.serve(async (req) => {
         console.error("Primary account lifecycle count error:", e);
       }
 
-      // ── 2. State distribution — paginate up to 5 000 contacts ──
+      // ── 3. State distribution — use ip_state EQ filter per state (date-filtered) ──
+      // Fetching ip_state as a contact property via search API returns empty values,
+      // but filtering BY ip_state works correctly (HubSpot indexes this field).
+      const US_STATE_NAMES = [
+        "alabama","alaska","arizona","arkansas","california","colorado","connecticut",
+        "delaware","florida","georgia","hawaii","idaho","illinois","indiana","iowa",
+        "kansas","kentucky","louisiana","maine","maryland","massachusetts","michigan",
+        "minnesota","mississippi","missouri","montana","nebraska","nevada",
+        "new hampshire","new jersey","new mexico","new york","north carolina",
+        "north dakota","ohio","oklahoma","oregon","pennsylvania","rhode island",
+        "south carolina","south dakota","tennessee","texas","utah","vermont",
+        "virginia","washington","west virginia","wisconsin","wyoming","district of columbia",
+      ];
+
       try {
-        let after: string | undefined;
-        let pagesFetched = 0;
-        const MAX_PAGES = 50; // 50 × 100 = 5 000 contacts max
-
-        while (pagesFetched < MAX_PAGES) {
-          const searchBody: any = {
-            filterGroups: buFilters.length > 0 ? [{ filters: buFilters }] : [],
-            properties: ["ip_state", "ip_state_code"],
-            limit: 100,
-          };
-          if (after) searchBody.after = after;
-
-          const res = await hubspotPost("/crm/v3/objects/contacts/search", token, searchBody);
-          pagesFetched++;
-
-          for (const c of (res.results || [])) {
-            const raw = c.properties?.ip_state || c.properties?.ip_state_code || "";
-            const code = resolveStateCode(raw);
-            if (code) { stateCounts[code] = (stateCounts[code] || 0) + 1; }
-            else { unknownStateCount++; }
-          }
-
-          if (res.paging?.next?.after) {
-            after = res.paging.next.after;
-          } else {
-            break;
-          }
+        // Batch in groups of 10 to avoid rate limit bursts
+        for (let i = 0; i < US_STATE_NAMES.length; i += 10) {
+          const batch = US_STATE_NAMES.slice(i, i + 10);
+          await Promise.all(batch.map(async (stateName) => {
+            try {
+              const res = await hubspotPost("/crm/v3/objects/contacts/search", token, {
+                filterGroups: [{ filters: [
+                  ...baseFilters,
+                  { propertyName: "ip_state", operator: "EQ", value: stateName },
+                ]}],
+                properties: [],
+                limit: 1,
+              });
+              const count = res.total ?? 0;
+              if (count > 0) {
+                const code = STATE_NAME_TO_CODE[stateName];
+                if (code) stateCounts[code] = count;
+              }
+            } catch (e) {
+              console.error(`  ip_state EQ ${stateName} error:`, e);
+            }
+          }));
         }
 
         const knownCount = Object.values(stateCounts).reduce((a, b) => a + b, 0);
-        console.log(`State distribution: ${knownCount} known, ${unknownStateCount} unknown (${pagesFetched} pages)`);
+        unknownStateCount = Math.max(0, totalContacts - knownCount);
+        console.log(`State distribution: ${knownCount} known, ${unknownStateCount} unknown`);
       } catch (e) {
         console.error("Primary account state distribution error:", e);
       }
