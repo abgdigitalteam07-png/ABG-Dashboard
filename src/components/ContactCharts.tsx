@@ -217,6 +217,11 @@ export function ContactCharts({ brand, dateFrom, dateTo }: ContactChartsProps) {
         <p className="mt-0.5 text-[11px] text-muted-foreground">In selected date range</p>
       </div>
 
+      {/* ── State Map ── */}
+      {!loading && !error && stateDistribution.length > 0 && (
+        <USStateMap stateDistribution={stateDistribution} />
+      )}
+
       {/* ── New Contacts Over Time ── */}
       <ChartCard
         title="New Contacts Created Over Time"
