@@ -271,7 +271,7 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
         : startOfMonth(dateFrom);
     const end = dateTo;
     const advance = granularity === "day" ? addDays : granularity === "week" ? addWeeks : addMonths;
-    const fmtStr = granularity === "monthly" ? "yyyy-MM" : "yyyy-MM-dd";
+    const fmtStr = granularity === "month" ? "yyyy-MM" : "yyyy-MM-dd";
 
     while (isBefore(cursor, end) || isEqual(cursor, end)) {
       slots.push(format(cursor, fmtStr));

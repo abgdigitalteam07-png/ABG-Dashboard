@@ -46,7 +46,7 @@ function HubSpotIcon({ className, active }: { className?: string; active?: boole
 
 function IntegrationIcons({ brand }: { brand: Brand }) {
   const hasMeta = SOCIAL_MEDIA_BRANDS.has(brand.name);
-  const off = "text-muted-foreground/25";
+  const off = "text-muted-foreground/10";
   return (
     <div className="flex items-center gap-1">
       <Tooltip>
