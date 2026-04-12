@@ -6,6 +6,7 @@ import {
 import { callFunction } from "@/lib/api-client";
 import { Brand } from "@/lib/brands";
 import { cn } from "@/lib/utils";
+import { USStateMap } from "@/components/USStateMap";
 import {
   format, parseISO, startOfWeek, startOfMonth, startOfDay, startOfQuarter,
   addDays, addWeeks, addMonths, isBefore, isEqual,
@@ -108,6 +109,7 @@ export function ContactCharts({ brand, dateFrom, dateTo }: ContactChartsProps) {
   const [contactsOverTime, setContactsOverTime] = useState<DayData[]>([]);
   const [totalContacts, setTotalContacts] = useState(0);
   const [jobTitles, setJobTitles] = useState<JobTitle[]>([]);
+  const [stateDistribution, setStateDistribution] = useState<{ state: string; count: number }[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [granularity, setGranularity] = useState<Granularity>("week");
@@ -135,6 +137,7 @@ export function ContactCharts({ brand, dateFrom, dateTo }: ContactChartsProps) {
           setContactsOverTime(data?.contactsOverTime || []);
           setTotalContacts(data?.totalContacts || 0);
           setJobTitles(data?.jobTitles || []);
+          setStateDistribution(data?.stateDistribution || []);
         }
         setLoading(false);
       })
@@ -213,6 +216,11 @@ export function ContactCharts({ brand, dateFrom, dateTo }: ContactChartsProps) {
         </p>
         <p className="mt-0.5 text-[11px] text-muted-foreground">In selected date range</p>
       </div>
+
+      {/* ── State Map ── */}
+      {!loading && !error && stateDistribution.length > 0 && (
+        <USStateMap stateDistribution={stateDistribution} />
+      )}
 
       {/* ── New Contacts Over Time ── */}
       <ChartCard

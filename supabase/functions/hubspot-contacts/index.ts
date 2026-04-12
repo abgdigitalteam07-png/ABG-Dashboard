@@ -88,6 +88,7 @@ Deno.serve(async (req) => {
     // ── 1. New contacts over time ──
     const contactsByDate: Record<string, { total: number; hubspot: number; salesforce: number }> = {};
     const jobTitleCounts: Record<string, number> = {};
+    const stateCounts: Record<string, number> = {};
 
     let after: string | undefined;
     let totalFetched = 0;
@@ -120,6 +121,8 @@ Deno.serve(async (req) => {
           "hs_analytics_source_data_1",
           "jobtitle",
           "brands",
+          "ip_state_code",
+          "ip_state",
         ],
         sorts: [{ propertyName: "createdate", direction: "ASCENDING" }],
         limit: 100,
@@ -191,6 +194,14 @@ Deno.serve(async (req) => {
         const title = (props.jobtitle || "").trim();
         const normalizedTitle = title || "Not specified";
         jobTitleCounts[normalizedTitle] = (jobTitleCounts[normalizedTitle] || 0) + 1;
+
+        // State / region
+        const stateCode = (props.ip_state_code || props.ip_state || "").trim().toUpperCase();
+        if (stateCode) {
+          stateCounts[stateCode] = (stateCounts[stateCode] || 0) + 1;
+        } else {
+          stateCounts["UNKNOWN"] = (stateCounts["UNKNOWN"] || 0) + 1;
+        }
       }
 
       if (res.paging?.next?.after) {
@@ -219,10 +230,16 @@ Deno.serve(async (req) => {
       jobTitles.push({ title: "Not specified", count: jobTitleCounts["Not specified"] });
     }
 
+    // State distribution
+    const stateDistribution = Object.entries(stateCounts)
+      .map(([state, count]) => ({ state, count }))
+      .sort((a, b) => b.count - a.count);
+
     const result = {
       totalContacts: totalFetched,
       contactsOverTime,
       jobTitles,
+      stateDistribution,
     };
 
     return new Response(JSON.stringify(result), {
