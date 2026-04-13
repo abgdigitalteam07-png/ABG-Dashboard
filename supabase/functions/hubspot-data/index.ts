@@ -588,41 +588,36 @@ Deno.serve(async (req) => {
         console.error("Primary account lifecycle count error:", e);
       }
 
-      // ── 3. State distribution — use ip_state EQ filter per state (date-filtered) ──
-      // Fetching ip_state as a contact property via search API returns empty values,
-      // but filtering BY ip_state works correctly (HubSpot indexes this field).
-      const US_STATE_NAMES = [
-        "alabama","alaska","arizona","arkansas","california","colorado","connecticut",
-        "delaware","florida","georgia","hawaii","idaho","illinois","indiana","iowa",
-        "kansas","kentucky","louisiana","maine","maryland","massachusetts","michigan",
-        "minnesota","mississippi","missouri","montana","nebraska","nevada",
-        "new hampshire","new jersey","new mexico","new york","north carolina",
-        "north dakota","ohio","oklahoma","oregon","pennsylvania","rhode island",
-        "south carolina","south dakota","tennessee","texas","utah","vermont",
-        "virginia","washington","west virginia","wisconsin","wyoming","district of columbia",
+      // ── 3. State distribution — use ip_state_code EQ filter per state (date-filtered) ──
+      // HubSpot stores state as ip_state_code (2-letter codes: IN, KY, TX, etc.)
+      const STATE_CODES = [
+        "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA",
+        "HI","ID","IL","IN","IA","KS","KY","LA","ME","MD",
+        "MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ",
+        "NM","NY","NC","ND","OH","OK","OR","PA","RI","SC",
+        "SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","DC",
       ];
 
       try {
         // Batch in groups of 10 to avoid rate limit bursts
-        for (let i = 0; i < US_STATE_NAMES.length; i += 10) {
-          const batch = US_STATE_NAMES.slice(i, i + 10);
-          await Promise.all(batch.map(async (stateName) => {
+        for (let i = 0; i < STATE_CODES.length; i += 10) {
+          const batch = STATE_CODES.slice(i, i + 10);
+          await Promise.all(batch.map(async (stateCode) => {
             try {
               const res = await hubspotPost("/crm/v3/objects/contacts/search", token, {
                 filterGroups: [{ filters: [
                   ...baseFilters,
-                  { propertyName: "ip_state", operator: "EQ", value: stateName },
+                  { propertyName: "ip_state_code", operator: "EQ", value: stateCode },
                 ]}],
                 properties: [],
                 limit: 1,
               });
               const count = res.total ?? 0;
               if (count > 0) {
-                const code = STATE_NAME_TO_CODE[stateName];
-                if (code) stateCounts[code] = count;
+                stateCounts[stateCode] = count;
               }
             } catch (e) {
-              console.error(`  ip_state EQ ${stateName} error:`, e);
+              console.error(`  ip_state_code EQ ${stateCode} error:`, e);
             }
           }));
         }
