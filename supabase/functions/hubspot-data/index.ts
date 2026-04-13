@@ -378,6 +378,7 @@ function pctChange(current: number, previous: number): number | null {
 
 // ─── main handler ───
 
+// Redeploy trigger: State distribution now uses filter-based ip_state queries
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
