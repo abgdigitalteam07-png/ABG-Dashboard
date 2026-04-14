@@ -482,6 +482,35 @@ Deno.serve(async (req) => {
       { stage: "customer",               label: "Customer",   count: 0 },
     ];
 
+    const contactsByDate: Record<string, { total: number; hubspot: number; salesforce: number }> = {};
+    const jobTitleCounts: Record<string, number> = {};
+
+    function countContactAnalytics(props: Record<string, any>) {
+      const createDate = props.createdate;
+      if (createDate) {
+        const dateKey = new Date(createDate).toISOString().split("T")[0];
+        if (!contactsByDate[dateKey]) {
+          contactsByDate[dateKey] = { total: 0, hubspot: 0, salesforce: 0 };
+        }
+        contactsByDate[dateKey].total++;
+
+        const objSource = (props.hs_object_source || "").toUpperCase();
+        const objSourceDetail = (props.hs_object_source_detail_1 || "").toLowerCase();
+        const analyticsSource = (props.hs_analytics_source || "").toUpperCase();
+        const analyticsSourceData = (props.hs_analytics_source_data_1 || "").toLowerCase();
+
+        const isSalesforce =
+          (objSource === "INTEGRATION" && objSourceDetail.includes("salesforce")) ||
+          (analyticsSource === "OFFLINE" && analyticsSourceData.includes("salesforce"));
+
+        if (isSalesforce) contactsByDate[dateKey].salesforce++;
+        else contactsByDate[dateKey].hubspot++;
+      }
+
+      const title = (props.jobtitle || "").trim() || "Not specified";
+      jobTitleCounts[title] = (jobTitleCounts[title] || 0) + 1;
+    }
+
     if (isSecondary) {
       // Secondary account: "brands" property is NOT searchable via HubSpot search API.
       // Fetch all contacts in date range (by createdate only), then filter by brands value in code.
@@ -497,7 +526,18 @@ Deno.serve(async (req) => {
                 { propertyName: "createdate", operator: "LTE", value: String(endMs) },
               ],
             }],
-            properties: ["createdate", "brands", "lifecyclestage", "ip_state", "ip_state_code"],
+            properties: [
+              "createdate",
+              "brands",
+              "lifecyclestage",
+              "ip_state",
+              "ip_state_code",
+              "hs_object_source",
+              "hs_object_source_detail_1",
+              "hs_analytics_source",
+              "hs_analytics_source_data_1",
+              "jobtitle",
+            ],
             limit: 100,
           };
           if (after) searchBody.after = after;
@@ -520,10 +560,12 @@ Deno.serve(async (req) => {
 
         // Count lifecycle stages and states
         for (const c of brandContactsInRange) {
-          const stage = (c.properties?.lifecyclestage || "").toLowerCase().trim();
+          const props = c.properties || {};
+          const stage = (props.lifecyclestage || "").toLowerCase().trim();
           const match = lifecycleStages.find(ls => ls.stage === stage);
           if (match) match.count++;
-          const raw = c.properties?.ip_state || c.properties?.ip_state_code || "";
+          countContactAnalytics(props);
+          const raw = props.ip_state || props.ip_state_code || "";
           const code = resolveStateCode(raw);
           if (code) { stateCounts[code] = (stateCounts[code] || 0) + 1; }
           else { unknownStateCount++; }
@@ -553,42 +595,51 @@ Deno.serve(async (req) => {
       ];
       const baseFilters = [...buFilters, ...dateFilters];
 
-      // ── 1. Total contacts in date range ──
+      // ── 1. Fetch contacts in range for charts + lifecycle counts ──
       try {
-        const totalRes = await hubspotPost("/crm/v3/objects/contacts/search", token, {
-          filterGroups: baseFilters.length > 0 ? [{ filters: baseFilters }] : [],
-          properties: [],
-          limit: 1,
-        });
-        totalContacts = totalRes.total ?? 0;
+        let after: string | undefined;
+        let fetchedContacts = 0;
+
+        while (true) {
+          const searchBody: any = {
+            filterGroups: baseFilters.length > 0 ? [{ filters: baseFilters }] : [],
+            properties: [
+              "createdate",
+              "lifecyclestage",
+              "hs_object_source",
+              "hs_object_source_detail_1",
+              "hs_analytics_source",
+              "hs_analytics_source_data_1",
+              "jobtitle",
+            ],
+            sorts: [{ propertyName: "createdate", direction: "ASCENDING" }],
+            limit: 100,
+          };
+          if (after) searchBody.after = after;
+
+          const res = await hubspotPost("/crm/v3/objects/contacts/search", token, searchBody);
+          for (const contact of (res.results || [])) {
+            const props = contact.properties || {};
+            fetchedContacts++;
+            countContactAnalytics(props);
+
+            const stage = (props.lifecyclestage || "").toLowerCase().trim();
+            const match = lifecycleStages.find((ls) => ls.stage === stage);
+            if (match) match.count++;
+          }
+
+          if (res.paging?.next?.after) after = res.paging.next.after;
+          else {
+            totalContacts = fetchedContacts;
+            break;
+          }
+        }
         console.log(`Primary account: ${totalContacts} contacts in range for "${brandName}"`);
       } catch (e) {
-        console.error("Primary account total count error:", e);
+        console.error("Primary account contacts fetch error:", e);
       }
 
-      // ── 2. Lifecycle stage counts (date-filtered, 6 parallel calls) ──
-      try {
-        await Promise.all(lifecycleStages.map(async (ls) => {
-          try {
-            const res = await hubspotPost("/crm/v3/objects/contacts/search", token, {
-              filterGroups: [{ filters: [
-                ...baseFilters,
-                { propertyName: "lifecyclestage", operator: "EQ", value: ls.stage },
-              ]}],
-              properties: [],
-              limit: 1,
-            });
-            ls.count = res.total ?? 0;
-            console.log(`  ${ls.stage}: ${ls.count}`);
-          } catch (e) {
-            console.error(`  stage count error for ${ls.stage}:`, e);
-          }
-        }));
-      } catch (e) {
-        console.error("Primary account lifecycle count error:", e);
-      }
-
-      // ── 3. State distribution — use ip_state_code EQ filter per state (date-filtered) ──
+      // ── 2. State distribution — use ip_state_code EQ filter per state (date-filtered) ──
       // HubSpot stores state as ip_state_code (2-letter codes: IN, KY, TX, etc.)
       const STATE_CODES = [
         "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA",
@@ -755,6 +806,19 @@ Deno.serve(async (req) => {
       // Return stage using label (e.g. "MQL") so frontend displays clean names,
       // but also include the internal key so the frontend order/mapping works
       lifecycleStages: lifecycleStages.map(ls => ({ stage: ls.label, count: ls.count, key: ls.stage })),
+      contactsOverTime: Object.entries(contactsByDate)
+        .map(([date, counts]) => ({ date, ...counts }))
+        .sort((a, b) => a.date.localeCompare(b.date)),
+      jobTitles: [
+        ...Object.entries(jobTitleCounts)
+          .filter(([title]) => title !== "Not specified")
+          .sort(([, a], [, b]) => b - a)
+          .slice(0, 20)
+          .map(([title, count]) => ({ title, count })),
+        ...(jobTitleCounts["Not specified"]
+          ? [{ title: "Not specified", count: jobTitleCounts["Not specified"] }]
+          : []),
+      ],
       contactStateDistribution: Object.entries(stateCounts).sort(([,a],[,b]) => b-a).map(([state, count]) => ({ state, count })),
       contactUnknownStateCount: unknownStateCount,
       emails: current.emails,

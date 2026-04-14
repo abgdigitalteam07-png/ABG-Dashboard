@@ -202,6 +202,31 @@ export function generateHubSpotData(brandId: string, dateFrom: Date, dateTo: Dat
   const sortedByPerf = [...emails].sort((a, b) => (b.openRate + b.clickRate) - (a.openRate + a.clickRate));
   const highPerforming = sortedByPerf.slice(0, 3);
   const lowPerforming = sortedByPerf.slice(-3).reverse();
+  const contactsOverTime = generateTimeSeriesData(dateFrom, dateTo, totalContacts / Math.max(1, 30), 35, seed + 12).map((d) => {
+    const total = Math.max(0, Math.round(d.value));
+    const salesforce = Math.round(total * (0.15 + rand() * 0.2));
+    return {
+      date: d.date,
+      total,
+      hubspot: Math.max(0, total - salesforce),
+      salesforce,
+    };
+  });
+  const jobTitles = [
+    { title: "Sales Manager", count: Math.round(totalContacts * 0.08) },
+    { title: "Owner", count: Math.round(totalContacts * 0.07) },
+    { title: "Operations Manager", count: Math.round(totalContacts * 0.06) },
+    { title: "Purchasing Manager", count: Math.round(totalContacts * 0.05) },
+    { title: "Project Manager", count: Math.round(totalContacts * 0.04) },
+    { title: "Not specified", count: Math.round(totalContacts * 0.1) },
+  ];
+  const contactStateDistribution = [
+    { state: "TX", count: Math.round(totalContacts * 0.14) },
+    { state: "FL", count: Math.round(totalContacts * 0.12) },
+    { state: "CA", count: Math.round(totalContacts * 0.1) },
+    { state: "GA", count: Math.round(totalContacts * 0.07) },
+    { state: "NC", count: Math.round(totalContacts * 0.06) },
+  ];
 
   return {
     totalContacts,
@@ -220,13 +245,20 @@ export function generateHubSpotData(brandId: string, dateFrom: Date, dateTo: Dat
     deliveredRate,
     deliveredRateDelta: parseFloat(((rand() - 0.5) * 2).toFixed(1)),
     lifecycleStages: [
-      { stage: "Subscriber", count: Math.round(totalContacts * 0.42) },
-      { stage: "Lead", count: Math.round(totalContacts * 0.28) },
-      { stage: "MQL", count: Math.round(totalContacts * 0.14) },
-      { stage: "SQL", count: Math.round(totalContacts * 0.07) },
-      { stage: "Opportunity", count: Math.round(totalContacts * 0.04) },
-      { stage: "Customer", count: Math.round(totalContacts * 0.05) },
+      { stage: "Subscriber", count: Math.round(totalContacts * 0.42), key: "subscriber" },
+      { stage: "Lead", count: Math.round(totalContacts * 0.28), key: "lead" },
+      { stage: "MQL", count: Math.round(totalContacts * 0.14), key: "marketingqualifiedlead" },
+      { stage: "SQL", count: Math.round(totalContacts * 0.07), key: "salesqualifiedlead" },
+      { stage: "Opportunity", count: Math.round(totalContacts * 0.04), key: "opportunity" },
+      { stage: "Customer", count: Math.round(totalContacts * 0.05), key: "customer" },
     ],
+    contactsOverTime,
+    jobTitles,
+    contactStateDistribution,
+    contactUnknownStateCount: Math.max(
+      0,
+      totalContacts - contactStateDistribution.reduce((sum, item) => sum + item.count, 0),
+    ),
     emailPerformance: {
       openRate,
       openRateDelta: parseFloat(((rand() - 0.5) * 4).toFixed(1)),

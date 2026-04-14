@@ -1,11 +1,9 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend,
 } from "recharts";
-import { callFunction } from "@/lib/api-client";
 import { Brand } from "@/lib/brands";
-import { cn } from "@/lib/utils";
 import { USStateMap } from "@/components/USStateMap";
 import {
   format, parseISO, startOfWeek, startOfMonth, startOfDay, startOfQuarter,
@@ -16,6 +14,14 @@ interface ContactChartsProps {
   brand: Brand;
   dateFrom: Date;
   dateTo: Date;
+  data?: {
+    totalContacts?: number;
+    contactsOverTime?: DayData[];
+    jobTitles?: JobTitle[];
+    contactStateDistribution?: { state: string; count: number }[];
+  } | null;
+  loading?: boolean;
+  error?: string | null;
   externalStateDistribution?: { state: string; count: number }[];
   externalUnknownStateCount?: number;
 }
@@ -107,50 +113,21 @@ function quarterKey(date: Date): string {
   return `Q${q} ${date.getFullYear()}`;
 }
 
-export function ContactCharts({ brand, dateFrom, dateTo, externalStateDistribution, externalUnknownStateCount }: ContactChartsProps) {
-  const [contactsOverTime, setContactsOverTime] = useState<DayData[]>([]);
-  const [totalContacts, setTotalContacts] = useState(0);
-  const [jobTitles, setJobTitles] = useState<JobTitle[]>([]);
-  const [stateDistribution, setStateDistribution] = useState<{ state: string; count: number }[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+export function ContactCharts({
+  brand,
+  dateFrom,
+  dateTo,
+  data,
+  loading = false,
+  error = null,
+  externalStateDistribution,
+  externalUnknownStateCount,
+}: ContactChartsProps) {
   const [granularity, setGranularity] = useState<Granularity>("week");
-
-  useEffect(() => {
-    if (!brand.hasHubSpot) {
-      setLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-
-    callFunction("hubspot-contacts", {
-      brandName: brand.name,
-      startDate: dateFrom.toISOString().split("T")[0],
-      endDate: dateTo.toISOString().split("T")[0],
-    })
-      .then((data: any) => {
-        if (cancelled) return;
-        if (data?.error) {
-          setError(data.error || "Failed to load");
-        } else {
-          setContactsOverTime(data?.contactsOverTime || []);
-          setTotalContacts(data?.totalContacts || 0);
-          setJobTitles(data?.jobTitles || []);
-          setStateDistribution(data?.stateDistribution || []);
-        }
-        setLoading(false);
-      })
-      .catch((err: any) => {
-        if (cancelled) return;
-        setError(err?.message || "Failed to load");
-        setLoading(false);
-      });
-
-    return () => { cancelled = true; };
-  }, [brand.id, dateFrom.getTime(), dateTo.getTime()]);
+  const contactsOverTime = data?.contactsOverTime || [];
+  const totalContacts = data?.totalContacts || 0;
+  const jobTitles = data?.jobTitles || [];
+  const stateDistribution = data?.contactStateDistribution || [];
 
   // Aggregate by granularity
   const aggregatedContacts = useMemo(() => {

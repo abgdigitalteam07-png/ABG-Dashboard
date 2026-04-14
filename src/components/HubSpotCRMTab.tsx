@@ -103,16 +103,25 @@ function ChartTooltip({ active, payload, label }: any) {
 export function HubSpotCRMTab({ brand, dateFrom, dateTo }: HubSpotCRMTabProps) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    fetchHubSpotData(brand, dateFrom, dateTo).then((result) => {
-      if (!cancelled) {
-        setData(result);
-        setLoading(false);
-      }
-    });
+    setError(null);
+    fetchHubSpotData(brand, dateFrom, dateTo)
+      .then((result) => {
+        if (!cancelled) {
+          setData(result);
+          setLoading(false);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to load");
+          setLoading(false);
+        }
+      });
     return () => { cancelled = true; };
   }, [brand.id, dateFrom.getTime(), dateTo.getTime()]);
 
@@ -330,6 +339,9 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo }: HubSpotCRMTabProps) {
           brand={brand}
           dateFrom={dateFrom}
           dateTo={dateTo}
+          data={data}
+          loading={loading}
+          error={error}
           externalStateDistribution={data?.contactStateDistribution}
           externalUnknownStateCount={data?.contactUnknownStateCount}
         />
