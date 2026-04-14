@@ -245,7 +245,7 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo }: HubSpotCRMTabProps) {
 
         <ChartCard
           title="Subscriber to MQL Funnel"
-          subtitle="Current distribution of all contacts by lifecycle stage"
+          subtitle="Contacts created in selected period, by current lifecycle stage"
         >
           {/* Funnel cards — horizontal flow */}
           <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch sm:gap-0">
@@ -311,7 +311,7 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo }: HubSpotCRMTabProps) {
 
         <ChartCard
           title="SQL to Customer Funnel"
-          subtitle="Current distribution of all contacts by lifecycle stage"
+          subtitle="Contacts created in selected period, by current lifecycle stage"
           headerRight={
             <div className="flex items-center gap-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 px-3 py-1">
               <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
