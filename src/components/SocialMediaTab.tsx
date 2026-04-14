@@ -438,45 +438,20 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
           })}
 
           {/* LinkedIn Coming Soon Card */}
-          <div className="rounded-2xl border border-border bg-card p-6 relative overflow-hidden">
-            <div className="absolute top-3 right-3 flex items-center gap-1 rounded-full bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-400">
-              <HelpCircle className="h-3 w-3" />
-              Coming Soon
+          <div className="rounded-2xl border-2 border-dashed border-[#0A66C2]/30 bg-[#0A66C2]/5 p-6 relative overflow-hidden flex flex-col items-center justify-center min-h-[200px] gap-4">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#0A66C2]/10">
+              <Linkedin className="h-7 w-7 text-[#0A66C2]" />
             </div>
-            <div className="mb-4 flex items-center gap-2">
-              <Linkedin className="h-5 w-5 text-[#0A66C2]" />
-              <h3 className="text-sm font-semibold">LinkedIn</h3>
-              <span className="ml-auto text-xs text-muted-foreground">
-                {liDemo ? formatNumber(liDemo.followers) : "—"} followers
-              </span>
+            <div className="text-center">
+              <p className="text-lg font-bold text-foreground">LinkedIn Analytics</p>
+              <p className="mt-1 text-sm text-muted-foreground">Integration coming soon</p>
             </div>
-            {liDemo ? (
-              <>
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <span className="text-xs text-muted-foreground">Reach</span>
-                    <p className="font-semibold tabular-nums text-muted-foreground/60">{formatNumber(liDemo.reach)}</p>
-                  </div>
-                  <div>
-                    <span className="text-xs text-muted-foreground">Impressions</span>
-                    <p className="font-semibold tabular-nums text-muted-foreground/60">{formatNumber(liDemo.impressions)}</p>
-                  </div>
-                  <div>
-                    <span className="text-xs text-muted-foreground">Engagements</span>
-                    <p className="font-semibold tabular-nums text-muted-foreground/60">{formatNumber(liDemo.engagements)}</p>
-                  </div>
-                  <div>
-                    <span className="text-xs text-muted-foreground">Engagement Rate</span>
-                    <p className="font-semibold tabular-nums text-muted-foreground/60">{liDemo.engagementRate}%</p>
-                  </div>
-                </div>
-                <div className="mt-3 flex items-center gap-2">
-                  <Badge variant="outline" className="text-xs text-muted-foreground">Demo Data</Badge>
-                  <span className="text-xs text-muted-foreground">API access pending</span>
-                </div>
-              </>
-            ) : (
-              <p className="text-xs text-muted-foreground mt-2">No LinkedIn page mapped for this brand yet.</p>
+            <div className="flex items-center gap-2 rounded-full bg-amber-100 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 px-4 py-2">
+              <HelpCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+              <span className="text-sm font-semibold text-amber-700 dark:text-amber-400">Coming Soon</span>
+            </div>
+            {liDemo && (
+              <p className="text-xs text-muted-foreground">Preview data available for {brand.name}</p>
             )}
           </div>
         </div>
@@ -585,7 +560,6 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
                 <TableHead className="text-xs">Caption</TableHead>
                 <SortHeader label="Date" field="publishedAt" className="text-right" />
                 <SortHeader label="Reach" field="reach" className="text-right" />
-                <SortHeader label="Impressions" field="impressions" className="text-right" />
                 <SortHeader label="Engagements" field="totalEngagements" className="text-right" />
                 <SortHeader label="Eng. Rate" field="engagementRate" className="text-right" />
                 <SortHeader label="Clicks" field="clicks" className="text-right" />
@@ -596,7 +570,13 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
               {paginatedPosts.map((post: any) => {
                 const totalEng = (post.likes || 0) + (post.comments || 0) + (post.shares || 0) + (post.saves || 0);
                 const isExpanded = expandedPost === post.id;
-                const permalink = post.permalink || post.permalink_url || "";
+                const rawPermalink = post.permalink || post.permalink_url || "";
+                // Validate permalink — only show link if it starts with https:// (Facebook/Instagram)
+                const permalink = rawPermalink.startsWith("https://www.facebook.com/") ||
+                  rawPermalink.startsWith("https://www.instagram.com/") ||
+                  rawPermalink.startsWith("https://fb.com/")
+                  ? rawPermalink
+                  : "";
                 return (
                   <>
                     <TableRow
@@ -615,7 +595,6 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
                       </TableCell>
                       <TableCell className="text-right text-sm tabular-nums">{new Date(post.publishedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</TableCell>
                       <TableCell className="text-right text-sm tabular-nums">{(post.reach || 0).toLocaleString()}</TableCell>
-                      <TableCell className="text-right text-sm tabular-nums">{(post.impressions || 0).toLocaleString()}</TableCell>
                       <TableCell className="text-right text-sm tabular-nums">{totalEng.toLocaleString()}</TableCell>
                       <TableCell className="text-right text-sm tabular-nums">
                         <span className={(post.engagementRate || 0) >= 5 ? "text-emerald-600" : (post.engagementRate || 0) < 2 ? "text-red-600" : ""}>
@@ -633,7 +612,7 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
                     </TableRow>
                     {isExpanded && (
                       <TableRow key={`${post.id}-detail`} className="bg-muted/30">
-                        <TableCell colSpan={10} className="p-4 pl-6">
+                        <TableCell colSpan={9} className="p-4 pl-6">
                           <p className="mb-2 text-sm">{post.caption}</p>
                           <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
                             <span>Likes: {(post.likes || 0).toLocaleString()}</span>
@@ -653,7 +632,6 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
                 <TableRow className="bg-muted/80 font-semibold">
                   <TableCell colSpan={4} className="text-sm pl-6">Total / Average</TableCell>
                   <TableCell className="text-right tabular-nums text-sm">{postTotals.reach.toLocaleString()}</TableCell>
-                  <TableCell className="text-right tabular-nums text-sm">{postTotals.impressions.toLocaleString()}</TableCell>
                   <TableCell className="text-right tabular-nums text-sm">{postTotals.engagements.toLocaleString()}</TableCell>
                   <TableCell className="text-right tabular-nums text-sm">{postTotals.avgEngRate}%</TableCell>
                   <TableCell className="text-right tabular-nums text-sm">{postTotals.clicks.toLocaleString()}</TableCell>

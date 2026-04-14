@@ -36,7 +36,7 @@ export default function Login() {
     }
 
     if (!isAllowedDomain(trimmed)) {
-      setError("Access restricted to ABG team members only. Need access? Contact mali@americanbathgroup.com");
+      setError("ACCESS_RESTRICTED");
       return;
     }
 
@@ -132,7 +132,21 @@ export default function Login() {
             {error && (
               <div className="flex items-start gap-2 text-destructive text-sm">
                 <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-                <span>{error}</span>
+                {error === "ACCESS_RESTRICTED" ? (
+                  <span>
+                    Access restricted to ABG team members only. Need access?{" "}
+                    <a
+                      href="https://teams.microsoft.com/l/chat/0/0?users=mali@americanbathgroup.com"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline underline-offset-2 hover:opacity-80"
+                    >
+                      Contact us on Microsoft Teams
+                    </a>
+                  </span>
+                ) : (
+                  <span>{error}</span>
+                )}
               </div>
             )}
 

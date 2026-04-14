@@ -4,7 +4,7 @@ import {
 } from "recharts";
 import { fetchHubSpotData } from "@/lib/api-client";
 import { Brand } from "@/lib/brands";
-import { ArrowRight, Users, TrendingUp, BarChart2 } from "lucide-react";
+import { ArrowRight, Users, TrendingUp, BarChart2, CheckCircle2 } from "lucide-react";
 import { ContactCharts } from "@/components/ContactCharts";
 import { cn } from "@/lib/utils";
 
@@ -71,12 +71,15 @@ function SectionHeader({ icon: Icon, label, color }: { icon: React.ElementType; 
 }
 
 /* ── Chart card wrapper ── */
-function ChartCard({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
+function ChartCard({ title, subtitle, children, headerRight }: { title: string; subtitle?: string; children: React.ReactNode; headerRight?: React.ReactNode }) {
   return (
     <div className="rounded-2xl border border-border bg-card p-6">
-      <div className="mb-5">
-        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
-        {subtitle && <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>}
+      <div className="mb-5 flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+          {subtitle && <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>}
+        </div>
+        {headerRight}
       </div>
       {children}
     </div>
@@ -135,9 +138,11 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo }: HubSpotCRMTabProps) {
     return map;
   }
 
+  // Use all-time lifecycle stages for the funnel cards (current snapshot, not date-filtered)
   const marketingFunnelData = useMemo(() => {
-    if (!data?.lifecycleStages) return [];
-    const map = buildStageMap(data.lifecycleStages);
+    const stages = data?.lifecycleStagesAllTime || data?.lifecycleStages;
+    if (!stages) return [];
+    const map = buildStageMap(stages);
     return MARKETING_FUNNEL_STAGES.map((key, i) => ({
       key,
       label: MARKETING_STAGE_LABELS[key],
@@ -151,8 +156,9 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo }: HubSpotCRMTabProps) {
   }, [data]);
 
   const salesFunnelData = useMemo(() => {
-    if (!data?.lifecycleStages) return [];
-    const map = buildStageMap(data.lifecycleStages);
+    const stages = data?.lifecycleStagesAllTime || data?.lifecycleStages;
+    if (!stages) return [];
+    const map = buildStageMap(stages);
     return SALES_FUNNEL_STAGES.map((key, i) => ({
       key,
       label: SALES_STAGE_LABELS[key],
@@ -197,10 +203,41 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo }: HubSpotCRMTabProps) {
     );
   }
 
+  if (error) {
+    return (
+      <div className="p-6">
+        <div className="rounded-2xl border border-border bg-card p-6">
+          <h3 className="text-sm font-semibold text-foreground">HubSpot CRM data unavailable</h3>
+          <p className="mt-1 text-sm text-muted-foreground">{error}</p>
+        </div>
+      </div>
+    );
+  }
+
   if (!data) return null;
 
   return (
     <div className="space-y-8 p-6">
+
+      {/* ═══ TOP — Total Contacts Created (Hero Stats) ═══ */}
+      <section>
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="rounded-2xl border border-border bg-card p-5">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Total Contacts Created</p>
+            <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">
+              {(data.totalContactsAllTime || 0).toLocaleString()}
+            </p>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">All-time lifetime total in CRM</p>
+          </div>
+          <div className="rounded-2xl border border-border bg-card p-5">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Contacts Created (Selected Period)</p>
+            <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">
+              {(data.totalContacts || 0).toLocaleString()}
+            </p>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">New contacts in date range</p>
+          </div>
+        </div>
+      </section>
 
       {/* ═══ SECTION 1 — Marketing Leads Cycle ═══ */}
       <section className="space-y-5">
@@ -208,7 +245,7 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo }: HubSpotCRMTabProps) {
 
         <ChartCard
           title="Subscriber to MQL Funnel"
-          subtitle="Contact journey from Subscriber to Marketing Qualified Lead"
+          subtitle="Current number of contacts in each stage (all-time snapshot)"
         >
           {/* Funnel cards — horizontal flow */}
           <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch sm:gap-0">
@@ -274,7 +311,14 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo }: HubSpotCRMTabProps) {
 
         <ChartCard
           title="SQL to Customer Funnel"
-          subtitle="Contact journey from Sales Qualified Lead to Customer"
+          subtitle="Current number of contacts in each stage (all-time snapshot)"
+          headerRight={
+            <div className="flex items-center gap-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 px-3 py-1">
+              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400">HubSpot &amp; Salesforce connected</span>
+            </div>
+          }
         >
           <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch sm:gap-0">
             {salesFunnelData.map((stage, i) => (

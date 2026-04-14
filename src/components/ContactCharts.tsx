@@ -16,6 +16,7 @@ interface ContactChartsProps {
   dateTo: Date;
   data?: {
     totalContacts?: number;
+    totalContactsAllTime?: number;
     contactsOverTime?: DayData[];
     jobTitles?: JobTitle[];
     contactStateDistribution?: { state: string; count: number }[];
@@ -33,6 +34,7 @@ interface DayData {
   total: number;
   hubspot: number;
   salesforce: number;
+  import: number;
 }
 
 interface JobTitle {
@@ -126,6 +128,7 @@ export function ContactCharts({
   const [granularity, setGranularity] = useState<Granularity>("week");
   const contactsOverTime = data?.contactsOverTime || [];
   const totalContacts = data?.totalContacts || 0;
+  const totalContactsAllTime = data?.totalContactsAllTime || 0;
   const jobTitles = data?.jobTitles || [];
   const stateDistribution = data?.contactStateDistribution || [];
 
@@ -133,7 +136,7 @@ export function ContactCharts({
   const aggregatedContacts = useMemo(() => {
     if (!contactsOverTime.length) return [];
 
-    const buckets: Record<string, { total: number; hubspot: number; salesforce: number }> = {};
+    const buckets: Record<string, { total: number; hubspot: number; salesforce: number; import: number }> = {};
 
     for (const day of contactsOverTime) {
       const date = parseISO(day.date);
@@ -143,10 +146,11 @@ export function ContactCharts({
       else if (granularity === "month") key = format(startOfMonth(date), "yyyy-MM");
       else key = quarterKey(startOfQuarter(date));
 
-      if (!buckets[key]) buckets[key] = { total: 0, hubspot: 0, salesforce: 0 };
+      if (!buckets[key]) buckets[key] = { total: 0, hubspot: 0, salesforce: 0, import: 0 };
       buckets[key].total += day.total;
       buckets[key].hubspot += day.hubspot;
       buckets[key].salesforce += day.salesforce;
+      buckets[key].import += day.import || 0;
     }
 
     if (granularity === "quarter") {
@@ -171,7 +175,7 @@ export function ContactCharts({
 
     return slots.map((date) => ({
       date,
-      ...(buckets[date] || { total: 0, hubspot: 0, salesforce: 0 }),
+      ...(buckets[date] || { total: 0, hubspot: 0, salesforce: 0, import: 0 }),
     }));
   }, [contactsOverTime, granularity, dateFrom, dateTo]);
 
@@ -187,15 +191,6 @@ export function ContactCharts({
 
   return (
     <>
-      {/* ── Total Contacts Card ── */}
-      <div className="rounded-2xl border border-border bg-card p-5">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Total Contacts Created</p>
-        <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">
-          {loading ? <span className="inline-block h-9 w-24 animate-pulse rounded-md bg-muted" /> : totalContacts.toLocaleString()}
-        </p>
-        <p className="mt-0.5 text-[11px] text-muted-foreground">In selected date range</p>
-      </div>
-
       {/* ── New Contacts Over Time ── */}
       <ChartCard
         title="New Contacts Created Over Time"
@@ -240,7 +235,7 @@ export function ContactCharts({
       </ChartCard>
 
       {/* ── Source Breakdown ── */}
-      <ChartCard title="Contacts Source Breakdown" subtitle="HubSpot vs Salesforce origin">
+      <ChartCard title="Contacts Source Breakdown" subtitle="HubSpot vs Salesforce origin vs Import">
         {loading ? (
           <Skeleton className="h-[280px] w-full" />
         ) : error ? (
@@ -259,7 +254,8 @@ export function ContactCharts({
               <Tooltip content={<ChartTooltip />} />
               <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
               <Bar dataKey="hubspot" name="HubSpot" stackId="source" fill="#F97316" radius={[0, 0, 0, 0]} />
-              <Bar dataKey="salesforce" name="Salesforce" stackId="source" fill="#374151" radius={[2, 2, 0, 0]} />
+              <Bar dataKey="salesforce" name="Salesforce" stackId="source" fill="#374151" radius={[0, 0, 0, 0]} />
+              <Bar dataKey="import" name="Import" stackId="source" fill="#6366F1" radius={[2, 2, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         )}
