@@ -564,10 +564,9 @@ Deno.serve(async (req) => {
           const match = lifecycleStages.find(ls => ls.stage === stage);
           if (match) match.count++;
           countContactAnalytics(props);
-          // Use ip_state (full region name) and reverse-map to 2-letter code
-          const stateRaw = (props.ip_state || "").trim();
-          const code = STATE_NAME_TO_CODE[stateRaw.toLowerCase()];
-          if (code && STATE_CODE_SET.has(code)) { stateCounts[code] = (stateCounts[code] || 0) + 1; }
+          // ip_state stores 2-letter codes (e.g. "IL", "OH") — use directly
+          const stateCode = (props.ip_state || "").trim().toUpperCase();
+          if (STATE_CODE_SET.has(stateCode)) { stateCounts[stateCode] = (stateCounts[stateCode] || 0) + 1; }
           else { unknownStateCount++; }
         }
         console.log(`Secondary account: ${totalContacts} contacts for "${brandName}" in date range`);
@@ -685,42 +684,8 @@ Deno.serve(async (req) => {
         console.error("Primary account all-time total error:", e);
       }
 
-      // ── 3. State distribution — use ip_state (full region name) EQ filter per state ──
-
-      try {
-        // Build list of (code, fullName) pairs for EQ filtering
-        const stateEntries = Object.entries(STATE_FULL_NAMES); // [["AL","Alabama"], ...]
-        // Batch in groups of 10 to avoid rate limit bursts
-        for (let i = 0; i < stateEntries.length; i += 10) {
-          const batch = stateEntries.slice(i, i + 10);
-          await Promise.all(batch.map(async ([stateCode, stateName]) => {
-            try {
-              const res = await hubspotPost("/crm/v3/objects/contacts/search", token, {
-                filterGroups: [{ filters: [
-                  ...baseFilters,
-                  { propertyName: "ip_state", operator: "EQ", value: stateName },
-                ]}],
-                properties: [],
-                limit: 1,
-              });
-              const count = res.total ?? 0;
-              if (count > 0) {
-                stateCounts[stateCode] = count;
-              }
-            } catch (e) {
-              console.error(`  ip_state EQ ${stateName} error:`, e);
-            }
-          }));
-        }
-
-        const knownCount = Object.values(stateCounts).reduce((a, b) => a + b, 0);
-        unknownStateCount = Math.max(0, totalContacts - knownCount);
-        console.log(`State distribution: ${knownCount} known, ${unknownStateCount} unknown`);
-      } catch (e) {
-        console.error("Primary account state distribution error:", e);
-      }
-
-      // ── 4. All-time lifecycle stage counts (no date filter, just BU) ──
+      // ── 3. All-time lifecycle stage counts (no date filter, just BU) ──
+      // Run BEFORE state distribution so a timeout doesn't wipe out lifecycle data.
       lifecycleStagesAllTime = [
         { stage: "subscriber",             label: "Subscriber",  count: 0 },
         { stage: "lead",                   label: "Lead",        count: 0 },
@@ -730,6 +695,7 @@ Deno.serve(async (req) => {
         { stage: "customer",              label: "Customer",    count: 0 },
       ];
       try {
+        // All 6 stages in two parallel batches of 3
         for (let i = 0; i < lifecycleStagesAllTime.length; i += 3) {
           const batch = lifecycleStagesAllTime.slice(i, i + 3);
           await Promise.all(batch.map(async (ls) => {
@@ -748,34 +714,42 @@ Deno.serve(async (req) => {
             }
           }));
         }
-        console.log(`All-time lifecycle stages:`, lifecycleStagesAllTime.map(l => `${l.label}=${l.count}`).join(", "));
+        console.log(`All-time lifecycle:`, lifecycleStagesAllTime.map(l => `${l.label}=${l.count}`).join(", "));
       } catch (e) {
         console.error("All-time lifecycle stage query error:", e);
       }
 
-      // ── 5. All-time job title distribution (paginated) ──
+      // ── 4. State distribution — ip_state stores 2-letter codes (e.g. "IL", "OH") ──
       try {
-        let jtAfter: string | undefined;
-        let jtPage = 0;
-        while (jtPage < 100) {
-          const searchBody: any = {
-            filterGroups: buFilters.length > 0 ? [{ filters: buFilters }] : [],
-            properties: ["jobtitle"],
-            limit: 100,
-          };
-          if (jtAfter) searchBody.after = jtAfter;
-          const res = await hubspotPost("/crm/v3/objects/contacts/search", token, searchBody);
-          for (const c of (res.results || [])) {
-            const title = (c.properties?.jobtitle || "").trim() || "Not specified";
-            jobTitleCountsAllTime[title] = (jobTitleCountsAllTime[title] || 0) + 1;
-          }
-          if (res.paging?.next?.after) { jtAfter = res.paging.next.after; jtPage++; }
-          else break;
+        for (let i = 0; i < STATE_CODES.length; i += 10) {
+          const batch = STATE_CODES.slice(i, i + 10);
+          await Promise.all(batch.map(async (stateCode) => {
+            try {
+              const res = await hubspotPost("/crm/v3/objects/contacts/search", token, {
+                filterGroups: [{ filters: [
+                  ...baseFilters,
+                  { propertyName: "ip_state", operator: "EQ", value: stateCode },
+                ]}],
+                properties: [],
+                limit: 1,
+              });
+              const count = res.total ?? 0;
+              if (count > 0) stateCounts[stateCode] = count;
+            } catch (e) {
+              console.error(`  ip_state EQ ${stateCode} error:`, e);
+            }
+          }));
         }
-        console.log(`All-time job titles: ${Object.keys(jobTitleCountsAllTime).length} unique titles`);
+
+        const knownCount = Object.values(stateCounts).reduce((a, b) => a + b, 0);
+        unknownStateCount = Math.max(0, totalContacts - knownCount);
+        console.log(`State distribution: ${knownCount} known, ${unknownStateCount} unknown`);
       } catch (e) {
-        console.error("All-time job title query error:", e);
+        console.error("Primary account state distribution error:", e);
       }
+
+      // NOTE: all-time job title fetch removed — too many API calls risk timeout.
+      // Job titles are collected from the in-range contacts loop above (jobTitleCounts).
     }
 
     if (isSecondary) {
@@ -914,18 +888,16 @@ Deno.serve(async (req) => {
       contactsOverTime: Object.entries(contactsByDate)
         .map(([date, counts]) => ({ date, total: counts.total, hubspot: counts.hubspot, salesforce: counts.salesforce, import: counts.import }))
         .sort((a, b) => a.date.localeCompare(b.date)),
-      // Use all-time job title data so we show titles across all contacts, not just in-period
-      jobTitles: (() => {
-        const src = Object.keys(jobTitleCountsAllTime).length > 0 ? jobTitleCountsAllTime : jobTitleCounts;
-        return [
-          ...Object.entries(src)
-            .filter(([title]) => title !== "Not specified")
-            .sort(([, a], [, b]) => b - a)
-            .slice(0, 20)
-            .map(([title, count]) => ({ title, count })),
-          ...(src["Not specified"] ? [{ title: "Not specified", count: src["Not specified"] }] : []),
-        ];
-      })(),
+      jobTitles: [
+        ...Object.entries(jobTitleCounts)
+          .filter(([title]) => title !== "Not specified")
+          .sort(([, a], [, b]) => b - a)
+          .slice(0, 20)
+          .map(([title, count]) => ({ title, count })),
+        ...(jobTitleCounts["Not specified"]
+          ? [{ title: "Not specified", count: jobTitleCounts["Not specified"] }]
+          : []),
+      ],
       contactStateDistribution: Object.entries(stateCounts).sort(([,a],[,b]) => b-a).map(([state, count]) => ({ state, count })),
       contactUnknownStateCount: unknownStateCount,
       emails: current.emails,
