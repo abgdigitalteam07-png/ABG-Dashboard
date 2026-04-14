@@ -725,10 +725,15 @@ Deno.serve(async (req) => {
         console.error("Lifecycle EQ phase error:", e);
       }
 
-      // Phase B — paginated scan fallback if EQ returned all zeros
+      // Phase B — paginated scan fallback if EQ returned unreliable results.
+      // Triggers when: all zeros, OR subscriber has data but every other stage is 0
+      // (EQ filter works for subscriber but silently fails for lead/mql/sql/etc.)
       const eqTotal = lifecycleStagesAllTime.reduce((s, l) => s + l.count, 0);
-      if (eqTotal === 0) {
-        console.log("Lifecycle EQ returned all zeros — switching to paginated scan");
+      const subscriberEq = lifecycleStagesAllTime.find(l => l.stage === "subscriber")?.count ?? 0;
+      const lowerFunnelEq = eqTotal - subscriberEq;
+      const needsPhaseB = eqTotal === 0 || (subscriberEq > 0 && lowerFunnelEq === 0);
+      if (needsPhaseB) {
+        console.log(`Lifecycle EQ unreliable (subscriber=${subscriberEq}, lower=${lowerFunnelEq}) — switching to paginated scan`);
         lifecycleStagesAllTime = LIFECYCLE_STAGE_DEF.map(d => ({ ...d }));
         const stageCounts: Record<string, number> = {};
         try {
@@ -762,6 +767,7 @@ Deno.serve(async (req) => {
             marketingqualifiedlead: "marketingqualifiedlead",
             mql: "marketingqualifiedlead",
             "marketing qualified lead": "marketingqualifiedlead",
+            "121857152": "marketingqualifiedlead", // "Marketing Qualified Lead Plus" custom stage
             salesqualifiedlead: "salesqualifiedlead",
             sql: "salesqualifiedlead",
             "sales qualified lead": "salesqualifiedlead",
