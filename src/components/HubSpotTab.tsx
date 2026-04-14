@@ -200,6 +200,7 @@ const PAGE_SIZE = 10;
 export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [chartType, setChartType] = useState<ChartType>("area");
   const [granularity, setGranularity] = useState<Granularity>("week");
   const [previewEmail, setPreviewEmail] = useState<any>(null);
@@ -215,11 +216,23 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setError(null);
     setCurrentPage(1);
     setShowAll(false);
-    fetchHubSpotData(brand, dateFrom, dateTo).then((result) => {
-      if (!cancelled) { setData(result); setLoading(false); }
-    });
+    fetchHubSpotData(brand, dateFrom, dateTo)
+      .then((result) => {
+        if (!cancelled) {
+          setData(result);
+          setLoading(false);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setData(null);
+          setError(err instanceof Error ? err.message : "Failed to load");
+          setLoading(false);
+        }
+      });
     return () => { cancelled = true; };
   }, [brand.id, dateFrom.getTime(), dateTo.getTime()]);
 
@@ -227,6 +240,19 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
     if (!data) return null;
     return { ...data, brandName: brand.name };
   }, [data, brand]);
+
+  if (!loading && error) {
+    return (
+      <div className="p-6">
+        <div className="rounded-2xl border border-border bg-card p-6">
+          <h3 className="text-sm font-semibold text-foreground">HubSpot data unavailable</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {error}
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   /* ── Aggregate chart data by granularity ── */
   const chartData = useMemo(() => {

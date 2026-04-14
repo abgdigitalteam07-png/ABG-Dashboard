@@ -127,6 +127,7 @@ export function generateHubSpotData(brandId: string, dateFrom: Date, dateTo: Dat
   const rand = seededRandom(seed);
 
   const totalContacts = Math.round(2000 + rand() * 6000);
+  const totalContactsAllTime = Math.round(totalContacts * (2.5 + rand() * 2));
   const openRate = parseFloat((18 + rand() * 15).toFixed(1));
   const clickRate = parseFloat((2 + rand() * 5).toFixed(1));
   const bounceRate = parseFloat((0.5 + rand() * 2).toFixed(1));
@@ -230,6 +231,7 @@ export function generateHubSpotData(brandId: string, dateFrom: Date, dateTo: Dat
 
   return {
     totalContacts,
+    totalContactsAllTime,
     totalContactsDelta: parseFloat(((rand() - 0.3) * 10).toFixed(1)),
     healthScore,
     openRate,

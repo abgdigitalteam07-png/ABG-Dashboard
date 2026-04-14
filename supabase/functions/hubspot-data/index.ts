@@ -684,9 +684,12 @@ Deno.serve(async (req) => {
         console.error("Primary account all-time total error:", e);
       }
 
-      // ── 3. All-time lifecycle stage counts (no date filter, just BU) ──
-      // Run BEFORE state distribution so a timeout doesn't wipe out lifecycle data.
-      lifecycleStagesAllTime = [
+      // ── 3. All-time lifecycle stage counts ──
+      // Phase A: try fast EQ-filter queries (6 API calls).
+      // Phase B: if all return 0, fall back to paginated contact scan — counts stages
+      //          directly from property values (reliable regardless of HubSpot configuration).
+
+      const LIFECYCLE_STAGE_DEF = [
         { stage: "subscriber",             label: "Subscriber",  count: 0 },
         { stage: "lead",                   label: "Lead",        count: 0 },
         { stage: "marketingqualifiedlead", label: "MQL",         count: 0 },
@@ -694,29 +697,93 @@ Deno.serve(async (req) => {
         { stage: "opportunity",            label: "Opportunity", count: 0 },
         { stage: "customer",              label: "Customer",    count: 0 },
       ];
+      lifecycleStagesAllTime = LIFECYCLE_STAGE_DEF.map(d => ({ ...d }));
+
+      // Phase A — EQ filter approach (fastest)
       try {
-        // All 6 stages in two parallel batches of 3
         for (let i = 0; i < lifecycleStagesAllTime.length; i += 3) {
           const batch = lifecycleStagesAllTime.slice(i, i + 3);
           await Promise.all(batch.map(async (ls) => {
             try {
+              const filters = [
+                ...buFilters,
+                { propertyName: "lifecyclestage", operator: "EQ", value: ls.stage },
+              ];
               const res = await hubspotPost("/crm/v3/objects/contacts/search", token, {
-                filterGroups: [{ filters: [
-                  ...buFilters,
-                  { propertyName: "lifecyclestage", operator: "EQ", value: ls.stage },
-                ]}],
+                filterGroups: [{ filters }],
                 properties: [],
                 limit: 1,
               });
               ls.count = res.total ?? 0;
             } catch (e) {
-              console.error(`  lifecycle all-time ${ls.stage} error:`, e);
+              console.error(`  lifecycle EQ ${ls.stage}:`, e);
             }
           }));
         }
-        console.log(`All-time lifecycle:`, lifecycleStagesAllTime.map(l => `${l.label}=${l.count}`).join(", "));
+        console.log(`Lifecycle EQ phase:`, lifecycleStagesAllTime.map(l => `${l.label}=${l.count}`).join(", "));
       } catch (e) {
-        console.error("All-time lifecycle stage query error:", e);
+        console.error("Lifecycle EQ phase error:", e);
+      }
+
+      // Phase B — paginated scan fallback if EQ returned all zeros
+      const eqTotal = lifecycleStagesAllTime.reduce((s, l) => s + l.count, 0);
+      if (eqTotal === 0) {
+        console.log("Lifecycle EQ returned all zeros — switching to paginated scan");
+        lifecycleStagesAllTime = LIFECYCLE_STAGE_DEF.map(d => ({ ...d }));
+        const stageCounts: Record<string, number> = {};
+        try {
+          let scanAfter: string | undefined;
+          let scanPage = 0;
+          const MAX_SCAN_PAGES = 100; // up to 10 000 contacts
+
+          while (scanPage < MAX_SCAN_PAGES) {
+            const searchBody: any = {
+              filterGroups: buFilters.length > 0 ? [{ filters: buFilters }] : [],
+              properties: ["lifecyclestage"],
+              limit: 100,
+            };
+            if (scanAfter) searchBody.after = scanAfter;
+
+            const res = await hubspotPost("/crm/v3/objects/contacts/search", token, searchBody);
+            for (const c of (res.results || [])) {
+              const sv = (c.properties?.lifecyclestage || "").toLowerCase().trim();
+              if (sv) stageCounts[sv] = (stageCounts[sv] || 0) + 1;
+            }
+
+            if (res.paging?.next?.after) { scanAfter = res.paging.next.after; scanPage++; }
+            else break;
+          }
+
+          // Map whatever values HubSpot returns → our stage definitions
+          const valueAliases: Record<string, string> = {
+            // standard lowercase keys
+            subscriber: "subscriber",
+            lead: "lead",
+            marketingqualifiedlead: "marketingqualifiedlead",
+            mql: "marketingqualifiedlead",
+            "marketing qualified lead": "marketingqualifiedlead",
+            salesqualifiedlead: "salesqualifiedlead",
+            sql: "salesqualifiedlead",
+            "sales qualified lead": "salesqualifiedlead",
+            opportunity: "opportunity",
+            customer: "customer",
+            evangelist: "customer", // treat evangelist as customer for display
+            other: "lead",           // catch-all: count as lead
+          };
+
+          for (const [rawStage, cnt] of Object.entries(stageCounts)) {
+            const canonical = valueAliases[rawStage] ?? valueAliases[rawStage.replace(/\s+/g, "")];
+            if (canonical) {
+              const def = lifecycleStagesAllTime.find(l => l.stage === canonical);
+              if (def) def.count += cnt;
+            }
+          }
+
+          console.log(`Lifecycle scan (${scanPage + 1} pages):`, JSON.stringify(stageCounts));
+          console.log(`Lifecycle mapped:`, lifecycleStagesAllTime.map(l => `${l.label}=${l.count}`).join(", "));
+        } catch (e) {
+          console.error("Lifecycle paginated scan error:", e);
+        }
       }
 
       // ── 4. State distribution — ip_state stores 2-letter codes (e.g. "IL", "OH") ──

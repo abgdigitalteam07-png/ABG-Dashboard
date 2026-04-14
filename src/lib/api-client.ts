@@ -1,5 +1,5 @@
 import { Brand } from "./brands";
-import { generateGA4Data, generateGSCData, generateHubSpotData } from "./mock-data";
+import { generateGA4Data, generateGSCData } from "./mock-data";
 
 const FUNCTIONS_URL = "https://ffxhonryhaadyudpopvv.supabase.co/functions/v1";
 const ANON_KEY =
@@ -63,18 +63,13 @@ export async function fetchGSCData(brand: Brand, dateFrom: Date, dateTo: Date) {
 export async function fetchHubSpotData(brand: Brand, dateFrom: Date, dateTo: Date) {
   if (!brand.hasHubSpot) return null;
 
-  try {
-    const data = await callFunction("hubspot-data", {
-      brandName: brand.name,
-      startDate: formatDate(dateFrom),
-      endDate: formatDate(dateTo),
-    });
-    if (data?.error) throw new Error(data.error);
-    return data;
-  } catch (err) {
-    console.warn("HubSpot API failed, using mock data:", err);
-    return generateHubSpotData(brand.id, dateFrom, dateTo);
-  }
+  const data = await callFunction("hubspot-data", {
+    brandName: brand.name,
+    startDate: formatDate(dateFrom),
+    endDate: formatDate(dateTo),
+  });
+  if (data?.error) throw new Error(data.error);
+  return data;
 }
 
 export { callFunction, FUNCTIONS_URL, ANON_KEY };
