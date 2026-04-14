@@ -792,40 +792,34 @@ Deno.serve(async (req) => {
         }
       }
 
-      // ── 4. State distribution — paginated scan reads ip_state directly from contacts ──
-      // EQ filter queries for ip_state silently return 0 (same issue as lifecycle EQ).
-      // Reading ip_state from contact properties during a scan is reliable.
+      // ── 4. State distribution — EQ queries using full state names ──
+      // HubSpot stores ip_state as full lowercase names ("california", "ohio").
+      // The search API does not return ip_state in result properties, so we use
+      // EQ filter queries (one per state) to get counts reliably.
       try {
-        let stateScanAfter: string | undefined;
-        let stateScanPage = 0;
-        const MAX_STATE_PAGES = 100; // up to 10 000 contacts
-        while (stateScanPage < MAX_STATE_PAGES) {
-          const scanBody: any = {
-            filterGroups: baseFilters.length > 0 ? [{ filters: baseFilters }] : [],
-            properties: ["ip_state"],
-            limit: 100,
-          };
-          if (stateScanAfter) scanBody.after = stateScanAfter;
-          const res = await hubspotPost("/crm/v3/objects/contacts/search", token, scanBody);
-          for (const c of (res.results || [])) {
-            const raw = (c.properties?.ip_state || "").trim();
-            if (!raw) continue;
-            // HubSpot stores ip_state as full names ("california") or 2-letter codes ("CA")
-            // Try 2-letter code first, then fall back to full-name lookup
-            let code = raw.toUpperCase();
-            if (!STATE_CODE_SET.has(code)) {
-              code = STATE_NAME_TO_CODE[raw.toLowerCase()] || "";
+        const stateEntries = Object.entries(STATE_FULL_NAMES); // [["CA","California"], ...]
+        for (let i = 0; i < stateEntries.length; i += 10) {
+          const batch = stateEntries.slice(i, i + 10);
+          await Promise.all(batch.map(async ([code, fullName]) => {
+            try {
+              const res = await hubspotPost("/crm/v3/objects/contacts/search", token, {
+                filterGroups: [{ filters: [
+                  ...baseFilters,
+                  { propertyName: "ip_state", operator: "EQ", value: fullName.toLowerCase() },
+                ]}],
+                properties: [],
+                limit: 1,
+              });
+              const count = res.total ?? 0;
+              if (count > 0) stateCounts[code] = count;
+            } catch (e) {
+              console.error(`  ip_state EQ ${code} error:`, e);
             }
-            if (code && STATE_CODE_SET.has(code)) {
-              stateCounts[code] = (stateCounts[code] || 0) + 1;
-            }
-          }
-          if (res.paging?.next?.after) { stateScanAfter = res.paging.next.after; stateScanPage++; }
-          else break;
+          }));
         }
         const knownCount = Object.values(stateCounts).reduce((a, b) => a + b, 0);
         unknownStateCount = Math.max(0, totalContacts - knownCount);
-        console.log(`State scan (${stateScanPage + 1} pages): ${knownCount} known, ${unknownStateCount} unknown`);
+        console.log(`State EQ queries: ${knownCount} known, ${unknownStateCount} unknown`);
         console.log("State counts:", JSON.stringify(stateCounts));
       } catch (e) {
         console.error("Primary account state distribution error:", e);
