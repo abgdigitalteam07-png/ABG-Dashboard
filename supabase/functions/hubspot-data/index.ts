@@ -809,9 +809,14 @@ Deno.serve(async (req) => {
           const res = await hubspotPost("/crm/v3/objects/contacts/search", token, scanBody);
           for (const c of (res.results || [])) {
             const raw = (c.properties?.ip_state || "").trim();
-            // HubSpot may return lowercase or uppercase — normalise to uppercase
-            const code = raw.toUpperCase();
-            if (STATE_CODE_SET.has(code)) {
+            if (!raw) continue;
+            // HubSpot stores ip_state as full names ("california") or 2-letter codes ("CA")
+            // Try 2-letter code first, then fall back to full-name lookup
+            let code = raw.toUpperCase();
+            if (!STATE_CODE_SET.has(code)) {
+              code = STATE_NAME_TO_CODE[raw.toLowerCase()] || "";
+            }
+            if (code && STATE_CODE_SET.has(code)) {
               stateCounts[code] = (stateCounts[code] || 0) + 1;
             }
           }
