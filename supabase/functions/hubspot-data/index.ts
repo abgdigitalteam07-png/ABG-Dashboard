@@ -792,31 +792,36 @@ Deno.serve(async (req) => {
         }
       }
 
-      // ── 4. State distribution — ip_state stores 2-letter codes (e.g. "IL", "OH") ──
+      // ── 4. State distribution — paginated scan reads ip_state directly from contacts ──
+      // EQ filter queries for ip_state silently return 0 (same issue as lifecycle EQ).
+      // Reading ip_state from contact properties during a scan is reliable.
       try {
-        for (let i = 0; i < STATE_CODES.length; i += 10) {
-          const batch = STATE_CODES.slice(i, i + 10);
-          await Promise.all(batch.map(async (stateCode) => {
-            try {
-              const res = await hubspotPost("/crm/v3/objects/contacts/search", token, {
-                filterGroups: [{ filters: [
-                  ...baseFilters,
-                  { propertyName: "ip_state", operator: "EQ", value: stateCode },
-                ]}],
-                properties: [],
-                limit: 1,
-              });
-              const count = res.total ?? 0;
-              if (count > 0) stateCounts[stateCode] = count;
-            } catch (e) {
-              console.error(`  ip_state EQ ${stateCode} error:`, e);
+        let stateScanAfter: string | undefined;
+        let stateScanPage = 0;
+        const MAX_STATE_PAGES = 100; // up to 10 000 contacts
+        while (stateScanPage < MAX_STATE_PAGES) {
+          const scanBody: any = {
+            filterGroups: baseFilters.length > 0 ? [{ filters: baseFilters }] : [],
+            properties: ["ip_state"],
+            limit: 100,
+          };
+          if (stateScanAfter) scanBody.after = stateScanAfter;
+          const res = await hubspotPost("/crm/v3/objects/contacts/search", token, scanBody);
+          for (const c of (res.results || [])) {
+            const raw = (c.properties?.ip_state || "").trim();
+            // HubSpot may return lowercase or uppercase — normalise to uppercase
+            const code = raw.toUpperCase();
+            if (STATE_CODE_SET.has(code)) {
+              stateCounts[code] = (stateCounts[code] || 0) + 1;
             }
-          }));
+          }
+          if (res.paging?.next?.after) { stateScanAfter = res.paging.next.after; stateScanPage++; }
+          else break;
         }
-
         const knownCount = Object.values(stateCounts).reduce((a, b) => a + b, 0);
         unknownStateCount = Math.max(0, totalContacts - knownCount);
-        console.log(`State distribution: ${knownCount} known, ${unknownStateCount} unknown`);
+        console.log(`State scan (${stateScanPage + 1} pages): ${knownCount} known, ${unknownStateCount} unknown`);
+        console.log("State counts:", JSON.stringify(stateCounts));
       } catch (e) {
         console.error("Primary account state distribution error:", e);
       }
