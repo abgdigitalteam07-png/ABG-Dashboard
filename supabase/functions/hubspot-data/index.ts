@@ -706,7 +706,7 @@ Deno.serve(async (req) => {
           await Promise.all(batch.map(async (ls) => {
             try {
               const filters = [
-                ...baseFilters,
+                ...buFilters,
                 { propertyName: "lifecyclestage", operator: "EQ", value: ls.stage },
               ];
               const res = await hubspotPost("/crm/v3/objects/contacts/search", token, {
@@ -743,7 +743,7 @@ Deno.serve(async (req) => {
 
           while (scanPage < MAX_SCAN_PAGES) {
             const searchBody: any = {
-              filterGroups: baseFilters.length > 0 ? [{ filters: baseFilters }] : [],
+              filterGroups: buFilters.length > 0 ? [{ filters: buFilters }] : [],
               properties: ["lifecyclestage"],
               limit: 100,
             };
