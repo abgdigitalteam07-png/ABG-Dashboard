@@ -716,6 +716,9 @@ Deno.serve(async (req) => {
       ];
       lifecycleStagesAllTime = LIFECYCLE_STAGE_DEF.map(d => ({ ...d }));
 
+      // All-time lifecycle: use buFilters only (NO date filters) so we get true all-time counts
+      const allTimeFilters = [...buFilters]; // intentionally excludes dateFilters
+
       // Phase A — EQ filter approach (fastest)
       try {
         for (let i = 0; i < lifecycleStagesAllTime.length; i += 3) {
@@ -723,11 +726,11 @@ Deno.serve(async (req) => {
           await Promise.all(batch.map(async (ls) => {
             try {
               const filters = [
-                ...baseFilters,
+                ...allTimeFilters,
                 { propertyName: "lifecyclestage", operator: "EQ", value: ls.stage },
               ];
               const res = await hubspotPost("/crm/v3/objects/contacts/search", token, {
-                filterGroups: [{ filters }],
+                filterGroups: filters.length > 0 ? [{ filters }] : [],
                 properties: [],
                 limit: 1,
               });
@@ -737,14 +740,12 @@ Deno.serve(async (req) => {
             }
           }));
         }
-        console.log(`Lifecycle EQ phase:`, lifecycleStagesAllTime.map(l => `${l.label}=${l.count}`).join(", "));
+        console.log(`Lifecycle EQ phase (all-time):`, lifecycleStagesAllTime.map(l => `${l.label}=${l.count}`).join(", "));
       } catch (e) {
         console.error("Lifecycle EQ phase error:", e);
       }
 
       // Phase B — paginated scan fallback if EQ returned unreliable results.
-      // Triggers when: all zeros, OR subscriber has data but every other stage is 0
-      // (EQ filter works for subscriber but silently fails for lead/mql/sql/etc.)
       const eqTotal = lifecycleStagesAllTime.reduce((s, l) => s + l.count, 0);
       const subscriberEq = lifecycleStagesAllTime.find(l => l.stage === "subscriber")?.count ?? 0;
       const lowerFunnelEq = eqTotal - subscriberEq;
@@ -756,11 +757,11 @@ Deno.serve(async (req) => {
         try {
           let scanAfter: string | undefined;
           let scanPage = 0;
-          const MAX_SCAN_PAGES = 100; // up to 10 000 contacts
+          const MAX_SCAN_PAGES = 100;
 
           while (scanPage < MAX_SCAN_PAGES) {
             const searchBody: any = {
-              filterGroups: baseFilters.length > 0 ? [{ filters: baseFilters }] : [],
+              filterGroups: allTimeFilters.length > 0 ? [{ filters: allTimeFilters }] : [],
               properties: ["lifecyclestage"],
               limit: 100,
             };
@@ -776,22 +777,20 @@ Deno.serve(async (req) => {
             else break;
           }
 
-          // Map whatever values HubSpot returns → our stage definitions
           const valueAliases: Record<string, string> = {
-            // standard lowercase keys
             subscriber: "subscriber",
             lead: "lead",
             marketingqualifiedlead: "marketingqualifiedlead",
             mql: "marketingqualifiedlead",
             "marketing qualified lead": "marketingqualifiedlead",
-            "121857152": "marketingqualifiedlead", // "Marketing Qualified Lead Plus" custom stage
+            "121857152": "marketingqualifiedlead",
             salesqualifiedlead: "salesqualifiedlead",
             sql: "salesqualifiedlead",
             "sales qualified lead": "salesqualifiedlead",
             opportunity: "opportunity",
             customer: "customer",
-            evangelist: "customer", // treat evangelist as customer for display
-            other: "lead",           // catch-all: count as lead
+            evangelist: "customer",
+            other: "lead",
           };
 
           for (const [rawStage, cnt] of Object.entries(stageCounts)) {
