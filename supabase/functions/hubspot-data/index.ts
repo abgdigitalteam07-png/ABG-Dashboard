@@ -809,37 +809,11 @@ Deno.serve(async (req) => {
         }
       }
 
-      // ── 4. State distribution — EQ queries using full state names ──
-      // HubSpot stores ip_state as full lowercase names ("california", "ohio").
-      // The search API does not return ip_state in result properties, so we use
-      // EQ filter queries (one per state) to get counts reliably.
-      try {
-        const stateEntries = Object.entries(STATE_FULL_NAMES); // [["CA","California"], ...]
-        for (let i = 0; i < stateEntries.length; i += 10) {
-          const batch = stateEntries.slice(i, i + 10);
-          await Promise.all(batch.map(async ([code, fullName]) => {
-            try {
-              const res = await hubspotPost("/crm/v3/objects/contacts/search", token, {
-                filterGroups: [{ filters: [
-                  ...baseFilters,
-                  { propertyName: "ip_state", operator: "EQ", value: fullName.toLowerCase() },
-                ]}],
-                properties: [],
-                limit: 1,
-              });
-              const count = res.total ?? 0;
-              if (count > 0) stateCounts[code] = count;
-            } catch (e) {
-              console.error(`  ip_state EQ ${code} error:`, e);
-            }
-          }));
-        }
+      // State distribution already collected during contacts scan above
+      {
         const knownCount = Object.values(stateCounts).reduce((a, b) => a + b, 0);
-        unknownStateCount = Math.max(0, totalContacts - knownCount);
-        console.log(`State EQ queries: ${knownCount} known, ${unknownStateCount} unknown`);
+        console.log(`State scan: ${knownCount} known, ${unknownStateCount} unknown`);
         console.log("State counts:", JSON.stringify(stateCounts));
-      } catch (e) {
-        console.error("Primary account state distribution error:", e);
       }
 
       // NOTE: all-time job title fetch removed — too many API calls risk timeout.
