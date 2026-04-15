@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { callFunction } from "@/lib/api-client";
 import { isAllowedDomain } from "@/lib/allowed-domains";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,10 +42,12 @@ export default function Login() {
     setSending(true);
 
     try {
-      const res = await callFunction("shared-login", { email: trimmed });
+      const { data: res, error: fnError } = await supabase.functions.invoke("shared-login", {
+        body: { email: trimmed },
+      });
 
-      if (!res?.session) {
-        const msg = res?.error || "Login failed. Please try again.";
+      if (fnError || !res?.session) {
+        const msg = res?.error || fnError?.message || "Login failed. Please try again.";
         setSending(false);
         setError(msg);
         return;
@@ -59,7 +60,7 @@ export default function Login() {
 
       if (setSessionError) {
         setSending(false);
-        setError("Sign-in failed. Please try again.");
+        setError(setSessionError.message || "Sign-in failed. Please try again.");
         return;
       }
 

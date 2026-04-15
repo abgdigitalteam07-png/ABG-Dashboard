@@ -110,6 +110,7 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo }: HubSpotCRMTabProps) {
 
   useEffect(() => {
     let cancelled = false;
+    setData(null);
     setLoading(true);
     setError(null);
     fetchHubSpotData(brand, dateFrom, dateTo)
@@ -138,9 +139,9 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo }: HubSpotCRMTabProps) {
     return map;
   }
 
-  // Use all-time lifecycle stages for the funnel cards (current snapshot, not date-filtered)
+  // Use date-filtered lifecycle stages for the funnel cards (contacts created in selected period)
   const marketingFunnelData = useMemo(() => {
-    const stages = data?.lifecycleStagesAllTime || data?.lifecycleStages;
+    const stages = data?.lifecycleStages || data?.lifecycleStagesAllTime;
     if (!stages) return [];
     const map = buildStageMap(stages);
     return MARKETING_FUNNEL_STAGES.map((key, i) => ({
@@ -156,7 +157,7 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo }: HubSpotCRMTabProps) {
   }, [data]);
 
   const salesFunnelData = useMemo(() => {
-    const stages = data?.lifecycleStagesAllTime || data?.lifecycleStages;
+    const stages = data?.lifecycleStages || data?.lifecycleStagesAllTime;
     if (!stages) return [];
     const map = buildStageMap(stages);
     return SALES_FUNNEL_STAGES.map((key, i) => ({
@@ -199,17 +200,6 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo }: HubSpotCRMTabProps) {
           <Skeleton className="mt-6 h-48 w-full rounded-lg" />
         </div>
         <Skeleton className="h-64 w-full rounded-2xl" />
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="p-6">
-        <div className="rounded-2xl border border-border bg-card p-6">
-          <h3 className="text-sm font-semibold text-foreground">HubSpot CRM data unavailable</h3>
-          <p className="mt-1 text-sm text-muted-foreground">{error}</p>
-        </div>
       </div>
     );
   }
