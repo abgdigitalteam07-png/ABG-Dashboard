@@ -121,7 +121,7 @@ export function USStateMap({ stateDistribution }: USStateMapProps) {
                     className="transition-colors duration-150 cursor-default"
                     style={{
                       filter: isHovered ? "brightness(0.85)" : undefined,
-                      opacity: count > 0 ? 1 : 0.6,
+                      opacity: count > 0 ? 1 : 0.45,
                     }}
                     onMouseMove={(e) => handleMouseMove(e, abbr)}
                     onMouseEnter={() => setHoveredState(abbr)}
