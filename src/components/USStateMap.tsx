@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { MapPin, MapPinOff } from "lucide-react";
 
 interface StateData {
@@ -10,7 +10,6 @@ interface USStateMapProps {
   stateDistribution: StateData[];
 }
 
-// US state abbreviations and names
 const STATE_NAMES: Record<string, string> = {
   AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California",
   CO: "Colorado", CT: "Connecticut", DE: "Delaware", FL: "Florida", GA: "Georgia",
@@ -25,37 +24,84 @@ const STATE_NAMES: Record<string, string> = {
   DC: "District of Columbia",
 };
 
-// Grid-based US state cartogram layout [row, col]
-const STATE_GRID: Record<string, [number, number]> = {
-  AK: [0, 0], ME: [0, 10],
-  WI: [1, 5], VT: [1, 9], NH: [1, 10],
-  WA: [2, 0], ID: [2, 1], MT: [2, 2], ND: [2, 3], MN: [2, 4], IL: [2, 5], MI: [2, 6], NY: [2, 8], MA: [2, 9], CT: [2, 10],
-  OR: [3, 0], NV: [3, 1], WY: [3, 2], SD: [3, 3], IA: [3, 4], IN: [3, 5], OH: [3, 6], PA: [3, 7], NJ: [3, 8], RI: [3, 9],
-  CA: [4, 0], UT: [4, 1], CO: [4, 2], NE: [4, 3], MO: [4, 4], KY: [4, 5], WV: [4, 6], VA: [4, 7], MD: [4, 8], DE: [4, 9],
-  AZ: [5, 1], NM: [5, 2], KS: [5, 3], AR: [5, 4], TN: [5, 5], NC: [5, 6], SC: [5, 7], DC: [5, 8],
-  OK: [6, 3], LA: [6, 4], MS: [6, 5], AL: [6, 6], GA: [6, 7],
-  HI: [7, 0], TX: [7, 3], FL: [7, 7],
+// Simplified US state paths (viewBox: 0 0 960 600)
+const STATE_PATHS: Record<string, string> = {
+  AL: "M628,426 L629,467 L631,488 L617,490 L616,479 L610,474 L612,426Z",
+  AK: "M161,485 L183,485 L183,493 L193,493 L193,485 L221,485 L221,525 L161,525Z",
+  AZ: "M205,410 L280,410 L280,490 L225,490 L205,460Z",
+  AR: "M555,410 L610,410 L612,455 L555,455Z",
+  CA: "M120,285 L165,285 L185,340 L195,410 L185,470 L125,470 L100,400 L110,340Z",
+  CO: "M290,310 L378,310 L378,380 L290,380Z",
+  CT: "M852,205 L876,195 L882,215 L858,225Z",
+  DE: "M820,300 L835,290 L838,315 L825,320Z",
+  FL: "M660,470 L720,450 L750,490 L730,535 L695,540 L670,510 L660,490Z",
+  GA: "M660,400 L710,400 L720,450 L660,470 L640,445Z",
+  HI: "M260,510 L300,510 L300,545 L260,545Z",
+  ID: "M215,155 L260,155 L265,260 L225,280 L210,240Z",
+  IL: "M578,255 L612,250 L618,350 L595,370 L575,355 L575,290Z",
+  IN: "M618,260 L652,260 L652,355 L618,360Z",
+  IA: "M510,240 L578,240 L578,300 L510,300Z",
+  KS: "M400,340 L500,340 L500,400 L400,400Z",
+  KY: "M620,345 L710,330 L715,365 L620,375Z",
+  LA: "M555,460 L610,460 L615,510 L580,520 L555,500Z",
+  ME: "M870,100 L895,100 L900,170 L875,180 L865,155Z",
+  MD: "M770,290 L820,280 L830,310 L805,320 L770,310Z",
+  MA: "M855,185 L895,175 L895,195 L855,200Z",
+  MI: "M610,155 L660,155 L665,200 L645,240 L610,245 L620,200Z M640,130 L680,115 L695,160 L660,170Z",
+  MN: "M478,115 L545,115 L545,210 L478,210Z",
+  MS: "M585,410 L615,410 L617,490 L585,490Z",
+  MO: "M510,310 L580,310 L595,370 L575,405 L530,405 L510,370Z",
+  MT: "M255,115 L378,115 L378,190 L255,190Z",
+  NE: "M378,275 L500,275 L500,335 L378,330Z",
+  NV: "M185,260 L225,260 L235,385 L195,410 L165,350Z",
+  NH: "M860,130 L878,125 L878,185 L860,190Z",
+  NJ: "M825,245 L845,235 L845,290 L830,300 L822,275Z",
+  NM: "M255,400 L350,400 L350,490 L255,490Z",
+  NY: "M760,155 L855,150 L855,230 L825,240 L800,225 L760,225Z",
+  NC: "M690,355 L800,340 L810,370 L730,390 L690,385Z",
+  ND: "M378,115 L478,115 L478,185 L378,185Z",
+  OH: "M652,255 L710,245 L715,325 L660,340 L652,305Z",
+  OK: "M380,395 L500,395 L505,425 L460,440 L400,440 L380,420Z",
+  OR: "M115,155 L215,155 L210,240 L145,255 L100,220Z",
+  PA: "M725,230 L822,220 L825,275 L730,290Z",
+  RI: "M872,200 L885,195 L887,215 L874,218Z",
+  SC: "M700,385 L750,375 L760,410 L720,425 L695,410Z",
+  SD: "M378,190 L478,190 L478,265 L378,270Z",
+  TN: "M600,370 L715,360 L720,395 L600,405Z",
+  TX: "M350,430 L460,430 L505,445 L510,530 L460,560 L400,540 L360,510 L350,460Z",
+  UT: "M235,285 L290,285 L290,385 L235,385Z",
+  VT: "M848,125 L862,120 L862,180 L848,185Z",
+  VA: "M710,310 L810,295 L815,340 L730,355 L700,345Z",
+  WA: "M130,80 L225,80 L225,155 L130,155Z",
+  WV: "M710,295 L745,290 L740,345 L715,355 L700,335Z",
+  WI: "M530,130 L595,130 L600,225 L530,235Z",
+  WY: "M280,195 L378,195 L378,285 L280,285Z",
+  DC: "M795,310 L805,305 L808,315 L798,318Z",
 };
 
 function getHeatColor(ratio: number): string {
-  if (ratio === 0) return "hsl(var(--muted))";
-  if (ratio < 0.15) return "hsl(210, 80%, 90%)";
-  if (ratio < 0.3) return "hsl(210, 80%, 75%)";
-  if (ratio < 0.5) return "hsl(220, 80%, 60%)";
-  if (ratio < 0.7) return "hsl(230, 75%, 50%)";
-  return "hsl(240, 70%, 40%)";
+  if (ratio === 0) return "#e2e8f0";
+  if (ratio < 0.1) return "#dbeafe";
+  if (ratio < 0.2) return "#bfdbfe";
+  if (ratio < 0.35) return "#93c5fd";
+  if (ratio < 0.5) return "#60a5fa";
+  if (ratio < 0.65) return "#3b82f6";
+  if (ratio < 0.8) return "#2563eb";
+  return "#1d4ed8";
 }
 
 function getTextColor(ratio: number): string {
-  return ratio >= 0.3 ? "white" : "hsl(var(--foreground))";
+  return ratio >= 0.35 ? "#ffffff" : "#334155";
 }
 
 export function USStateMap({ stateDistribution }: USStateMapProps) {
+  const [hoveredState, setHoveredState] = useState<string | null>(null);
+  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
+
   const { stateMap, knownCount, unknownCount, maxCount, topStates } = useMemo(() => {
     const map: Record<string, number> = {};
     let known = 0;
     let unknown = 0;
-
     for (const s of stateDistribution) {
       if (s.state === "UNKNOWN" || !STATE_NAMES[s.state]) {
         unknown += s.count;
@@ -64,17 +110,23 @@ export function USStateMap({ stateDistribution }: USStateMapProps) {
         known += s.count;
       }
     }
-
     const max = Math.max(...Object.values(map), 1);
     const top = Object.entries(map)
       .sort(([, a], [, b]) => b - a)
       .slice(0, 10)
       .map(([state, count]) => ({ state, name: STATE_NAMES[state], count }));
-
     return { stateMap: map, knownCount: known, unknownCount: unknown, maxCount: max, topStates: top };
   }, [stateDistribution]);
 
   const totalKnownAndUnknown = knownCount + unknownCount;
+
+  const handleMouseMove = (e: React.MouseEvent, abbr: string) => {
+    const rect = e.currentTarget.closest("svg")?.getBoundingClientRect();
+    if (rect) {
+      setTooltipPos({ x: e.clientX - rect.left, y: e.clientY - rect.top - 10 });
+    }
+    setHoveredState(abbr);
+  };
 
   return (
     <div className="space-y-5">
@@ -100,57 +152,74 @@ export function USStateMap({ stateDistribution }: USStateMapProps) {
         </div>
       </div>
 
-      {/* Grid map */}
+      {/* SVG Map */}
       {knownCount > 0 && (
         <div className="rounded-2xl border border-border bg-card p-6">
           <h3 className="mb-1 text-sm font-semibold text-foreground">Contact Distribution by State</h3>
           <p className="mb-5 text-xs text-muted-foreground">Heat map based on IP state/region — darker = more contacts</p>
 
-          <div className="overflow-x-auto">
-            <div
-              className="mx-auto grid gap-1"
-              style={{
-                gridTemplateColumns: "repeat(11, minmax(38px, 1fr))",
-                gridTemplateRows: "repeat(8, 38px)",
-                maxWidth: 520,
-              }}
+          <div className="relative overflow-hidden">
+            <svg
+              viewBox="80 70 840 490"
+              className="w-full h-auto"
+              style={{ maxHeight: 420 }}
+              onMouseLeave={() => setHoveredState(null)}
             >
-              {Object.entries(STATE_GRID).map(([abbr, [row, col]]) => {
+              {Object.entries(STATE_PATHS).map(([abbr, path]) => {
                 const count = stateMap[abbr] || 0;
                 const ratio = count / maxCount;
+                const isHovered = hoveredState === abbr;
                 return (
-                  <div
+                  <path
                     key={abbr}
-                    className="relative flex flex-col items-center justify-center rounded-md text-[10px] font-bold transition-all hover:scale-110 hover:z-10 hover:shadow-md cursor-default"
+                    d={path}
+                    fill={getHeatColor(ratio)}
+                    stroke={isHovered ? "#1e293b" : "#94a3b8"}
+                    strokeWidth={isHovered ? 2 : 0.75}
+                    className="transition-all duration-150 cursor-default"
                     style={{
-                      gridRow: row + 1,
-                      gridColumn: col + 1,
-                      backgroundColor: getHeatColor(ratio),
-                      color: getTextColor(ratio),
+                      filter: isHovered ? "brightness(0.9)" : undefined,
+                      opacity: isHovered ? 1 : count > 0 ? 1 : 0.7,
                     }}
-                    title={`${STATE_NAMES[abbr]}: ${count.toLocaleString()} contacts`}
-                  >
-                    {abbr}
-                    {count > 0 && (
-                      <span className="text-[7px] font-medium opacity-80 leading-none">
-                        {count > 999 ? `${(count / 1000).toFixed(1)}k` : count}
-                      </span>
-                    )}
-                  </div>
+                    onMouseMove={(e) => handleMouseMove(e, abbr)}
+                    onMouseEnter={() => setHoveredState(abbr)}
+                  />
                 );
               })}
-            </div>
+            </svg>
+
+            {/* Tooltip */}
+            {hoveredState && (
+              <div
+                className="pointer-events-none absolute z-50 rounded-lg border border-border bg-card px-3 py-2 shadow-xl text-xs"
+                style={{
+                  left: tooltipPos.x,
+                  top: tooltipPos.y,
+                  transform: "translate(-50%, -100%)",
+                }}
+              >
+                <p className="font-bold text-foreground">{STATE_NAMES[hoveredState]} ({hoveredState})</p>
+                <p className="text-muted-foreground">
+                  {(stateMap[hoveredState] || 0).toLocaleString()} contacts
+                  {totalKnownAndUnknown > 0 && (
+                    <span className="ml-1">
+                      ({(((stateMap[hoveredState] || 0) / totalKnownAndUnknown) * 100).toFixed(1)}%)
+                    </span>
+                  )}
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Legend */}
           <div className="mt-4 flex items-center justify-center gap-2 text-[10px] text-muted-foreground">
             <span>Fewer</span>
             <div className="flex gap-0.5">
-              {[0, 0.15, 0.3, 0.5, 0.7, 1].map((r) => (
+              {[0.05, 0.15, 0.3, 0.5, 0.7, 0.9].map((r) => (
                 <div
                   key={r}
                   className="h-3 w-6 rounded-sm"
-                  style={{ backgroundColor: getHeatColor(r === 0 ? 0.01 : r) }}
+                  style={{ backgroundColor: getHeatColor(r) }}
                 />
               ))}
             </div>
