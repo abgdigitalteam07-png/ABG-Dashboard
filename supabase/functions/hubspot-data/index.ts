@@ -461,7 +461,7 @@ Deno.serve(async (req) => {
     const contactsByDate: Record<string, { total: number; hubspot: number; salesforce: number; import: number }> = {};
     const jobTitleCounts: Record<string, number> = {};
 
-    // State full names (ip_state values) → 2-letter codes used by the map
+    // State full names (HubSpot state/ip_state values) → 2-letter codes used by the map
     const STATE_FULL_NAMES: Record<string, string> = {
       AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California",
       CO: "Colorado", CT: "Connecticut", DE: "Delaware", FL: "Florida", GA: "Georgia",
@@ -475,13 +475,26 @@ Deno.serve(async (req) => {
       VA: "Virginia", WA: "Washington", WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming",
       DC: "District of Columbia",
     };
-    // Reverse map: lowercase full name → 2-letter code
     const STATE_NAME_TO_CODE: Record<string, string> = {};
     for (const [code, name] of Object.entries(STATE_FULL_NAMES)) {
       STATE_NAME_TO_CODE[name.toLowerCase()] = code;
     }
     const STATE_CODES = Object.keys(STATE_FULL_NAMES);
     const STATE_CODE_SET = new Set(STATE_CODES);
+
+    function normalizeStateCode(...values: Array<string | null | undefined>): string {
+      for (const value of values) {
+        const trimmed = (value || "").trim();
+        if (!trimmed) continue;
+
+        const upper = trimmed.toUpperCase();
+        if (STATE_CODE_SET.has(upper)) return upper;
+
+        const mapped = STATE_NAME_TO_CODE[trimmed.toLowerCase()];
+        if (mapped) return mapped;
+      }
+      return "";
+    }
 
     function countContactAnalytics(props: Record<string, any>) {
       const createDate = props.createdate;

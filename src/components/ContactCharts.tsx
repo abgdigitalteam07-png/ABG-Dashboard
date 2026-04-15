@@ -267,12 +267,9 @@ export function ContactCharts({
           stateDistribution={
             externalStateDistribution && externalStateDistribution.length > 0
               ? externalStateDistribution
-              : stateDistribution.length > 0
-                ? stateDistribution
-                : totalContacts > 0
-                  ? [{ state: "UNKNOWN", count: totalContacts }]
-                  : []
+              : stateDistribution
           }
+          unknownCount={externalUnknownStateCount ?? 0}
         />
       )}
 

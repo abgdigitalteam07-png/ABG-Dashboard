@@ -9,41 +9,17 @@ interface StateData {
 
 interface USStateMapProps {
   stateDistribution: StateData[];
+  unknownCount?: number;
 }
-
-const STATE_NAMES: Record<string, string> = {
-  AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California",
-  CO: "Colorado", CT: "Connecticut", DE: "Delaware", FL: "Florida", GA: "Georgia",
-  HI: "Hawaii", ID: "Idaho", IL: "Illinois", IN: "Indiana", IA: "Iowa",
-  KS: "Kansas", KY: "Kentucky", LA: "Louisiana", ME: "Maine", MD: "Maryland",
-  MA: "Massachusetts", MI: "Michigan", MN: "Minnesota", MS: "Mississippi", MO: "Missouri",
-  MT: "Montana", NE: "Nebraska", NV: "Nevada", NH: "New Hampshire", NJ: "New Jersey",
-  NM: "New Mexico", NY: "New York", NC: "North Carolina", ND: "North Dakota", OH: "Ohio",
-  OK: "Oklahoma", OR: "Oregon", PA: "Pennsylvania", RI: "Rhode Island", SC: "South Carolina",
-  SD: "South Dakota", TN: "Tennessee", TX: "Texas", UT: "Utah", VT: "Vermont",
-  VA: "Virginia", WA: "Washington", WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming",
-  DC: "District of Columbia",
-};
-
-function getHeatColor(ratio: number): string {
-  if (ratio === 0) return "#cbd5e1";
-  if (ratio < 0.1) return "#dbeafe";
-  if (ratio < 0.2) return "#bfdbfe";
-  if (ratio < 0.35) return "#93c5fd";
-  if (ratio < 0.5) return "#60a5fa";
-  if (ratio < 0.65) return "#3b82f6";
-  if (ratio < 0.8) return "#2563eb";
-  return "#1d4ed8";
-}
-
-export function USStateMap({ stateDistribution }: USStateMapProps) {
+...
+export function USStateMap({ stateDistribution, unknownCount = 0 }: USStateMapProps) {
   const [hoveredState, setHoveredState] = useState<string | null>(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
 
-  const { stateMap, knownCount, unknownCount, maxCount, topStates } = useMemo(() => {
+  const { stateMap, knownCount, totalUnknownCount, maxCount, topStates } = useMemo(() => {
     const map: Record<string, number> = {};
     let known = 0;
-    let unknown = 0;
+    let unknown = unknownCount;
     for (const s of stateDistribution) {
       if (s.state === "UNKNOWN" || !STATE_NAMES[s.state]) {
         unknown += s.count;
@@ -57,39 +33,13 @@ export function USStateMap({ stateDistribution }: USStateMapProps) {
       .sort(([, a], [, b]) => b - a)
       .slice(0, 10)
       .map(([state, count]) => ({ state, name: STATE_NAMES[state], count }));
-    return { stateMap: map, knownCount: known, unknownCount: unknown, maxCount: max, topStates: top };
-  }, [stateDistribution]);
+    return { stateMap: map, knownCount: known, totalUnknownCount: unknown, maxCount: max, topStates: top };
+  }, [stateDistribution, unknownCount]);
 
-  const totalKnownAndUnknown = knownCount + unknownCount;
-
-  const handleMouseMove = (e: React.MouseEvent, abbr: string) => {
-    const rect = e.currentTarget.closest("svg")?.getBoundingClientRect();
-    if (rect) {
-      setTooltipPos({ x: e.clientX - rect.left, y: e.clientY - rect.top - 10 });
-    }
-    setHoveredState(abbr);
-  };
-
-  return (
-    <div className="space-y-5">
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 gap-4">
-        <div className="flex items-center gap-3 rounded-2xl border border-border bg-card p-5">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15">
-            <MapPin className="h-5 w-5 text-emerald-600" />
-          </div>
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Known States</p>
-            <p className="text-2xl font-bold tabular-nums text-foreground">{knownCount.toLocaleString()}</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3 rounded-2xl border border-border bg-card p-5">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-500/15">
-            <MapPinOff className="h-5 w-5 text-orange-600" />
-          </div>
-          <div>
+  const totalKnownAndUnknown = knownCount + totalUnknownCount;
+...
             <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Unknown States</p>
-            <p className="text-2xl font-bold tabular-nums text-foreground">{unknownCount.toLocaleString()}</p>
+            <p className="text-2xl font-bold tabular-nums text-foreground">{totalUnknownCount.toLocaleString()}</p>
           </div>
         </div>
       </div>
