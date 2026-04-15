@@ -644,6 +644,7 @@ Deno.serve(async (req) => {
               "hs_analytics_source",
               "hs_analytics_source_data_1",
               "jobtitle",
+              "ip_state",
             ],
             sorts: [{ propertyName: "createdate", direction: "ASCENDING" }],
             limit: 100,
@@ -659,6 +660,22 @@ Deno.serve(async (req) => {
             const stage = (props.lifecyclestage || "").toLowerCase().trim();
             const match = lifecycleStages.find((ls) => ls.stage === stage);
             if (match) match.count++;
+
+            // Collect state from ip_state property
+            const rawState = (props.ip_state || "").trim();
+            if (rawState) {
+              let code = rawState.toUpperCase();
+              if (!STATE_CODE_SET.has(code)) {
+                code = STATE_NAME_TO_CODE[rawState.toLowerCase()] || "";
+              }
+              if (code && STATE_CODE_SET.has(code)) {
+                stateCounts[code] = (stateCounts[code] || 0) + 1;
+              } else {
+                unknownStateCount++;
+              }
+            } else {
+              unknownStateCount++;
+            }
           }
 
           if (res.paging?.next?.after) after = res.paging.next.after;
