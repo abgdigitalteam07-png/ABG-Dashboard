@@ -26,7 +26,7 @@ const STATE_NAMES: Record<string, string> = {
 };
 
 function getHeatColor(ratio: number): string {
-  if (ratio === 0) return "#e2e8f0";
+  if (ratio === 0) return "#cbd5e1";
   if (ratio < 0.1) return "#dbeafe";
   if (ratio < 0.2) return "#bfdbfe";
   if (ratio < 0.35) return "#93c5fd";
