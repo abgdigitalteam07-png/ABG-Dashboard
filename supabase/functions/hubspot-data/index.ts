@@ -689,7 +689,6 @@ Deno.serve(async (req) => {
             } else {
               unknownStateCount++;
             }
-            }
           }
 
           if (res.paging?.next?.after) after = res.paging.next.after;
