@@ -26,7 +26,7 @@ const STATE_NAMES: Record<string, string> = {
 };
 
 function getHeatColor(ratio: number): string {
-  if (ratio === 0) return "#e2e8f0";
+  if (ratio === 0) return "#cbd5e1";
   if (ratio < 0.1) return "#dbeafe";
   if (ratio < 0.2) return "#bfdbfe";
   if (ratio < 0.35) return "#93c5fd";
@@ -121,7 +121,7 @@ export function USStateMap({ stateDistribution }: USStateMapProps) {
                     className="transition-colors duration-150 cursor-default"
                     style={{
                       filter: isHovered ? "brightness(0.85)" : undefined,
-                      opacity: count > 0 ? 1 : 0.6,
+                      opacity: count > 0 ? 1 : 0.45,
                     }}
                     onMouseMove={(e) => handleMouseMove(e, abbr)}
                     onMouseEnter={() => setHoveredState(abbr)}
