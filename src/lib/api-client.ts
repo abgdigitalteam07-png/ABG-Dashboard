@@ -1,9 +1,8 @@
 import { Brand } from "./brands";
 import { generateGA4Data, generateGSCData } from "./mock-data";
 
-const FUNCTIONS_URL = "https://ffxhonryhaadyudpopvv.supabase.co/functions/v1";
-const ANON_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZmeGhvbnJ5aGFhZHl1ZHBvcHZ2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3Njg4MTMsImV4cCI6MjA4OTM0NDgxM30.Gt9yIzAU_ZmgZhmfDTJioHvMwdUkawtTm7tyrygiHEo";
+const FUNCTIONS_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`;
+const ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
 async function callFunction(name: string, body: any) {
   const res = await fetch(`${FUNCTIONS_URL}/${name}`, {

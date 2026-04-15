@@ -461,7 +461,7 @@ Deno.serve(async (req) => {
     const contactsByDate: Record<string, { total: number; hubspot: number; salesforce: number; import: number }> = {};
     const jobTitleCounts: Record<string, number> = {};
 
-    // State full names (ip_state values) → 2-letter codes used by the map
+    // State full names (HubSpot state/ip_state values) → 2-letter codes used by the map
     const STATE_FULL_NAMES: Record<string, string> = {
       AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California",
       CO: "Colorado", CT: "Connecticut", DE: "Delaware", FL: "Florida", GA: "Georgia",
@@ -475,13 +475,26 @@ Deno.serve(async (req) => {
       VA: "Virginia", WA: "Washington", WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming",
       DC: "District of Columbia",
     };
-    // Reverse map: lowercase full name → 2-letter code
     const STATE_NAME_TO_CODE: Record<string, string> = {};
     for (const [code, name] of Object.entries(STATE_FULL_NAMES)) {
       STATE_NAME_TO_CODE[name.toLowerCase()] = code;
     }
     const STATE_CODES = Object.keys(STATE_FULL_NAMES);
     const STATE_CODE_SET = new Set(STATE_CODES);
+
+    function normalizeStateCode(...values: Array<string | null | undefined>): string {
+      for (const value of values) {
+        const trimmed = (value || "").trim();
+        if (!trimmed) continue;
+
+        const upper = trimmed.toUpperCase();
+        if (STATE_CODE_SET.has(upper)) return upper;
+
+        const mapped = STATE_NAME_TO_CODE[trimmed.toLowerCase()];
+        if (mapped) return mapped;
+      }
+      return "";
+    }
 
     function countContactAnalytics(props: Record<string, any>) {
       const createDate = props.createdate;
@@ -531,6 +544,9 @@ Deno.serve(async (req) => {
               "brands",
               "lifecyclestage",
               "ip_state",
+              "ip_state_code",
+              "state",
+              "hs_state",
               "hs_object_source",
               "hs_object_source_detail_1",
               "hs_analytics_source",
@@ -564,10 +580,13 @@ Deno.serve(async (req) => {
           const match = lifecycleStages.find(ls => ls.stage === stage);
           if (match) match.count++;
           countContactAnalytics(props);
-          // ip_state stores 2-letter codes (e.g. "IL", "OH") — use directly
-          const stateCode = (props.ip_state || "").trim().toUpperCase();
-          if (STATE_CODE_SET.has(stateCode)) { stateCounts[stateCode] = (stateCounts[stateCode] || 0) + 1; }
-          else { unknownStateCount++; }
+
+          const stateCode = normalizeStateCode(props.ip_state_code, props.ip_state, props.state, props.hs_state);
+          if (stateCode) {
+            stateCounts[stateCode] = (stateCounts[stateCode] || 0) + 1;
+          } else {
+            unknownStateCount++;
+          }
         }
         console.log(`Secondary account: ${totalContacts} contacts for "${brandName}" in date range`);
 
@@ -645,6 +664,9 @@ Deno.serve(async (req) => {
               "hs_analytics_source_data_1",
               "jobtitle",
               "ip_state",
+              "ip_state_code",
+              "state",
+              "hs_state",
             ],
             sorts: [{ propertyName: "createdate", direction: "ASCENDING" }],
             limit: 100,
@@ -661,18 +683,9 @@ Deno.serve(async (req) => {
             const match = lifecycleStages.find((ls) => ls.stage === stage);
             if (match) match.count++;
 
-            // Collect state from ip_state property
-            const rawState = (props.ip_state || "").trim();
-            if (rawState) {
-              let code = rawState.toUpperCase();
-              if (!STATE_CODE_SET.has(code)) {
-                code = STATE_NAME_TO_CODE[rawState.toLowerCase()] || "";
-              }
-              if (code && STATE_CODE_SET.has(code)) {
-                stateCounts[code] = (stateCounts[code] || 0) + 1;
-              } else {
-                unknownStateCount++;
-              }
+            const stateCode = normalizeStateCode(props.ip_state_code, props.ip_state, props.state, props.hs_state);
+            if (stateCode) {
+              stateCounts[stateCode] = (stateCounts[stateCode] || 0) + 1;
             } else {
               unknownStateCount++;
             }
