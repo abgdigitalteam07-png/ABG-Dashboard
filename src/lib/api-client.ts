@@ -1,8 +1,9 @@
 import { Brand } from "./brands";
 import { generateGA4Data, generateGSCData } from "./mock-data";
+import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from "@/integrations/supabase/client";
 
-const FUNCTIONS_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1`;
-const ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+const FUNCTIONS_URL = `${SUPABASE_URL}/functions/v1`;
+const ANON_KEY = SUPABASE_PUBLISHABLE_KEY;
 
 async function callFunction(name: string, body: any) {
   const res = await fetch(`${FUNCTIONS_URL}/${name}`, {
