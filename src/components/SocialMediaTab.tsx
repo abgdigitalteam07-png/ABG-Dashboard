@@ -15,7 +15,7 @@ import {
   ExternalLink, HelpCircle, Users, Eye, MousePointer, Activity, BarChart2, Share2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { AIRecommendations } from "./AIRecommendations";
+
 import { format, parseISO, startOfWeek, startOfMonth, startOfDay, startOfQuarter,
   addDays, addWeeks, addMonths, isBefore, isEqual } from "date-fns";
 

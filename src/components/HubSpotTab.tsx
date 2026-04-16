@@ -21,7 +21,7 @@ import {
 } from "date-fns";
 import { EmailPreviewModal } from "@/components/EmailPreviewModal";
 import { Button } from "@/components/ui/button";
-import { AIRecommendations } from "./AIRecommendations";
+
 
 interface HubSpotTabProps {
   brand: Brand;
