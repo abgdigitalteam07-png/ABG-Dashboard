@@ -593,6 +593,19 @@ Deno.serve(async (req) => {
           // Validation: log per-year breakdown so we can cross-check against HubSpot property settings
           years.forEach((y, i) => { if (yearCounts[i] > 0) console.log(`  ${y}: ${yearCounts[i]}`); });
           console.log(`Secondary all-time total for "${brandName}": ${totalContactsAllTime}`);
+
+          // Wide date range (> 365 days): HubSpot's search index returns 0 for a single GTE/LTE
+          // query spanning multiple years. Reuse the year-by-year counts already computed above
+          // to derive an accurate in-period total — no extra API calls needed.
+          const dateSpanDays = (endMs - startMs) / 86400000;
+          if (dateSpanDays > 365) {
+            const periodStartYear = new Date(startMs).getFullYear();
+            const periodEndYear = new Date(endMs).getFullYear();
+            totalContacts = years.reduce((sum, year, i) => {
+              return year >= periodStartYear && year <= periodEndYear ? sum + yearCounts[i] : sum;
+            }, 0);
+            console.log(`Wide range (${periodStartYear}–${periodEndYear}): period total = ${totalContacts}`);
+          }
         }
 
         // ── 2. All-time lifecycle stage counts (6 parallel count queries) ──
@@ -641,7 +654,9 @@ Deno.serve(async (req) => {
 
           const res = await hubspotPost("/crm/v3/objects/contacts/search", token, searchBody);
           // Use res.total from first page for the period count (accurate, no need to count manually)
-          if (!after) totalContacts = res.total ?? 0;
+          // Only use res.total for short date ranges — wide ranges already have an
+          // accurate totalContacts from the year-by-year computation above.
+          if (!after && totalContacts === 0) totalContacts = res.total ?? 0;
 
           for (const c of (res.results || [])) {
             const props = c.properties || {};
