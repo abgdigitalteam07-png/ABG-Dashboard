@@ -1,4 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
+import { useMinLoader } from "@/hooks/useMinLoader";
+import { WaterFillLoader } from "@/components/WaterFillLoader";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, AreaChart, Area, Legend,
@@ -201,6 +203,7 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const showLoader = useMinLoader(loading);
   const [chartType, setChartType] = useState<ChartType>("area");
   const [granularity, setGranularity] = useState<Granularity>("week");
   const [previewEmail, setPreviewEmail] = useState<any>(null);
@@ -351,29 +354,8 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
     return d.emails.slice(start, start + PAGE_SIZE);
   }, [d, currentPage, showAll]);
 
-  if (loading) {
-    return (
-      <div className="space-y-6 p-6">
-        <div className="flex items-center gap-3">
-          <Skeleton className="h-8 w-8 rounded-lg" />
-          <Skeleton className="h-5 w-40" />
-          <div className="flex-1 border-t border-border" />
-        </div>
-        <div className="grid grid-cols-2 gap-3 lg:flex lg:items-center lg:gap-0">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="flex items-center gap-2 lg:flex-1">
-              {i > 0 && <ArrowRight className="h-5 w-5 text-muted-foreground hidden lg:block" />}
-              <div className="flex-1 rounded-2xl border border-border bg-card p-5">
-                <Skeleton className="h-3 w-20 rounded" />
-                <Skeleton className="mt-3 h-8 w-24 rounded" />
-              </div>
-            </div>
-          ))}
-        </div>
-        <Skeleton className="h-80 w-full rounded-2xl" />
-        <Skeleton className="h-64 w-full rounded-2xl" />
-      </div>
-    );
+  if (showLoader) {
+    return <WaterFillLoader fullScreen={false} message="Loading emails…" />;
   }
 
   if (!d) return null;

@@ -1,4 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
+import { useMinLoader } from "@/hooks/useMinLoader";
+import { WaterFillLoader } from "@/components/WaterFillLoader";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, LineChart, Line,
@@ -129,6 +131,7 @@ export function PerformanceTab({ brand, dateFrom, dateTo }: PerformanceTabProps)
   const [ga4, setGa4] = useState<any>(null);
   const [gsc, setGsc] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const showLoader = useMinLoader(loading);
 
   useEffect(() => {
     let cancelled = false;
@@ -184,6 +187,10 @@ export function PerformanceTab({ brand, dateFrom, dateTo }: PerformanceTabProps)
         <p className="mt-1 text-xs text-muted-foreground">This brand is HubSpot-only.</p>
       </div>
     );
+  }
+
+  if (showLoader) {
+    return <WaterFillLoader fullScreen={false} message="Loading analytics…" />;
   }
 
   const axisStyle = { fontSize: 11, fill: "hsl(var(--muted-foreground))" };

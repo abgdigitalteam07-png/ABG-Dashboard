@@ -1,4 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
+import { useMinLoader } from "@/hooks/useMinLoader";
+import { WaterFillLoader } from "@/components/WaterFillLoader";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   AreaChart, Area, Legend, Cell,
@@ -194,6 +196,7 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const showLoader = useMinLoader(loading);
   const [platformFilter, setPlatformFilter] = useState<"all" | "facebook" | "instagram" | "linkedin">("all");
   const [sortKey, setSortKey] = useState<string>("publishedAt");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
@@ -334,24 +337,8 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
     );
   }
 
-  if (loading) {
-    return (
-      <div className="space-y-6 p-6">
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="rounded-2xl border border-border bg-card p-5">
-              <div className="flex items-center justify-between">
-                <Skeleton className="h-10 w-10 rounded-xl" />
-                <Skeleton className="h-5 w-16 rounded-full" />
-              </div>
-              <Skeleton className="mt-4 h-7 w-24" />
-              <Skeleton className="mt-1.5 h-3.5 w-16" />
-            </div>
-          ))}
-        </div>
-        <Skeleton className="h-64 w-full rounded-2xl" />
-      </div>
-    );
+  if (showLoader) {
+    return <WaterFillLoader fullScreen={false} message="Loading social media…" />;
   }
 
   if (error) {

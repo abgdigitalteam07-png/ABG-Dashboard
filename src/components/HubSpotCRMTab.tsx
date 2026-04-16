@@ -1,4 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
+import { useMinLoader } from "@/hooks/useMinLoader";
+import { WaterFillLoader } from "@/components/WaterFillLoader";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
@@ -107,6 +109,7 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo }: HubSpotCRMTabProps) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const showLoader = useMinLoader(loading);
 
   useEffect(() => {
     let cancelled = false;
@@ -175,33 +178,8 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo }: HubSpotCRMTabProps) {
   const axisStyle = { fontSize: 11, fill: "hsl(var(--muted-foreground))" };
   const gridColor = "hsl(var(--border))";
 
-  if (loading) {
-    return (
-      <div className="space-y-8 p-6">
-        <div className="flex items-center gap-3">
-          <Skeleton className="h-8 w-8 rounded-lg" />
-          <Skeleton className="h-5 w-48" />
-          <div className="flex-1 border-t border-border" />
-        </div>
-        <div className="rounded-2xl border border-border bg-card p-6">
-          <Skeleton className="h-4 w-48 mb-2" />
-          <Skeleton className="h-3 w-64 mb-6" />
-          <div className="flex gap-4">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="flex items-center gap-3 flex-1">
-                {i > 0 && <ArrowRight className="h-5 w-5 text-muted-foreground" />}
-                <div className="flex-1 rounded-2xl border border-border p-5">
-                  <Skeleton className="h-3 w-20" />
-                  <Skeleton className="mt-3 h-8 w-16" />
-                </div>
-              </div>
-            ))}
-          </div>
-          <Skeleton className="mt-6 h-48 w-full rounded-lg" />
-        </div>
-        <Skeleton className="h-64 w-full rounded-2xl" />
-      </div>
-    );
+  if (showLoader) {
+    return <WaterFillLoader fullScreen={false} message="Loading CRM data…" />;
   }
 
   if (!data) return null;
