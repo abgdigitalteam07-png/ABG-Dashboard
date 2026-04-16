@@ -8,7 +8,7 @@ interface TabNavProps {
 
 export function TabNav({ tabs, activeTab, onTabChange }: TabNavProps) {
   return (
-    <nav className="sticky top-0 z-30 flex gap-8 border-b border-border bg-card px-6">
+    <nav className="flex gap-8 border-b border-border bg-card px-6">
       {tabs.map((tab) => (
         <button
           key={tab.id}

@@ -26,7 +26,7 @@ export function DashboardHeader({
 }: DashboardHeaderProps) {
   return (
     <header
-      className="sticky top-0 z-50 bg-primary px-6 relative"
+      className="bg-primary px-6 relative"
       style={{ padding: "24px 24px 20px 24px", minHeight: "120px" }}
     >
       <div className="flex items-center justify-between h-full">
