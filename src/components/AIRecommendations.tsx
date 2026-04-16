@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import {
-  Sparkles,
+  ChevronDown,
   ChevronDown,
   ChevronUp,
   CheckCircle2,
