@@ -15,7 +15,7 @@ import {
   Activity, Globe, BarChart2, Percent,
 } from "lucide-react";
 import { TrafficAcquisitionTable } from "./TrafficAcquisitionTable";
-
+import { AIRecommendations } from "./AIRecommendations";
 import { format } from "date-fns";
 
 interface PerformanceTabProps {
