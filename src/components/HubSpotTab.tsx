@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useMinLoader } from "@/hooks/useMinLoader";
+import { useFirstLoad } from "@/hooks/useFirstLoad";
 import { WaterFillLoader } from "@/components/WaterFillLoader";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -203,7 +203,7 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const showLoader = useMinLoader(loading);
+  const showLoader = useFirstLoad(loading);
   const [chartType, setChartType] = useState<ChartType>("area");
   const [granularity, setGranularity] = useState<Granularity>("week");
   const [previewEmail, setPreviewEmail] = useState<any>(null);

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useMinLoader } from "@/hooks/useMinLoader";
+import { useFirstLoad } from "@/hooks/useFirstLoad";
 import { WaterFillLoader } from "@/components/WaterFillLoader";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -131,7 +131,7 @@ export function PerformanceTab({ brand, dateFrom, dateTo }: PerformanceTabProps)
   const [ga4, setGa4] = useState<any>(null);
   const [gsc, setGsc] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const showLoader = useMinLoader(loading);
+  const showLoader = useFirstLoad(loading);
 
   useEffect(() => {
     let cancelled = false;

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useMinLoader } from "@/hooks/useMinLoader";
+import { useFirstLoad } from "@/hooks/useFirstLoad";
 import { WaterFillLoader } from "@/components/WaterFillLoader";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -196,7 +196,7 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const showLoader = useMinLoader(loading);
+  const showLoader = useFirstLoad(loading);
   const [platformFilter, setPlatformFilter] = useState<"all" | "facebook" | "instagram" | "linkedin">("all");
   const [sortKey, setSortKey] = useState<string>("publishedAt");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");

@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { WaterFillLoader } from "./WaterFillLoader";
-import { useMinLoader } from "@/hooks/useMinLoader";
 
 interface AuthGuardProps {
   children: React.ReactNode;
@@ -12,7 +11,6 @@ export function AuthGuard({ children }: AuthGuardProps) {
   const [loading, setLoading] = useState(true);
   const [authenticated, setAuthenticated] = useState(false);
   const [timedOut, setTimedOut] = useState(false);
-  const showLoader = useMinLoader(loading);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -95,7 +93,7 @@ export function AuthGuard({ children }: AuthGuardProps) {
     };
   }, [navigate]);
 
-  if (showLoader) {
+  if (loading) {
     return (
       <div className="relative">
         <WaterFillLoader message="Loading dashboard…" fullScreen={true} />

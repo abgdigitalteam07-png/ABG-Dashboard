@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useMinLoader } from "@/hooks/useMinLoader";
+import { useFirstLoad } from "@/hooks/useFirstLoad";
 import { WaterFillLoader } from "@/components/WaterFillLoader";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
@@ -109,7 +109,7 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo }: HubSpotCRMTabProps) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const showLoader = useMinLoader(loading);
+  const showLoader = useFirstLoad(loading);
 
   useEffect(() => {
     let cancelled = false;
