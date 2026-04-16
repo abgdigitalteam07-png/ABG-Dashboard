@@ -1,7 +1,6 @@
 import { useState, useMemo } from "react";
 import {
   ChevronDown,
-  ChevronDown,
   ChevronUp,
   CheckCircle2,
   AlertTriangle,
