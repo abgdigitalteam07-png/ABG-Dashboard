@@ -85,6 +85,30 @@ Deno.serve(async (req) => {
 
     console.log(`Fetching contacts for brand="${brandName}" account=${isSecondary ? "secondary" : "primary"} buId="${buId}" from ${startDate} to ${endDate}`);
 
+    // Resolve the correct internal option value for the "brands" property (secondary account only).
+    // CONTAINS_TOKEN matches the internal value, not the display label — these can differ.
+    let brandTokenValue = brandName;
+    if (isSecondary) {
+      try {
+        const propDef = await fetch(`https://api.hubapi.com/crm/v3/properties/contacts/brands`, {
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        }).then(r => r.json());
+        const options: any[] = propDef.options || [];
+        const match = options.find((opt: any) =>
+          (opt.label || "").toLowerCase() === brandName.toLowerCase() ||
+          (opt.value || "").toLowerCase() === brandName.toLowerCase()
+        );
+        if (match) {
+          brandTokenValue = match.value;
+          console.log(`Resolved brand token for "${brandName}": "${brandTokenValue}"`);
+        } else {
+          console.warn(`No option match for "${brandName}". Available: ${options.map((o: any) => `${o.label}=${o.value}`).join(", ")}`);
+        }
+      } catch (e) {
+        console.warn("Could not fetch brands property definition:", e);
+      }
+    }
+
     // ── 1. New contacts over time ──
     const contactsByDate: Record<string, { total: number; hubspot: number; salesforce: number }> = {};
     const jobTitleCounts: Record<string, number> = {};
@@ -102,7 +126,7 @@ Deno.serve(async (req) => {
 
       if (isSecondary) {
         // Secondary account: filter by "brands" multi-select property server-side
-        filters.push({ propertyName: "brands", operator: "CONTAINS_TOKEN", value: brandName });
+        filters.push({ propertyName: "brands", operator: "CONTAINS_TOKEN", value: brandTokenValue });
       } else if (buId && buId !== "0") {
         // Primary account: filter by business unit ID
         filters.push({ propertyName: "hs_all_assigned_business_unit_ids", operator: "CONTAINS_TOKEN", value: buId });

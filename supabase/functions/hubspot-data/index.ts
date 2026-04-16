@@ -534,9 +534,29 @@ Deno.serve(async (req) => {
     }
 
     if (isSecondary) {
-      // Secondary account: use CONTAINS_TOKEN filter on the "brands" multi-select property.
-      // This lets HubSpot do the filtering server-side — no need to fetch all contacts and filter in code.
-      const brandFilter = { propertyName: "brands", operator: "CONTAINS_TOKEN", value: brandName };
+      // Secondary account: filter by "brands" multi-select property using CONTAINS_TOKEN.
+      // CONTAINS_TOKEN matches the internal option *value* (not the display label), so we first
+      // fetch the property definition to resolve the correct internal value for this brand.
+      // If the lookup fails, fall back to the raw brand name (works when value === label).
+      let brandTokenValue = brandName;
+      try {
+        const propDef = await hubspotFetch("/crm/v3/properties/contacts/brands", token);
+        const options: any[] = propDef.options || [];
+        const match = options.find((opt: any) =>
+          (opt.label || "").toLowerCase() === brandName.toLowerCase() ||
+          (opt.value || "").toLowerCase() === brandName.toLowerCase()
+        );
+        if (match) {
+          brandTokenValue = match.value;
+          console.log(`Resolved brand token for "${brandName}": "${brandTokenValue}"`);
+        } else {
+          console.warn(`No option match for "${brandName}". Available: ${options.map(o => `${o.label}=${o.value}`).join(", ")}`);
+        }
+      } catch (e) {
+        console.warn("Could not fetch brands property definition:", e);
+      }
+
+      const brandFilter = { propertyName: "brands", operator: "CONTAINS_TOKEN", value: brandTokenValue };
       const dateFilters = [
         { propertyName: "createdate", operator: "GTE", value: String(startMs) },
         { propertyName: "createdate", operator: "LTE", value: String(endMs) },
