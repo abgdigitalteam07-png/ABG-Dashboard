@@ -1,13 +1,31 @@
 import { useState, useMemo } from "react";
 import {
-  AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Legend, LabelList,
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Legend,
+  LabelList,
 } from "recharts";
 import { Brand } from "@/lib/brands";
 import { USStateMap } from "@/components/USStateMap";
 import {
-  format, parseISO, startOfWeek, startOfMonth, startOfDay, startOfQuarter,
-  addDays, addWeeks, addMonths, isBefore, isEqual,
+  format,
+  parseISO,
+  startOfWeek,
+  startOfMonth,
+  startOfDay,
+  startOfQuarter,
+  addDays,
+  addWeeks,
+  addMonths,
+  isBefore,
+  isEqual,
 } from "date-fns";
 
 interface ContactChartsProps {
@@ -51,25 +69,38 @@ interface GroupedTitle {
 
 /* ── Job title grouping rules — ordered by priority, first match wins ── */
 const TITLE_GROUPS: { label: string; patterns: RegExp[] }[] = [
-  { label: "Executive / Owner",      patterns: [/\bceo\b/, /\bcoo\b/, /\bcfo\b/, /\bpresident\b/, /\bvice[\s-]pres/, /\bvp\b/, /\bowner\b/, /\bfounder\b/, /\bchief\b/] },
-  { label: "Sales",                  patterns: [/\bsales\b/] },
-  { label: "Marketing",              patterns: [/\bmarket/] },
-  { label: "Engineering",            patterns: [/\bengineer/] },
-  { label: "Manufacturing",          patterns: [/\bmanufactur/] },
-  { label: "Production",             patterns: [/\bproduction\b/] },
-  { label: "Quality",                patterns: [/\bquality\b/, /\b(qa|qc)\b/] },
-  { label: "Operations",             patterns: [/\boperation/] },
-  { label: "Purchasing",             patterns: [/\bpurchas/, /\bprocure/, /\bbuyer\b/, /\bbuying\b/] },
-  { label: "Warehouse / Logistics",  patterns: [/\bwarehouse\b/, /\bdistribut/, /\blogistic/, /\bshipping\b/] },
-  { label: "Customer Service",       patterns: [/\bcustomer[\s-]serv/, /\bcustomer[\s-]supp/, /\bclient\s+serv/] },
-  { label: "Finance / Accounting",   patterns: [/\bfinance\b/, /\bfinancial\b/, /\baccounti/, /\baccountant\b/] },
-  { label: "Human Resources",        patterns: [/\bhuman[\s-]resour/, /\brecruiter\b/, /\brecruiting\b/, /\btalent\b/] },
-  { label: "IT / Technology",        patterns: [/\binformation[\s-]tech/, /\btechnology\b/, /\bsoftware\b/, /\bsystems\b/] },
-  { label: "Design",                 patterns: [/\bdesign/] },
-  { label: "Director",               patterns: [/\bdirector\b/] },
-  { label: "Manager",                patterns: [/\bmanag/, /\bmgr\b/] },
-  { label: "Admin / Coordinator",    patterns: [/\badmin/, /\bassistant\b/, /\bcoordinator\b/] },
-  { label: "Contractor",             patterns: [/\bcontract/] },
+  {
+    label: "Executive / Owner",
+    patterns: [
+      /\bceo\b/,
+      /\bcoo\b/,
+      /\bcfo\b/,
+      /\bpresident\b/,
+      /\bvice[\s-]pres/,
+      /\bvp\b/,
+      /\bowner\b/,
+      /\bfounder\b/,
+      /\bchief\b/,
+    ],
+  },
+  { label: "Sales", patterns: [/\bsales\b/] },
+  { label: "Marketing", patterns: [/\bmarket/] },
+  { label: "Engineering", patterns: [/\bengineer/] },
+  { label: "Manufacturing", patterns: [/\bmanufactur/] },
+  { label: "Production", patterns: [/\bproduction\b/] },
+  { label: "Quality", patterns: [/\bquality\b/, /\b(qa|qc)\b/] },
+  { label: "Operations", patterns: [/\boperation/] },
+  { label: "Purchasing", patterns: [/\bpurchas/, /\bprocure/, /\bbuyer\b/, /\bbuying\b/] },
+  { label: "Warehouse / Logistics", patterns: [/\bwarehouse\b/, /\bdistribut/, /\blogistic/, /\bshipping\b/] },
+  { label: "Customer Service", patterns: [/\bcustomer[\s-]serv/, /\bcustomer[\s-]supp/, /\bclient\s+serv/] },
+  { label: "Finance / Accounting", patterns: [/\bfinance\b/, /\bfinancial\b/, /\baccounti/, /\baccountant\b/] },
+  { label: "Human Resources", patterns: [/\bhuman[\s-]resour/, /\brecruiter\b/, /\brecruiting\b/, /\btalent\b/] },
+  { label: "IT / Technology", patterns: [/\binformation[\s-]tech/, /\btechnology\b/, /\bsoftware\b/, /\bsystems\b/] },
+  { label: "Design", patterns: [/\bdesign/] },
+  { label: "Director", patterns: [/\bdirector\b/] },
+  { label: "Manager", patterns: [/\bmanag/, /\bmgr\b/] },
+  { label: "Admin / Coordinator", patterns: [/\badmin/, /\bassistant\b/, /\bcoordinator\b/] },
+  { label: "Contractor", patterns: [/\bcontract/] },
 ];
 
 function groupJobTitles(jobTitles: JobTitle[]): GroupedTitle[] {
@@ -135,9 +166,7 @@ function GranularityToggle({ value, onChange }: { value: Granularity; onChange: 
           key={o.value}
           onClick={() => onChange(o.value)}
           className={`rounded-md px-3 py-1 font-medium transition-all ${
-            value === o.value
-              ? "bg-white shadow-sm text-foreground"
-              : "text-muted-foreground hover:text-foreground"
+            value === o.value ? "bg-white shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
           }`}
         >
           {o.label}
@@ -148,8 +177,16 @@ function GranularityToggle({ value, onChange }: { value: Granularity; onChange: 
 }
 
 /* ── Chart card wrapper ── */
-function ChartCard({ title, subtitle, children, headerRight }: {
-  title: string; subtitle?: string; children: React.ReactNode; headerRight?: React.ReactNode;
+function ChartCard({
+  title,
+  subtitle,
+  children,
+  headerRight,
+}: {
+  title: string;
+  subtitle?: string;
+  children: React.ReactNode;
+  headerRight?: React.ReactNode;
 }) {
   return (
     <div className="rounded-2xl border border-border bg-card p-6">
@@ -265,11 +302,12 @@ export function ContactCharts({
 
     // Fill in missing slots for non-quarter granularities
     const slots: string[] = [];
-    let cursor = granularity === "day"
-      ? startOfDay(dateFrom)
-      : granularity === "week"
-        ? startOfWeek(dateFrom, { weekStartsOn: 1 })
-        : startOfMonth(dateFrom);
+    let cursor =
+      granularity === "day"
+        ? startOfDay(dateFrom)
+        : granularity === "week"
+          ? startOfWeek(dateFrom, { weekStartsOn: 1 })
+          : startOfMonth(dateFrom);
     const advance = granularity === "day" ? addDays : granularity === "week" ? addWeeks : addMonths;
     const fmtStr = granularity === "month" ? "yyyy-MM" : "yyyy-MM-dd";
     while (isBefore(cursor, dateTo) || isEqual(cursor, dateTo)) {
@@ -288,7 +326,11 @@ export function ContactCharts({
 
   const xTickFormatter = (v: string) => {
     if (granularity === "quarter") return v;
-    try { return format(parseISO(v), granularity === "month" ? "MMM yy" : "M/d"); } catch { return v; }
+    try {
+      return format(parseISO(v), granularity === "month" ? "MMM yy" : "M/d");
+    } catch {
+      return v;
+    }
   };
 
   if (!brand.hasHubSpot) return null;
@@ -306,9 +348,7 @@ export function ContactCharts({
         ) : error ? (
           <p className="py-12 text-center text-sm text-muted-foreground">{error}</p>
         ) : aggregatedContacts.length === 0 ? (
-          <p className="py-12 text-center text-sm text-muted-foreground">
-            No data available for {brand.name}
-          </p>
+          <p className="py-12 text-center text-sm text-muted-foreground">No data available for {brand.name}</p>
         ) : (
           <ResponsiveContainer width="100%" height={280}>
             <AreaChart data={aggregatedContacts} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
@@ -319,8 +359,14 @@ export function ContactCharts({
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
-              <XAxis dataKey="date" tick={axisStyle} tickFormatter={xTickFormatter}
-                interval="preserveStartEnd" tickLine={false} axisLine={false} />
+              <XAxis
+                dataKey="date"
+                tick={axisStyle}
+                tickFormatter={xTickFormatter}
+                interval="preserveStartEnd"
+                tickLine={false}
+                axisLine={false}
+              />
               <YAxis tick={axisStyle} tickLine={false} axisLine={false} />
               <Tooltip content={<ChartTooltip />} />
               <Area
@@ -345,15 +391,19 @@ export function ContactCharts({
         ) : error ? (
           <p className="py-12 text-center text-sm text-muted-foreground">{error}</p>
         ) : aggregatedContacts.length === 0 ? (
-          <p className="py-12 text-center text-sm text-muted-foreground">
-            No data available for {brand.name}
-          </p>
+          <p className="py-12 text-center text-sm text-muted-foreground">No data available for {brand.name}</p>
         ) : (
           <ResponsiveContainer width="100%" height={280}>
             <BarChart data={aggregatedContacts} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
-              <XAxis dataKey="date" tick={axisStyle} tickFormatter={xTickFormatter}
-                interval="preserveStartEnd" tickLine={false} axisLine={false} />
+              <XAxis
+                dataKey="date"
+                tick={axisStyle}
+                tickFormatter={xTickFormatter}
+                interval="preserveStartEnd"
+                tickLine={false}
+                axisLine={false}
+              />
               <YAxis tick={axisStyle} tickLine={false} axisLine={false} />
               <Tooltip content={<ChartTooltip />} />
               <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
@@ -379,7 +429,7 @@ export function ContactCharts({
 
       {/* ── Account Type Distribution ── */}
       <ChartCard
-        title="Contact Distribution by Account Type"
+        title="Contact Distribution by Channel"
         subtitle="Account type breakdown for contacts in the selected period"
       >
         {loading ? (
@@ -387,15 +437,20 @@ export function ContactCharts({
         ) : error ? (
           <p className="py-12 text-center text-sm text-muted-foreground">{error}</p>
         ) : industryData.filter((d) => d.industry !== "Not specified").length === 0 ? (
-          <p className="py-12 text-center text-sm text-muted-foreground">
-            No industry data available for {brand.name}
-          </p>
+          <p className="py-12 text-center text-sm text-muted-foreground">No industry data available for {brand.name}</p>
         ) : (
           <ResponsiveContainer width="100%" height={Math.max(260, industryData.length * 38)}>
             <BarChart data={industryData} layout="vertical" margin={{ left: 20, right: 64, top: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={gridColor} />
               <XAxis type="number" tick={axisStyle} tickLine={false} axisLine={false} />
-              <YAxis type="category" dataKey="industry" tick={axisStyle} width={200} tickLine={false} axisLine={false} />
+              <YAxis
+                type="category"
+                dataKey="industry"
+                tick={axisStyle}
+                width={200}
+                tickLine={false}
+                axisLine={false}
+              />
               <Tooltip content={<ChartTooltip />} cursor={{ fill: "hsl(var(--muted)/0.4)" }} />
               <Bar dataKey="count" name="Contacts" fill="#8B5CF6" radius={[0, 4, 4, 0]}>
                 <LabelList
@@ -411,15 +466,16 @@ export function ContactCharts({
       </ChartCard>
 
       {/* ── Job Title Distribution ── */}
-      <ChartCard title="Contact Distribution by Job Title" subtitle="Grouped by role type — hover a bar to see the breakdown">
+      <ChartCard
+        title="Contact Distribution by Job Title"
+        subtitle="Grouped by role type — hover a bar to see the breakdown"
+      >
         {loading ? (
           <Skeleton className="h-[400px] w-full" />
         ) : error ? (
           <p className="py-12 text-center text-sm text-muted-foreground">{error}</p>
         ) : groupedTitles.length === 0 ? (
-          <p className="py-12 text-center text-sm text-muted-foreground">
-            No data available for {brand.name}
-          </p>
+          <p className="py-12 text-center text-sm text-muted-foreground">No data available for {brand.name}</p>
         ) : (
           <ResponsiveContainer width="100%" height={Math.max(300, groupedTitles.length * 40)}>
             <BarChart data={groupedTitles} layout="vertical" margin={{ left: 20, right: 56, top: 0, bottom: 0 }}>
