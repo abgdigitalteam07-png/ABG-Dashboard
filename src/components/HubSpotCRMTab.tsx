@@ -115,7 +115,6 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo }: HubSpotCRMTabProps) {
 
   useEffect(() => {
     let cancelled = false;
-    setData(null);
     setLoading(true);
     setError(null);
     fetchHubSpotData(brand, dateFrom, dateTo)
