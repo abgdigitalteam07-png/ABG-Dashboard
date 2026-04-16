@@ -130,7 +130,7 @@ export function AIRecommendations({ tabName, brandName, dateRange, metrics }: AI
   return (
     <section className="rounded-lg border border-border bg-gradient-to-br from-blue-50/30 to-background shadow-card overflow-hidden">
       <button onClick={() => setCollapsed(!collapsed)} className="flex w-full items-center gap-3 px-6 py-4 text-left">
-        <Sparkles className="h-5 w-5 text-blue-500 shrink-0" />
+        
         <div className="flex-1">
           <h3 className="text-sm font-semibold text-foreground">Insights & Recommendations</h3>
           <p className="text-xs text-muted-foreground">
