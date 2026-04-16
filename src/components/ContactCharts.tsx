@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { BarChart2 } from "lucide-react";
 import {
   AreaChart,
   Area,
