@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { BarChart2, Sparkles, Droplets } from "lucide-react";
+import { BarChart2, Sparkles, Bath, Ruler, PenTool } from "lucide-react";
 import {
   AreaChart,
   Area,
@@ -434,37 +434,56 @@ export function ContactCharts({
         subtitle="Account type breakdown for contacts in the selected period"
       >
         <div className="relative flex flex-col items-center justify-center py-20 text-center overflow-hidden">
-          {/* Water-inspired decorative background */}
-          <div className="absolute inset-0 bg-gradient-to-b from-blue-50/60 via-cyan-50/30 to-transparent dark:from-blue-950/20 dark:via-cyan-950/10 dark:to-transparent rounded-xl" />
-          
-          {/* Animated water ripple circles */}
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
-            <div className="h-40 w-40 rounded-full border border-blue-200/30 dark:border-blue-700/20 animate-ping" style={{ animationDuration: '3s' }} />
-          </div>
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
-            <div className="h-56 w-56 rounded-full border border-cyan-200/20 dark:border-cyan-700/10 animate-ping" style={{ animationDuration: '4s', animationDelay: '0.5s' }} />
+          {/* Blueprint grid background */}
+          <div className="absolute inset-0 rounded-xl" style={{
+            backgroundImage: `
+              linear-gradient(rgba(59,130,246,0.06) 1px, transparent 1px),
+              linear-gradient(90deg, rgba(59,130,246,0.06) 1px, transparent 1px)
+            `,
+            backgroundSize: '24px 24px',
+          }} />
+          {/* Blueprint border accent */}
+          <div className="absolute inset-3 rounded-lg border border-dashed border-blue-200/40 dark:border-blue-700/25" />
+          <div className="absolute inset-5 rounded-md border border-dashed border-blue-200/20 dark:border-blue-700/15" />
+
+          {/* Corner markers */}
+          {['top-3 left-3','top-3 right-3','bottom-3 left-3','bottom-3 right-3'].map((pos) => (
+            <div key={pos} className={`absolute ${pos} h-3 w-3 border-blue-300/50 dark:border-blue-600/40 ${
+              pos.includes('top') && pos.includes('left') ? 'border-t-2 border-l-2 rounded-tl-sm' :
+              pos.includes('top') && pos.includes('right') ? 'border-t-2 border-r-2 rounded-tr-sm' :
+              pos.includes('bottom') && pos.includes('left') ? 'border-b-2 border-l-2 rounded-bl-sm' :
+              'border-b-2 border-r-2 rounded-br-sm'
+            }`} />
+          ))}
+
+          {/* Dimension lines (decorative) */}
+          <div className="absolute top-8 left-12 right-12 flex items-center gap-1 opacity-20">
+            <div className="h-px flex-1 bg-blue-400 dark:bg-blue-500" />
+            <Ruler className="h-3 w-3 text-blue-400 dark:text-blue-500" />
+            <div className="h-px flex-1 bg-blue-400 dark:bg-blue-500" />
           </div>
 
-          {/* Icon — water droplet */}
+          {/* Bathtub icon */}
           <div className="relative mb-5">
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-100 to-cyan-100 dark:from-blue-900/40 dark:to-cyan-900/30 border border-blue-200/50 dark:border-blue-700/30 shadow-sm">
-              <Droplets className="h-7 w-7 text-blue-500 dark:text-blue-400" />
+            <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-white dark:bg-slate-800 border-2 border-blue-200/60 dark:border-blue-700/40 shadow-sm">
+              <Bath className="h-8 w-8 text-blue-500 dark:text-blue-400" />
             </div>
-            <div className="absolute -top-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/40 border border-amber-200 dark:border-amber-700">
-              <Sparkles className="h-3.5 w-3.5 text-amber-500" />
+            <div className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-700">
+              <PenTool className="h-2.5 w-2.5 text-blue-400" />
             </div>
           </div>
 
           {/* Text */}
-          <p className="relative text-base font-bold text-foreground tracking-tight">Coming Soon</p>
-          <p className="relative mt-2 max-w-sm text-xs leading-relaxed text-muted-foreground">
-            We're building channel distribution analytics — diving deep into where your bath &amp; shower contacts flow from. Stay tuned!
+          <p className="relative text-base font-bold text-foreground tracking-tight font-mono">COMING SOON</p>
+          <p className="relative mt-1 text-[10px] font-mono text-blue-400/60 dark:text-blue-500/50 tracking-widest uppercase">Rev 1.0 — In Progress</p>
+          <p className="relative mt-3 max-w-xs text-xs leading-relaxed text-muted-foreground">
+            Channel distribution analytics for bath &amp; shower contacts — currently on the drawing board.
           </p>
 
-          {/* Progress pill */}
-          <div className="relative mt-5 flex items-center gap-2 rounded-full border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/30 px-4 py-1.5">
+          {/* Status badge */}
+          <div className="relative mt-5 flex items-center gap-2 rounded border border-blue-200/50 dark:border-blue-700/30 bg-white/60 dark:bg-slate-800/60 px-3 py-1.5 font-mono">
             <span className="h-2 w-2 rounded-full bg-blue-400 animate-pulse" />
-            <span className="text-[11px] font-medium text-blue-600 dark:text-blue-400">In Development</span>
+            <span className="text-[10px] font-medium text-blue-500 dark:text-blue-400 tracking-wide">DRAFTING</span>
           </div>
         </div>
       </ChartCard>
