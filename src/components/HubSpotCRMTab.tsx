@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { format } from "date-fns";
 import { useFirstLoad } from "@/hooks/useFirstLoad";
 import { WaterFillLoader } from "@/components/WaterFillLoader";
 import {
@@ -8,6 +9,7 @@ import { fetchHubSpotData } from "@/lib/api-client";
 import { Brand } from "@/lib/brands";
 import { ArrowRight, Users, TrendingUp, BarChart2, CheckCircle2 } from "lucide-react";
 import { ContactCharts } from "@/components/ContactCharts";
+import { AIRecommendations } from "./AIRecommendations";
 import { cn } from "@/lib/utils";
 
 interface HubSpotCRMTabProps {
@@ -359,6 +361,15 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo }: HubSpotCRMTabProps) {
         />
       </section>
 
+      <AIRecommendations
+        tabName="hubspot_crm"
+        brandName={brand.name}
+        dateRange={`${format(dateFrom, "MMM d, yyyy")} – ${format(dateTo, "MMM d, yyyy")}`}
+        metrics={{
+          totalContacts: data?.totalContacts,
+          totalContactsAllTime: data?.totalContactsAllTime,
+        }}
+      />
     </div>
   );
 }
