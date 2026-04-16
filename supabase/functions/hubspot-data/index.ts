@@ -98,6 +98,26 @@ function extractPublishDate(email: any): string | null {
   return null;
 }
 
+// ─── Brand → profile property mapping ───
+// Each brand has a custom HubSpot contact property for contact type / profile segmentation.
+// The internal API names below are derived from the display labels shown in HubSpot
+// (lowercase, spaces and dashes → underscores).
+// To verify or update: HubSpot portal → Settings → Properties → Contact properties.
+const BRAND_PROFILE_PROPERTY: Record<string, string> = {
+  "Aker":             "aker___profile",
+  "Aquarius":         "aquarius___profile",
+  "Aquatic":          "aquatic___profile",
+  "Bootz":            "bootz___profile",
+  "Comfort Designs":  "cd___profile",
+  "Clarion":          "clarion___profile",
+  "Hamilton":         "hamilton___profile",
+  "Laurel Mountain":  "lm___profile",
+  "MAAX":             "maax___profile",
+  "Neptune":          "neptune_en___profile",
+  "RBS":              "rbs___profile",
+  "Swan":             "swan___profile",
+};
+
 // ─── Brand → businessUnitId mapping (primary account) ───
 
 const BRAND_TO_BU: Record<string, string[]> = {
@@ -430,6 +450,14 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Determine which HubSpot property to use for the profile/industry chart.
+    // Brands with a dedicated profile property use that; all others fall back to "industry".
+    const profileProperty: string = BRAND_PROFILE_PROPERTY[brandName] ?? "industry";
+    const contactProfileLabel: string = BRAND_PROFILE_PROPERTY[brandName]
+      ? `${brandName} Profile`
+      : "Industry";
+    console.log(`Profile property for "${brandName}": ${profileProperty}`);
+
     console.log(`Fetching HubSpot data for brand="${brandName}" account=${isSecondary ? "secondary" : "primary"}, ${startDate} to ${endDate}`);
 
     // ── Contacts / lifecycle ──
@@ -524,8 +552,9 @@ Deno.serve(async (req) => {
       const title = (props.jobtitle || "").trim() || "Not specified";
       jobTitleCounts[title] = (jobTitleCounts[title] || 0) + 1;
 
-      const industry = (props.industry || "").trim() || "Not specified";
-      industryCounts[industry] = (industryCounts[industry] || 0) + 1;
+      // Use brand-specific profile property when available, otherwise generic industry field
+      const profileValue = (props[profileProperty] || "").trim() || "Not specified";
+      industryCounts[profileValue] = (industryCounts[profileValue] || 0) + 1;
     }
 
     if (isSecondary) {
@@ -556,7 +585,7 @@ Deno.serve(async (req) => {
               "hs_analytics_source",
               "hs_analytics_source_data_1",
               "jobtitle",
-              "industry",
+              profileProperty,
             ],
             limit: 100,
           };
@@ -668,7 +697,7 @@ Deno.serve(async (req) => {
               "hs_analytics_source",
               "hs_analytics_source_data_1",
               "jobtitle",
-              "industry",
+              profileProperty,
               "ip_state",
               "ip_state_code",
               "state",
@@ -994,6 +1023,7 @@ Deno.serve(async (req) => {
           ? [{ industry: "Not specified", count: industryCounts["Not specified"] }]
           : []),
       ],
+      contactProfileLabel,
       contactStateDistribution: Object.entries(stateCounts).sort(([,a],[,b]) => b-a).map(([state, count]) => ({ state, count })),
       contactUnknownStateCount: unknownStateCount,
       emails: current.emails,

@@ -21,6 +21,7 @@ interface ContactChartsProps {
     jobTitles?: JobTitle[];
     contactStateDistribution?: { state: string; count: number }[];
     contactIndustryDistribution?: { industry: string; count: number }[];
+    contactProfileLabel?: string;
   } | null;
   loading?: boolean;
   error?: string | null;
@@ -235,6 +236,7 @@ export function ContactCharts({
   const stateDistribution = data?.contactStateDistribution || [];
   const groupedTitles = useMemo(() => groupJobTitles(jobTitles), [jobTitles]);
   const industryData = data?.contactIndustryDistribution || [];
+  const profileLabel = data?.contactProfileLabel ?? "Industry";
 
   // Aggregate by granularity
   const aggregatedContacts = useMemo(() => {
@@ -377,8 +379,15 @@ export function ContactCharts({
         />
       )}
 
-      {/* ── Industry Distribution ── */}
-      <ChartCard title="Contact Distribution by Industry" subtitle="Industries represented in your contact database">
+      {/* ── Profile / Industry Distribution ── */}
+      <ChartCard
+        title={`Contact Distribution by ${profileLabel}`}
+        subtitle={
+          profileLabel === "Industry"
+            ? "Industries represented in your contact database"
+            : `${profileLabel} segmentation for contacts in the selected period`
+        }
+      >
         {loading ? (
           <Skeleton className="h-[320px] w-full" />
         ) : error ? (
