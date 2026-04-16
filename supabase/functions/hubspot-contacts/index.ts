@@ -100,15 +100,12 @@ Deno.serve(async (req) => {
         { propertyName: "createdate", operator: "LTE", value: String(endMs) },
       ];
 
-      // NOTE: Secondary account "brands" property is NOT searchable via HubSpot search API.
-      // We fetch contacts by date range only, then filter by brands value in code below.
-      if (!isSecondary && buId && buId !== "0") {
+      if (isSecondary) {
+        // Secondary account: filter by "brands" multi-select property server-side
+        filters.push({ propertyName: "brands", operator: "CONTAINS_TOKEN", value: brandName });
+      } else if (buId && buId !== "0") {
         // Primary account: filter by business unit ID
-        filters.push({
-          propertyName: "hs_all_assigned_business_unit_ids",
-          operator: "CONTAINS_TOKEN",
-          value: buId,
-        });
+        filters.push({ propertyName: "hs_all_assigned_business_unit_ids", operator: "CONTAINS_TOKEN", value: buId });
       }
 
       const searchBody: any = {
@@ -152,12 +149,6 @@ Deno.serve(async (req) => {
 
       for (const contact of results) {
         const props = contact.properties || {};
-
-        // Secondary account: filter by brands property value in code (not searchable via API)
-        if (isSecondary) {
-          const contactBrands = (props.brands || "").toLowerCase();
-          if (!contactBrands.includes(brandName.toLowerCase())) continue;
-        }
 
         totalFetched++;
 

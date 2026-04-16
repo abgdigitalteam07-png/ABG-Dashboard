@@ -534,76 +534,25 @@ Deno.serve(async (req) => {
     }
 
     if (isSecondary) {
-      // Secondary account: "brands" property is NOT searchable via HubSpot search API.
-      // Fetch all contacts in date range (by createdate only), then filter by brands value in code.
+      // Secondary account: use CONTAINS_TOKEN filter on the "brands" multi-select property.
+      // This lets HubSpot do the filtering server-side — no need to fetch all contacts and filter in code.
+      const brandFilter = { propertyName: "brands", operator: "CONTAINS_TOKEN", value: brandName };
+      const dateFilters = [
+        { propertyName: "createdate", operator: "GTE", value: String(startMs) },
+        { propertyName: "createdate", operator: "LTE", value: String(endMs) },
+      ];
+
       try {
-        let after: string | undefined;
-        const brandContactsInRange: any[] = [];
+        // ── 1. All-time total: single API call, res.total gives exact count ──
+        const allTimeRes = await hubspotPost("/crm/v3/objects/contacts/search", token, {
+          filterGroups: [{ filters: [brandFilter] }],
+          properties: [],
+          limit: 1,
+        });
+        totalContactsAllTime = allTimeRes.total ?? 0;
+        console.log(`Secondary all-time total for "${brandName}": ${totalContactsAllTime}`);
 
-        while (true) {
-          const searchBody: any = {
-            filterGroups: [{
-              filters: [
-                { propertyName: "createdate", operator: "GTE", value: String(startMs) },
-                { propertyName: "createdate", operator: "LTE", value: String(endMs) },
-              ],
-            }],
-            properties: [
-              "createdate",
-              "brands",
-              "lifecyclestage",
-              "ip_state",
-              "ip_state_code",
-              "state",
-              "hs_state",
-              "hs_object_source",
-              "hs_object_source_detail_1",
-              "hs_analytics_source",
-              "hs_analytics_source_data_1",
-              "jobtitle",
-              profileProperty,
-            ],
-            limit: 100,
-          };
-          if (after) searchBody.after = after;
-
-          const res = await hubspotPost("/crm/v3/objects/contacts/search", token, searchBody);
-          for (const c of (res.results || [])) {
-            const contactBrands = (c.properties?.brands || "").toLowerCase();
-            if (contactBrands.includes(brandName.toLowerCase())) {
-              brandContactsInRange.push(c);
-            }
-          }
-          if (res.paging?.next?.after) {
-            after = res.paging.next.after;
-          } else {
-            break;
-          }
-        }
-
-        totalContacts = brandContactsInRange.length;
-
-        // Count lifecycle stages and states
-        for (const c of brandContactsInRange) {
-          const props = c.properties || {};
-          const stage = (props.lifecyclestage || "").toLowerCase().trim();
-          const match = lifecycleStages.find(ls => ls.stage === stage);
-          if (match) match.count++;
-          countContactAnalytics(props);
-
-          const stateCode = normalizeStateCode(props.ip_state_code, props.ip_state, props.state, props.hs_state);
-          if (stateCode) {
-            stateCounts[stateCode] = (stateCounts[stateCode] || 0) + 1;
-          } else {
-            unknownStateCount++;
-          }
-        }
-        console.log(`Secondary account: ${totalContacts} contacts for "${brandName}" in date range`);
-
-        // All-time: year-by-year chunking to bypass HubSpot's 10K search pagination cap.
-        // Without date filters HubSpot returns contacts in default (newest-first) order and
-        // stops paginating after 10,000 results — older contacts are silently missed.
-        // Splitting by year keeps each window well below 10K so we capture everything.
+        // ── 2. All-time lifecycle stage counts (6 parallel count queries) ──
         lifecycleStagesAllTime = [
           { stage: "subscriber",             label: "Subscriber",  count: 0 },
           { stage: "lead",                   label: "Lead",        count: 0 },
@@ -612,43 +561,57 @@ Deno.serve(async (req) => {
           { stage: "opportunity",            label: "Opportunity", count: 0 },
           { stage: "customer",              label: "Customer",    count: 0 },
         ];
-        const currentYear = new Date().getFullYear();
-        for (let year = 2012; year <= currentYear; year++) {
-          const yearStart = new Date(`${year}-01-01T00:00:00Z`).getTime();
-          const yearEnd   = new Date(`${year}-12-31T23:59:59Z`).getTime();
-          let allTimeAfter: string | undefined;
-          while (true) {
-            const searchBody: any = {
-              filterGroups: [{
-                filters: [
-                  { propertyName: "createdate", operator: "GTE", value: String(yearStart) },
-                  { propertyName: "createdate", operator: "LTE", value: String(yearEnd) },
-                ],
-              }],
-              properties: ["brands", "lifecyclestage", "jobtitle"],
-              sorts: [{ propertyName: "createdate", direction: "ASCENDING" }],
-              limit: 100,
-            };
-            if (allTimeAfter) searchBody.after = allTimeAfter;
-            const res = await hubspotPost("/crm/v3/objects/contacts/search", token, searchBody);
-            // Skip remaining pages if this year has no results at all
-            if ((res.total ?? 0) === 0) break;
-            for (const c of (res.results || [])) {
-              const contactBrands = (c.properties?.brands || "").toLowerCase();
-              if (contactBrands.includes(brandName.toLowerCase())) {
-                totalContactsAllTime++;
-                const stageVal = (c.properties?.lifecyclestage || "").toLowerCase().trim();
-                const matchAll = lifecycleStagesAllTime.find(ls => ls.stage === stageVal);
-                if (matchAll) matchAll.count++;
-                const title = (c.properties?.jobtitle || "").trim() || "Not specified";
-                jobTitleCountsAllTime[title] = (jobTitleCountsAllTime[title] || 0) + 1;
-              }
-            }
-            if (res.paging?.next?.after) allTimeAfter = res.paging.next.after;
-            else break;
+        await Promise.all(lifecycleStagesAllTime.map(async (ls) => {
+          try {
+            const res = await hubspotPost("/crm/v3/objects/contacts/search", token, {
+              filterGroups: [{ filters: [brandFilter, { propertyName: "lifecyclestage", operator: "EQ", value: ls.stage }] }],
+              properties: [],
+              limit: 1,
+            });
+            ls.count = res.total ?? 0;
+          } catch (e) {
+            console.error(`Secondary lifecycle EQ ${ls.stage}:`, e);
           }
+        }));
+
+        // ── 3. In-period contacts: date + brand filter, paginate for charts/state data ──
+        let after: string | undefined;
+        while (true) {
+          const searchBody: any = {
+            filterGroups: [{ filters: [brandFilter, ...dateFilters] }],
+            properties: [
+              "createdate", "brands", "lifecyclestage",
+              "ip_state", "ip_state_code", "state", "hs_state",
+              "hs_object_source", "hs_object_source_detail_1",
+              "hs_analytics_source", "hs_analytics_source_data_1",
+              "jobtitle", profileProperty,
+            ],
+            sorts: [{ propertyName: "createdate", direction: "ASCENDING" }],
+            limit: 100,
+          };
+          if (after) searchBody.after = after;
+
+          const res = await hubspotPost("/crm/v3/objects/contacts/search", token, searchBody);
+          // Use res.total from first page for the period count (accurate, no need to count manually)
+          if (!after) totalContacts = res.total ?? 0;
+
+          for (const c of (res.results || [])) {
+            const props = c.properties || {};
+            const stage = (props.lifecyclestage || "").toLowerCase().trim();
+            const match = lifecycleStages.find(ls => ls.stage === stage);
+            if (match) match.count++;
+            countContactAnalytics(props);
+            const stateCode = normalizeStateCode(props.ip_state_code, props.ip_state, props.state, props.hs_state);
+            if (stateCode) {
+              stateCounts[stateCode] = (stateCounts[stateCode] || 0) + 1;
+            } else {
+              unknownStateCount++;
+            }
+          }
+          if (res.paging?.next?.after) after = res.paging.next.after;
+          else break;
         }
-        console.log(`Secondary all-time total for "${brandName}": ${totalContactsAllTime}`);
+        console.log(`Secondary account: ${totalContacts} contacts for "${brandName}" in date range`);
       } catch (e) {
         console.error("Secondary account contacts fetch error:", e);
       }
