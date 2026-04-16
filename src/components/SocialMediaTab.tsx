@@ -15,7 +15,7 @@ import {
   ExternalLink, HelpCircle, Users, Eye, MousePointer, Activity, BarChart2, Share2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-
+import { AIRecommendations } from "./AIRecommendations";
 import { format, parseISO, startOfWeek, startOfMonth, startOfDay, startOfQuarter,
   addDays, addWeeks, addMonths, isBefore, isEqual } from "date-fns";
 
@@ -637,6 +637,18 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
         </div>
       </ChartCard>
 
+      <AIRecommendations
+        tabName="social_media"
+        brandName={brand.name}
+        dateRange={`${format(dateFrom, "MMM d, yyyy")} – ${format(dateTo, "MMM d, yyyy")}`}
+        metrics={{
+          engagementRate: overview.engagementRate,
+          followerGrowth: avgFollowerGrowth,
+          websiteClicks: overview.websiteClicks,
+          postsPerWeek: overview.totalPosts / Math.max(1, Math.ceil((dateTo.getTime() - dateFrom.getTime()) / (7 * 86400000))),
+          reelCount: posts?.filter((p: any) => p.type === "reel").length ?? 0,
+        }}
+      />
     </div>
   );
 }
