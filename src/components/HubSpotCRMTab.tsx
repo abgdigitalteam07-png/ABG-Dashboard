@@ -188,23 +188,14 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo }: HubSpotCRMTabProps) {
   return (
     <div className="space-y-8 p-6">
 
-      {/* ═══ TOP — Total Contacts Created (Hero Stats) ═══ */}
+      {/* ═══ TOP — Contacts Created ═══ */}
       <section>
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="rounded-2xl border border-border bg-card p-5">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Total Contacts Created</p>
-            <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">
-              {(data.totalContactsAllTime || 0).toLocaleString()}
-            </p>
-            <p className="mt-0.5 text-[11px] text-muted-foreground">All-time lifetime total in CRM</p>
-          </div>
-          <div className="rounded-2xl border border-border bg-card p-5">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Contacts Created (Selected Period)</p>
-            <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">
-              {(data.totalContacts || 0).toLocaleString()}
-            </p>
-            <p className="mt-0.5 text-[11px] text-muted-foreground">New contacts in date range</p>
-          </div>
+        <div className="rounded-2xl border border-border bg-card p-5">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Contacts Created</p>
+          <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">
+            {(data.totalContacts || 0).toLocaleString()}
+          </p>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">New contacts in selected date range</p>
         </div>
       </section>
 

@@ -34,6 +34,7 @@ interface DateRangePickerProps {
 }
 
 type PresetId =
+  | "allTime"
   | "today"
   | "yesterday"
   | "thisWeek"
@@ -58,6 +59,12 @@ interface PresetGroup {
 }
 
 const PRESET_GROUPS: PresetGroup[] = [
+  {
+    label: "All",
+    items: [
+      { id: "allTime", label: "All Time" },
+    ],
+  },
   {
     label: "Quick",
     items: [
@@ -100,6 +107,8 @@ function getPresetRange(id: PresetId): { from: Date; to: Date } | null {
   const today = startOfDay(now);
 
   switch (id) {
+    case "allTime":
+      return { from: new Date("2005-01-01T00:00:00Z"), to: now };
     case "today":
       return { from: today, to: now };
     case "yesterday": {

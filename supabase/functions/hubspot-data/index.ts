@@ -618,8 +618,13 @@ Deno.serve(async (req) => {
         }));
 
         // ── 3. In-period contacts: date + brand filter, paginate for charts/state data ──
+        // Cap at 100 pages (10,000 contacts) for chart data — count is already accurate
+        // from res.total on the first page, so no data is lost for the summary cards.
         let after: string | undefined;
-        while (true) {
+        let chartPage = 0;
+        const MAX_CHART_PAGES = 100;
+        while (chartPage < MAX_CHART_PAGES) {
+          chartPage++;
           const searchBody: any = {
             filterGroups: [{ filters: [brandFilter, ...dateFilters] }],
             properties: [
