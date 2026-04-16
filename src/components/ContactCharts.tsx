@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Legend,
+  ResponsiveContainer, Legend, LabelList,
 } from "recharts";
 import { Brand } from "@/lib/brands";
 import { USStateMap } from "@/components/USStateMap";
@@ -186,21 +186,26 @@ function JobTitleTooltip({ active, payload }: any) {
   if (!active || !payload?.length) return null;
   const d = payload[0].payload as GroupedTitle;
   return (
-    <div className="rounded-xl border border-border bg-card px-3 py-2.5 shadow-lg text-xs max-w-[260px]">
-      <p className="font-semibold text-foreground mb-2">
-        {d.group} — {d.count.toLocaleString()} contacts
-      </p>
-      <div className="space-y-1">
-        {d.breakdown.slice(0, 8).map((b) => (
-          <div key={b.title} className="flex items-center justify-between gap-4">
-            <span className="text-muted-foreground truncate">{b.title}</span>
-            <span className="text-foreground font-medium shrink-0">{b.count.toLocaleString()}</span>
-          </div>
-        ))}
-        {d.breakdown.length > 8 && (
-          <p className="text-muted-foreground italic mt-1">+{d.breakdown.length - 8} more titles</p>
-        )}
+    <div className="rounded-xl border border-border bg-card px-3 py-2.5 shadow-lg text-xs max-w-[280px]">
+      <div className="flex items-center gap-2 mb-2">
+        <span className="h-2 w-2 rounded-full shrink-0" style={{ background: "#3B82F6" }} />
+        <p className="font-semibold text-foreground">
+          {d.group} <span className="text-muted-foreground font-normal">— {d.count.toLocaleString()} contacts</span>
+        </p>
       </div>
+      {d.breakdown.length > 1 && (
+        <div className="space-y-1 border-t border-border pt-1.5 mt-1">
+          {d.breakdown.slice(0, 8).map((b) => (
+            <div key={b.title} className="flex items-center justify-between gap-4">
+              <span className="text-muted-foreground truncate">{b.title}</span>
+              <span className="text-foreground font-medium shrink-0">{b.count.toLocaleString()}</span>
+            </div>
+          ))}
+          {d.breakdown.length > 8 && (
+            <p className="text-muted-foreground italic mt-1">+{d.breakdown.length - 8} more titles</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -381,13 +386,20 @@ export function ContactCharts({
             No data available for {brand.name}
           </p>
         ) : (
-          <ResponsiveContainer width="100%" height={Math.max(300, groupedTitles.length * 36)}>
-            <BarChart data={groupedTitles} layout="vertical" margin={{ left: 20, right: 16, top: 0, bottom: 0 }}>
+          <ResponsiveContainer width="100%" height={Math.max(300, groupedTitles.length * 40)}>
+            <BarChart data={groupedTitles} layout="vertical" margin={{ left: 20, right: 56, top: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={gridColor} />
               <XAxis type="number" tick={axisStyle} tickLine={false} axisLine={false} />
               <YAxis type="category" dataKey="group" tick={axisStyle} width={180} tickLine={false} axisLine={false} />
-              <Tooltip content={<JobTitleTooltip />} />
-              <Bar dataKey="count" name="Contacts" fill="#3B82F6" radius={[0, 4, 4, 0]} />
+              <Tooltip content={<JobTitleTooltip />} cursor={{ fill: "hsl(var(--muted)/0.4)" }} />
+              <Bar dataKey="count" name="Contacts" fill="#3B82F6" radius={[0, 4, 4, 0]}>
+                <LabelList
+                  dataKey="count"
+                  position="right"
+                  style={{ fontSize: 10, fill: "hsl(var(--muted-foreground))", fontVariantNumeric: "tabular-nums" }}
+                  formatter={(v: number) => v.toLocaleString()}
+                />
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         )}
