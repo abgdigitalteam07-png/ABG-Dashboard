@@ -563,14 +563,36 @@ Deno.serve(async (req) => {
       ];
 
       try {
-        // ── 1. All-time total: single API call, res.total gives exact count ──
-        const allTimeRes = await hubspotPost("/crm/v3/objects/contacts/search", token, {
-          filterGroups: [{ filters: [brandFilter] }],
-          properties: [],
-          limit: 1,
-        });
-        totalContactsAllTime = allTimeRes.total ?? 0;
-        console.log(`Secondary all-time total for "${brandName}": ${totalContactsAllTime}`);
+        // ── 1. All-time total: year-by-year CONTAINS_TOKEN count queries ──
+        // A single unbounded CONTAINS_TOKEN query underreports because HubSpot's search
+        // index doesn't guarantee full coverage for unfiltered all-time queries — older
+        // contacts can be absent from the index. The same CONTAINS_TOKEN + date filter
+        // IS accurate (proven by period counts matching). Summing yearly res.total values
+        // gives full historical coverage with only one API call per year (fast, no pages).
+        {
+          const currentYear = new Date().getFullYear();
+          for (let year = 2005; year <= currentYear; year++) {
+            const yStart = String(new Date(`${year}-01-01T00:00:00Z`).getTime());
+            const yEnd   = String(new Date(`${year}-12-31T23:59:59Z`).getTime());
+            try {
+              const yr = await hubspotPost("/crm/v3/objects/contacts/search", token, {
+                filterGroups: [{ filters: [
+                  brandFilter,
+                  { propertyName: "createdate", operator: "GTE", value: yStart },
+                  { propertyName: "createdate", operator: "LTE", value: yEnd },
+                ]}],
+                properties: [],
+                limit: 1,
+              });
+              const yCount = yr.total ?? 0;
+              if (yCount > 0) console.log(`  ${year}: ${yCount} contacts`);
+              totalContactsAllTime += yCount;
+            } catch (e) {
+              console.error(`  year ${year} count error:`, e);
+            }
+          }
+          console.log(`Secondary all-time total for "${brandName}": ${totalContactsAllTime}`);
+        }
 
         // ── 2. All-time lifecycle stage counts (6 parallel count queries) ──
         lifecycleStagesAllTime = [
