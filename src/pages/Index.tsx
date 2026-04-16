@@ -103,15 +103,17 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <DashboardHeader
-        selectedBrand={selectedBrand}
-        onBrandChange={setSelectedBrand}
-        dateFrom={dateFrom}
-        dateTo={dateTo}
-        onDateChange={handleDateChange}
-        onLogoClick={() => setActiveTab("readme")}
-      />
-      <TabNav tabs={tabs} activeTab={effectiveTab} onTabChange={setActiveTab} />
+      <div className="sticky top-0 z-50">
+        <DashboardHeader
+          selectedBrand={selectedBrand}
+          onBrandChange={setSelectedBrand}
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          onDateChange={handleDateChange}
+          onLogoClick={() => setActiveTab("readme")}
+        />
+        <TabNav tabs={tabs} activeTab={effectiveTab} onTabChange={setActiveTab} />
+      </div>
 
       <main className="mx-auto max-w-[1400px]">
         <div className="px-2 pt-2">
