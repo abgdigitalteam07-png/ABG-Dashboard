@@ -427,42 +427,20 @@ export function ContactCharts({
         />
       )}
 
-      {/* ── Account Type Distribution ── */}
+      {/* ── Contact Distribution by Channel — Coming Soon ── */}
       <ChartCard
         title="Contact Distribution by Channel"
         subtitle="Account type breakdown for contacts in the selected period"
       >
-        {loading ? (
-          <Skeleton className="h-[320px] w-full" />
-        ) : error ? (
-          <p className="py-12 text-center text-sm text-muted-foreground">{error}</p>
-        ) : industryData.filter((d) => d.industry !== "Not specified").length === 0 ? (
-          <p className="py-12 text-center text-sm text-muted-foreground">No industry data available for {brand.name}</p>
-        ) : (
-          <ResponsiveContainer width="100%" height={Math.max(260, industryData.length * 38)}>
-            <BarChart data={industryData} layout="vertical" margin={{ left: 20, right: 64, top: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={gridColor} />
-              <XAxis type="number" tick={axisStyle} tickLine={false} axisLine={false} />
-              <YAxis
-                type="category"
-                dataKey="industry"
-                tick={axisStyle}
-                width={200}
-                tickLine={false}
-                axisLine={false}
-              />
-              <Tooltip content={<ChartTooltip />} cursor={{ fill: "hsl(var(--muted)/0.4)" }} />
-              <Bar dataKey="count" name="Contacts" fill="#8B5CF6" radius={[0, 4, 4, 0]}>
-                <LabelList
-                  dataKey="count"
-                  position="right"
-                  style={{ fontSize: 10, fill: "hsl(var(--muted-foreground))", fontVariantNumeric: "tabular-nums" }}
-                  formatter={(v: number) => v.toLocaleString()}
-                />
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        )}
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+            <BarChart2 className="h-6 w-6 text-muted-foreground" />
+          </div>
+          <p className="text-sm font-semibold text-foreground">Coming Soon</p>
+          <p className="mt-1 max-w-xs text-xs text-muted-foreground">
+            Channel distribution analytics are being developed and will be available in a future update.
+          </p>
+        </div>
       </ChartCard>
 
       {/* ── Job Title Distribution ── */}
