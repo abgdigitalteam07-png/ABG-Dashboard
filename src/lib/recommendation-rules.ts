@@ -141,6 +141,28 @@ function socialRules(m: Record<string, any>): Recommendation[] {
   return recs;
 }
 
+function crmRules(m: Record<string, any>): Recommendation[] {
+  const recs: Recommendation[] = [];
+
+  const tc = m.totalContacts;
+  const tcAll = m.totalContactsAllTime;
+
+  if (tc != null && tcAll != null && tcAll > 0) {
+    const pct = (tc / tcAll) * 100;
+    if (pct > 10) {
+      recs.push(r("crm_growth", "strong", `Strong contact growth — ${pct.toFixed(1)}% of all-time contacts added this period`, `${tc.toLocaleString()} new contacts were created during this period out of ${tcAll.toLocaleString()} total.`, "High contact acquisition indicates effective inbound and outbound efforts.", ["Ensure new contacts are being nurtured with email sequences", "Review lead sources to double down on top-performing channels", "Segment new contacts by lifecycle stage for targeted outreach"], "New Contacts", tc, `${pct.toFixed(1)}% of all-time`));
+    } else if (pct > 3) {
+      recs.push(r("crm_growth", "trending_up", `Steady contact growth — ${tc.toLocaleString()} new contacts this period`, `${pct.toFixed(1)}% of your total contact base was added during this time frame.`, "Consistent contact acquisition builds your addressable audience over time.", ["Review top-performing lead generation channels", "Optimize landing pages and forms for higher conversion", "Consider content upgrades (guides, tools) to attract more leads"], "New Contacts", tc));
+    } else if (tc > 0) {
+      recs.push(r("crm_growth", "attention", `Low contact acquisition — only ${tc.toLocaleString()} new contacts this period`, `Only ${pct.toFixed(1)}% of your total database was added recently.`, "Slowing contact growth means your future pipeline may shrink.", ["Audit lead generation forms for friction or drop-off", "Launch new content offers (webinars, guides, product comparisons)", "Review paid campaigns driving form fills", "Ensure website CTAs are visible and compelling"], "New Contacts", tc));
+    }
+  } else if (tc != null && tc === 0) {
+    recs.push(r("crm_growth", "action_required", "No new contacts this period — lead generation needs attention", "Zero new contacts were created during the selected date range.", "Without new contacts entering your CRM, your sales pipeline will eventually dry up.", ["Check if lead capture forms are working correctly", "Review traffic sources — are visitors reaching your site?", "Launch a lead magnet campaign (downloadable guide, free tool)", "Ensure HubSpot tracking code is installed on all key pages"], "New Contacts", 0));
+  }
+
+  return recs;
+}
+
 const STATUS_PRIORITY: Record<RecommendationStatus, number> = {
   action_required: 0,
   attention: 1,
@@ -161,6 +183,8 @@ export function generateRecommendations(
     recs = emailRules(metrics);
   } else if (tabName === "social_media") {
     recs = socialRules(metrics);
+  } else if (tabName === "hubspot_crm") {
+    recs = crmRules(metrics);
   }
 
   recs.sort((a, b) => STATUS_PRIORITY[a.status] - STATUS_PRIORITY[b.status]);
