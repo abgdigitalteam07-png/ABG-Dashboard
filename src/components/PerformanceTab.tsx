@@ -395,6 +395,18 @@ export function PerformanceTab({ brand, dateFrom, dateTo }: PerformanceTabProps)
         </section>
       )}
 
+      <AIRecommendations
+        tabName="ga4_gsc"
+        brandName={brand.name}
+        dateRange={`${format(dateFrom, "MMM d, yyyy")} – ${format(dateTo, "MMM d, yyyy")}`}
+        metrics={{
+          sessionsDelta: ga4?.sessionsDelta,
+          organicSessionsDelta: ga4?.organicSessionsDelta,
+          averageCTR: gsc?.averageCTR,
+          averagePosition: gsc?.averagePosition,
+          totalImpressionsDelta: gsc?.totalImpressionsDelta,
+        }}
+      />
     </div>
   );
 }
