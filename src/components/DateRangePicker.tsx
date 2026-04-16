@@ -108,7 +108,7 @@ function getPresetRange(id: PresetId): { from: Date; to: Date } | null {
 
   switch (id) {
     case "allTime":
-      return { from: new Date("2005-01-01T00:00:00Z"), to: now };
+      return { from: new Date("2010-01-01T00:00:00Z"), to: now };
     case "today":
       return { from: today, to: now };
     case "yesterday": {
