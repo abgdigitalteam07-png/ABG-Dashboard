@@ -42,6 +42,78 @@ interface JobTitle {
   count: number;
 }
 
+interface GroupedTitle {
+  group: string;
+  count: number;
+  breakdown: { title: string; count: number }[];
+}
+
+/* ── Job title grouping rules — ordered by priority, first match wins ── */
+const TITLE_GROUPS: { label: string; patterns: RegExp[] }[] = [
+  { label: "Executive / Owner",      patterns: [/\bceo\b/, /\bcoo\b/, /\bcfo\b/, /\bpresident\b/, /\bvice[\s-]pres/, /\bvp\b/, /\bowner\b/, /\bfounder\b/, /\bchief\b/] },
+  { label: "Sales",                  patterns: [/\bsales\b/] },
+  { label: "Marketing",              patterns: [/\bmarket/] },
+  { label: "Engineering",            patterns: [/\bengineer/] },
+  { label: "Manufacturing",          patterns: [/\bmanufactur/] },
+  { label: "Production",             patterns: [/\bproduction\b/] },
+  { label: "Quality",                patterns: [/\bquality\b/, /\b(qa|qc)\b/] },
+  { label: "Operations",             patterns: [/\boperation/] },
+  { label: "Purchasing",             patterns: [/\bpurchas/, /\bprocure/, /\bbuyer\b/, /\bbuying\b/] },
+  { label: "Warehouse / Logistics",  patterns: [/\bwarehouse\b/, /\bdistribut/, /\blogistic/, /\bshipping\b/] },
+  { label: "Customer Service",       patterns: [/\bcustomer[\s-]serv/, /\bcustomer[\s-]supp/, /\bclient\s+serv/] },
+  { label: "Finance / Accounting",   patterns: [/\bfinance\b/, /\bfinancial\b/, /\baccounti/, /\baccountant\b/] },
+  { label: "Human Resources",        patterns: [/\bhuman[\s-]resour/, /\brecruiter\b/, /\brecruiting\b/, /\btalent\b/] },
+  { label: "IT / Technology",        patterns: [/\binformation[\s-]tech/, /\btechnology\b/, /\bsoftware\b/, /\bsystems\b/] },
+  { label: "Design",                 patterns: [/\bdesign/] },
+  { label: "Director",               patterns: [/\bdirector\b/] },
+  { label: "Manager",                patterns: [/\bmanag/, /\bmgr\b/] },
+  { label: "Admin / Coordinator",    patterns: [/\badmin/, /\bassistant\b/, /\bcoordinator\b/] },
+  { label: "Contractor",             patterns: [/\bcontract/] },
+];
+
+function groupJobTitles(jobTitles: JobTitle[]): GroupedTitle[] {
+  const groups: Record<string, { count: number; breakdown: { title: string; count: number }[] }> = {};
+
+  for (const jt of jobTitles) {
+    const normalized = jt.title.toLowerCase().trim();
+    const isBlank = normalized === "not specified" || normalized === "";
+
+    if (isBlank) {
+      const key = "Not Specified";
+      if (!groups[key]) groups[key] = { count: 0, breakdown: [] };
+      groups[key].count += jt.count;
+      groups[key].breakdown.push(jt);
+      continue;
+    }
+
+    let matched = false;
+    for (const rule of TITLE_GROUPS) {
+      if (rule.patterns.some((p) => p.test(normalized))) {
+        if (!groups[rule.label]) groups[rule.label] = { count: 0, breakdown: [] };
+        groups[rule.label].count += jt.count;
+        groups[rule.label].breakdown.push(jt);
+        matched = true;
+        break;
+      }
+    }
+
+    if (!matched) {
+      const key = "Other";
+      if (!groups[key]) groups[key] = { count: 0, breakdown: [] };
+      groups[key].count += jt.count;
+      groups[key].breakdown.push(jt);
+    }
+  }
+
+  return Object.entries(groups)
+    .map(([group, { count, breakdown }]) => ({
+      group,
+      count,
+      breakdown: breakdown.sort((a, b) => b.count - a.count),
+    }))
+    .sort((a, b) => b.count - a.count);
+}
+
 /* ── Skeleton pulse ── */
 function Skeleton({ className }: { className?: string }) {
   return <div className={`animate-pulse rounded-md bg-muted ${className}`} />;
@@ -109,6 +181,30 @@ function ChartTooltip({ active, payload, label }: any) {
   );
 }
 
+/* ── Job title breakdown tooltip ── */
+function JobTitleTooltip({ active, payload }: any) {
+  if (!active || !payload?.length) return null;
+  const d = payload[0].payload as GroupedTitle;
+  return (
+    <div className="rounded-xl border border-border bg-card px-3 py-2.5 shadow-lg text-xs max-w-[260px]">
+      <p className="font-semibold text-foreground mb-2">
+        {d.group} — {d.count.toLocaleString()} contacts
+      </p>
+      <div className="space-y-1">
+        {d.breakdown.slice(0, 8).map((b) => (
+          <div key={b.title} className="flex items-center justify-between gap-4">
+            <span className="text-muted-foreground truncate">{b.title}</span>
+            <span className="text-foreground font-medium shrink-0">{b.count.toLocaleString()}</span>
+          </div>
+        ))}
+        {d.breakdown.length > 8 && (
+          <p className="text-muted-foreground italic mt-1">+{d.breakdown.length - 8} more titles</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ── Quarter key helper ── */
 function quarterKey(date: Date): string {
   const q = Math.floor(date.getMonth() / 3) + 1;
@@ -131,6 +227,7 @@ export function ContactCharts({
   const totalContactsAllTime = data?.totalContactsAllTime || 0;
   const jobTitles = data?.jobTitles || [];
   const stateDistribution = data?.contactStateDistribution || [];
+  const groupedTitles = useMemo(() => groupJobTitles(jobTitles), [jobTitles]);
 
   // Aggregate by granularity
   const aggregatedContacts = useMemo(() => {
@@ -274,22 +371,22 @@ export function ContactCharts({
       )}
 
       {/* ── Job Title Distribution ── */}
-      <ChartCard title="Contact Distribution by Job Title" subtitle="Top job titles in your contact database">
+      <ChartCard title="Contact Distribution by Job Title" subtitle="Grouped by role type — hover a bar to see the breakdown">
         {loading ? (
           <Skeleton className="h-[400px] w-full" />
         ) : error ? (
           <p className="py-12 text-center text-sm text-muted-foreground">{error}</p>
-        ) : jobTitles.length === 0 ? (
+        ) : groupedTitles.length === 0 ? (
           <p className="py-12 text-center text-sm text-muted-foreground">
             No data available for {brand.name}
           </p>
         ) : (
-          <ResponsiveContainer width="100%" height={Math.max(300, jobTitles.length * 28)}>
-            <BarChart data={jobTitles} layout="vertical" margin={{ left: 20, right: 16, top: 0, bottom: 0 }}>
+          <ResponsiveContainer width="100%" height={Math.max(300, groupedTitles.length * 36)}>
+            <BarChart data={groupedTitles} layout="vertical" margin={{ left: 20, right: 16, top: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={gridColor} />
               <XAxis type="number" tick={axisStyle} tickLine={false} axisLine={false} />
-              <YAxis type="category" dataKey="title" tick={axisStyle} width={180} tickLine={false} axisLine={false} />
-              <Tooltip content={<ChartTooltip />} />
+              <YAxis type="category" dataKey="group" tick={axisStyle} width={180} tickLine={false} axisLine={false} />
+              <Tooltip content={<JobTitleTooltip />} />
               <Bar dataKey="count" name="Contacts" fill="#3B82F6" radius={[0, 4, 4, 0]} />
             </BarChart>
           </ResponsiveContainer>
