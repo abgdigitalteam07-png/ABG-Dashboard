@@ -460,6 +460,7 @@ Deno.serve(async (req) => {
 
     const contactsByDate: Record<string, { total: number; hubspot: number; salesforce: number; import: number }> = {};
     const jobTitleCounts: Record<string, number> = {};
+    const industryCounts: Record<string, number> = {};
 
     // State full names (HubSpot state/ip_state values) → 2-letter codes used by the map
     const STATE_FULL_NAMES: Record<string, string> = {
@@ -522,6 +523,9 @@ Deno.serve(async (req) => {
 
       const title = (props.jobtitle || "").trim() || "Not specified";
       jobTitleCounts[title] = (jobTitleCounts[title] || 0) + 1;
+
+      const industry = (props.industry || "").trim() || "Not specified";
+      industryCounts[industry] = (industryCounts[industry] || 0) + 1;
     }
 
     if (isSecondary) {
@@ -552,6 +556,7 @@ Deno.serve(async (req) => {
               "hs_analytics_source",
               "hs_analytics_source_data_1",
               "jobtitle",
+              "industry",
             ],
             limit: 100,
           };
@@ -663,6 +668,7 @@ Deno.serve(async (req) => {
               "hs_analytics_source",
               "hs_analytics_source_data_1",
               "jobtitle",
+              "industry",
               "ip_state",
               "ip_state_code",
               "state",
@@ -976,6 +982,16 @@ Deno.serve(async (req) => {
           .map(([title, count]) => ({ title, count })),
         ...(jobTitleCounts["Not specified"]
           ? [{ title: "Not specified", count: jobTitleCounts["Not specified"] }]
+          : []),
+      ],
+      contactIndustryDistribution: [
+        ...Object.entries(industryCounts)
+          .filter(([industry]) => industry !== "Not specified")
+          .sort(([, a], [, b]) => b - a)
+          .slice(0, 20)
+          .map(([industry, count]) => ({ industry, count })),
+        ...(industryCounts["Not specified"]
+          ? [{ industry: "Not specified", count: industryCounts["Not specified"] }]
           : []),
       ],
       contactStateDistribution: Object.entries(stateCounts).sort(([,a],[,b]) => b-a).map(([state, count]) => ({ state, count })),

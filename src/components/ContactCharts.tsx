@@ -20,6 +20,7 @@ interface ContactChartsProps {
     contactsOverTime?: DayData[];
     jobTitles?: JobTitle[];
     contactStateDistribution?: { state: string; count: number }[];
+    contactIndustryDistribution?: { industry: string; count: number }[];
   } | null;
   loading?: boolean;
   error?: string | null;
@@ -233,6 +234,7 @@ export function ContactCharts({
   const jobTitles = data?.jobTitles || [];
   const stateDistribution = data?.contactStateDistribution || [];
   const groupedTitles = useMemo(() => groupJobTitles(jobTitles), [jobTitles]);
+  const industryData = data?.contactIndustryDistribution || [];
 
   // Aggregate by granularity
   const aggregatedContacts = useMemo(() => {
@@ -374,6 +376,36 @@ export function ContactCharts({
           unknownCount={externalUnknownStateCount ?? 0}
         />
       )}
+
+      {/* ── Industry Distribution ── */}
+      <ChartCard title="Contact Distribution by Industry" subtitle="Industries represented in your contact database">
+        {loading ? (
+          <Skeleton className="h-[320px] w-full" />
+        ) : error ? (
+          <p className="py-12 text-center text-sm text-muted-foreground">{error}</p>
+        ) : industryData.filter((d) => d.industry !== "Not specified").length === 0 ? (
+          <p className="py-12 text-center text-sm text-muted-foreground">
+            No industry data available for {brand.name}
+          </p>
+        ) : (
+          <ResponsiveContainer width="100%" height={Math.max(260, industryData.length * 38)}>
+            <BarChart data={industryData} layout="vertical" margin={{ left: 20, right: 64, top: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={gridColor} />
+              <XAxis type="number" tick={axisStyle} tickLine={false} axisLine={false} />
+              <YAxis type="category" dataKey="industry" tick={axisStyle} width={200} tickLine={false} axisLine={false} />
+              <Tooltip content={<ChartTooltip />} cursor={{ fill: "hsl(var(--muted)/0.4)" }} />
+              <Bar dataKey="count" name="Contacts" fill="#8B5CF6" radius={[0, 4, 4, 0]}>
+                <LabelList
+                  dataKey="count"
+                  position="right"
+                  style={{ fontSize: 10, fill: "hsl(var(--muted-foreground))", fontVariantNumeric: "tabular-nums" }}
+                  formatter={(v: number) => v.toLocaleString()}
+                />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </ChartCard>
 
       {/* ── Job Title Distribution ── */}
       <ChartCard title="Contact Distribution by Job Title" subtitle="Grouped by role type — hover a bar to see the breakdown">
