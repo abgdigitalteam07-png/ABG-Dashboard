@@ -563,15 +563,14 @@ Deno.serve(async (req) => {
       ];
 
       try {
-        // ── 1. All-time total: year-by-year CONTAINS_TOKEN count queries ──
-        // A single unbounded CONTAINS_TOKEN query underreports because HubSpot's search
-        // index doesn't guarantee full coverage for unfiltered all-time queries — older
-        // contacts can be absent from the index. The same CONTAINS_TOKEN + date filter
-        // IS accurate (proven by period counts matching). Summing yearly res.total values
-        // gives full historical coverage with only one API call per year (fast, no pages).
+        // ── 1. All-time total: parallel year-by-year CONTAINS_TOKEN count queries ──
+        // A single unbounded query underreports (HubSpot search index incomplete for old contacts).
+        // CONTAINS_TOKEN + date range IS accurate. Run all years in parallel so 22 calls
+        // complete in ~1s instead of timing out sequentially.
         {
           const currentYear = new Date().getFullYear();
-          for (let year = 2005; year <= currentYear; year++) {
+          const years = Array.from({ length: currentYear - 2005 + 1 }, (_, i) => 2005 + i);
+          const yearCounts = await Promise.all(years.map(async (year) => {
             const yStart = String(new Date(`${year}-01-01T00:00:00Z`).getTime());
             const yEnd   = String(new Date(`${year}-12-31T23:59:59Z`).getTime());
             try {
@@ -584,13 +583,15 @@ Deno.serve(async (req) => {
                 properties: [],
                 limit: 1,
               });
-              const yCount = yr.total ?? 0;
-              if (yCount > 0) console.log(`  ${year}: ${yCount} contacts`);
-              totalContactsAllTime += yCount;
+              return yr.total ?? 0;
             } catch (e) {
               console.error(`  year ${year} count error:`, e);
+              return 0;
             }
-          }
+          }));
+          totalContactsAllTime = yearCounts.reduce((sum, n) => sum + n, 0);
+          // Validation: log per-year breakdown so we can cross-check against HubSpot property settings
+          years.forEach((y, i) => { if (yearCounts[i] > 0) console.log(`  ${y}: ${yearCounts[i]}`); });
           console.log(`Secondary all-time total for "${brandName}": ${totalContactsAllTime}`);
         }
 
