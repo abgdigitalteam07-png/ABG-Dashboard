@@ -179,7 +179,7 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo }: HubSpotCRMTabProps) {
   const axisStyle = { fontSize: 11, fill: "hsl(var(--muted-foreground))" };
   const gridColor = "hsl(var(--border))";
 
-  if (showLoader) {
+  if (loading) {
     return <WaterFillLoader fullScreen={false} message="Loading CRM data…" />;
   }
 

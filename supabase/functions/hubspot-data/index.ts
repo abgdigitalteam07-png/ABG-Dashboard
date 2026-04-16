@@ -600,7 +600,10 @@ Deno.serve(async (req) => {
         }
         console.log(`Secondary account: ${totalContacts} contacts for "${brandName}" in date range`);
 
-        // All-time: iterate all contacts for this brand, gathering lifecycle + job titles
+        // All-time: year-by-year chunking to bypass HubSpot's 10K search pagination cap.
+        // Without date filters HubSpot returns contacts in default (newest-first) order and
+        // stops paginating after 10,000 results — older contacts are silently missed.
+        // Splitting by year keeps each window well below 10K so we capture everything.
         lifecycleStagesAllTime = [
           { stage: "subscriber",             label: "Subscriber",  count: 0 },
           { stage: "lead",                   label: "Lead",        count: 0 },
@@ -609,30 +612,43 @@ Deno.serve(async (req) => {
           { stage: "opportunity",            label: "Opportunity", count: 0 },
           { stage: "customer",              label: "Customer",    count: 0 },
         ];
-        let allTimeAfter: string | undefined;
-        while (true) {
-          const searchBody: any = {
-            properties: ["brands", "lifecyclestage", "jobtitle"],
-            limit: 100,
-          };
-          if (allTimeAfter) searchBody.after = allTimeAfter;
-
-          const res = await hubspotPost("/crm/v3/objects/contacts/search", token, searchBody);
-          for (const c of (res.results || [])) {
-            const contactBrands = (c.properties?.brands || "").toLowerCase();
-            if (contactBrands.includes(brandName.toLowerCase())) {
-              totalContactsAllTime++;
-              const stageVal = (c.properties?.lifecyclestage || "").toLowerCase().trim();
-              const matchAll = lifecycleStagesAllTime.find(ls => ls.stage === stageVal);
-              if (matchAll) matchAll.count++;
-              const title = (c.properties?.jobtitle || "").trim() || "Not specified";
-              jobTitleCountsAllTime[title] = (jobTitleCountsAllTime[title] || 0) + 1;
+        const currentYear = new Date().getFullYear();
+        for (let year = 2012; year <= currentYear; year++) {
+          const yearStart = new Date(`${year}-01-01T00:00:00Z`).getTime();
+          const yearEnd   = new Date(`${year}-12-31T23:59:59Z`).getTime();
+          let allTimeAfter: string | undefined;
+          while (true) {
+            const searchBody: any = {
+              filterGroups: [{
+                filters: [
+                  { propertyName: "createdate", operator: "GTE", value: String(yearStart) },
+                  { propertyName: "createdate", operator: "LTE", value: String(yearEnd) },
+                ],
+              }],
+              properties: ["brands", "lifecyclestage", "jobtitle"],
+              sorts: [{ propertyName: "createdate", direction: "ASCENDING" }],
+              limit: 100,
+            };
+            if (allTimeAfter) searchBody.after = allTimeAfter;
+            const res = await hubspotPost("/crm/v3/objects/contacts/search", token, searchBody);
+            // Skip remaining pages if this year has no results at all
+            if ((res.total ?? 0) === 0) break;
+            for (const c of (res.results || [])) {
+              const contactBrands = (c.properties?.brands || "").toLowerCase();
+              if (contactBrands.includes(brandName.toLowerCase())) {
+                totalContactsAllTime++;
+                const stageVal = (c.properties?.lifecyclestage || "").toLowerCase().trim();
+                const matchAll = lifecycleStagesAllTime.find(ls => ls.stage === stageVal);
+                if (matchAll) matchAll.count++;
+                const title = (c.properties?.jobtitle || "").trim() || "Not specified";
+                jobTitleCountsAllTime[title] = (jobTitleCountsAllTime[title] || 0) + 1;
+              }
             }
+            if (res.paging?.next?.after) allTimeAfter = res.paging.next.after;
+            else break;
           }
-
-          if (res.paging?.next?.after) allTimeAfter = res.paging.next.after;
-          else break;
         }
+        console.log(`Secondary all-time total for "${brandName}": ${totalContactsAllTime}`);
       } catch (e) {
         console.error("Secondary account contacts fetch error:", e);
       }
