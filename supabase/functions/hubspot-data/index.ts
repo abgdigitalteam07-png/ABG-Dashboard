@@ -647,7 +647,7 @@ Deno.serve(async (req) => {
               "ip_state", "ip_state_code", "state", "hs_state",
               "hs_object_source", "hs_object_source_detail_1",
               "hs_analytics_source", "hs_analytics_source_data_1",
-              "jobtitle", profileProperty, "dealer_assigned",
+              "jobtitle", profileProperty,
             ],
             sorts: [{ propertyName: "createdate", direction: "ASCENDING" }],
             limit: 100,
@@ -669,12 +669,6 @@ Deno.serve(async (req) => {
             const stateCode = normalizeStateCode(props.ip_state_code, props.ip_state, props.state, props.hs_state);
             if (stateCode) {
               stateCounts[stateCode] = (stateCounts[stateCode] || 0) + 1;
-              const dealerAssigned = (props.dealer_assigned || "").trim();
-              if (dealerAssigned) {
-                dealerWithDealStateCounts[stateCode] = (dealerWithDealStateCounts[stateCode] || 0) + 1;
-              } else {
-                dealerWithoutDealStateCounts[stateCode] = (dealerWithoutDealStateCounts[stateCode] || 0) + 1;
-              }
             } else {
               unknownStateCount++;
             }
@@ -683,6 +677,50 @@ Deno.serve(async (req) => {
           else break;
         }
         console.log(`Secondary account: ${totalContacts} contacts for "${brandName}" in date range`);
+
+        // ── 4. Dealer assignment state distributions (separate passes, isolated from contact count) ──
+        // Two paginated fetches: contacts WITH dealer_assigned set, and contacts WITHOUT.
+        // Kept separate so any error here never affects the main contact counts above.
+        const dealerStateProps = ["ip_state", "ip_state_code", "state", "hs_state", "dealer_assigned"];
+        for (const hasDealer of [true, false]) {
+          try {
+            const dealerFilters = [
+              brandFilter,
+              {
+                propertyName: "dealer_assigned",
+                operator: hasDealer ? "HAS_PROPERTY" : "NOT_HAS_PROPERTY",
+              },
+            ];
+            let dAfter: string | undefined;
+            let dPage = 0;
+            while (dPage < 50) {
+              dPage++;
+              const dBody: any = {
+                filterGroups: [{ filters: dealerFilters }],
+                properties: dealerStateProps,
+                sorts: [{ propertyName: "createdate", direction: "ASCENDING" }],
+                limit: 100,
+              };
+              if (dAfter) dBody.after = dAfter;
+              const dRes = await hubspotPost("/crm/v3/objects/contacts/search", token, dBody);
+              for (const c of (dRes.results || [])) {
+                const p = c.properties || {};
+                const sc = normalizeStateCode(p.ip_state_code, p.ip_state, p.state, p.hs_state);
+                if (sc) {
+                  if (hasDealer) {
+                    dealerWithDealStateCounts[sc] = (dealerWithDealStateCounts[sc] || 0) + 1;
+                  } else {
+                    dealerWithoutDealStateCounts[sc] = (dealerWithoutDealStateCounts[sc] || 0) + 1;
+                  }
+                }
+              }
+              if (dRes.paging?.next?.after) dAfter = dRes.paging.next.after;
+              else break;
+            }
+          } catch (e) {
+            console.warn(`Dealer distribution fetch (hasDealer=${hasDealer}) failed:`, e);
+          }
+        }
       } catch (e) {
         console.error("Secondary account contacts fetch error:", e);
       }
