@@ -45,6 +45,8 @@ interface ContactChartsProps {
   error?: string | null;
   externalStateDistribution?: { state: string; count: number }[];
   externalUnknownStateCount?: number;
+  dealerWithDealDistribution?: { state: string; count: number }[];
+  dealerWithoutDealDistribution?: { state: string; count: number }[];
 }
 
 type Granularity = "day" | "week" | "month" | "quarter";
@@ -264,6 +266,8 @@ export function ContactCharts({
   error = null,
   externalStateDistribution,
   externalUnknownStateCount,
+  dealerWithDealDistribution,
+  dealerWithoutDealDistribution,
 }: ContactChartsProps) {
   const [granularity, setGranularity] = useState<Granularity>("week");
   const contactsOverTime = data?.contactsOverTime || [];
@@ -425,6 +429,8 @@ export function ContactCharts({
               : stateDistribution
           }
           unknownCount={externalUnknownStateCount ?? 0}
+          dealerWithDealDistribution={dealerWithDealDistribution}
+          dealerWithoutDealDistribution={dealerWithoutDealDistribution}
         />
       )}
 

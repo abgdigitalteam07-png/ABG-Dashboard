@@ -348,6 +348,8 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo }: HubSpotCRMTabProps) {
           error={error}
           externalStateDistribution={data?.contactStateDistribution}
           externalUnknownStateCount={data?.contactUnknownStateCount}
+          dealerWithDealDistribution={data?.dealerWithDealStateDistribution}
+          dealerWithoutDealDistribution={data?.dealerWithoutDealStateDistribution}
         />
       </section>
 

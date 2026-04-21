@@ -466,6 +466,8 @@ Deno.serve(async (req) => {
     const contactsByDate: Record<string, { total: number; hubspot: number; salesforce: number; import: number }> = {};
     const jobTitleCounts: Record<string, number> = {};
     const industryCounts: Record<string, number> = {};
+    const dealerWithDealStateCounts: Record<string, number> = {};
+    const dealerWithoutDealStateCounts: Record<string, number> = {};
 
     // State full names (HubSpot state/ip_state values) → 2-letter codes used by the map
     const STATE_FULL_NAMES: Record<string, string> = {
@@ -645,7 +647,7 @@ Deno.serve(async (req) => {
               "ip_state", "ip_state_code", "state", "hs_state",
               "hs_object_source", "hs_object_source_detail_1",
               "hs_analytics_source", "hs_analytics_source_data_1",
-              "jobtitle", profileProperty,
+              "jobtitle", profileProperty, "dealer_assigned",
             ],
             sorts: [{ propertyName: "createdate", direction: "ASCENDING" }],
             limit: 100,
@@ -667,6 +669,12 @@ Deno.serve(async (req) => {
             const stateCode = normalizeStateCode(props.ip_state_code, props.ip_state, props.state, props.hs_state);
             if (stateCode) {
               stateCounts[stateCode] = (stateCounts[stateCode] || 0) + 1;
+              const dealerAssigned = (props.dealer_assigned || "").trim();
+              if (dealerAssigned) {
+                dealerWithDealStateCounts[stateCode] = (dealerWithDealStateCounts[stateCode] || 0) + 1;
+              } else {
+                dealerWithoutDealStateCounts[stateCode] = (dealerWithoutDealStateCounts[stateCode] || 0) + 1;
+              }
             } else {
               unknownStateCount++;
             }
@@ -1043,6 +1051,8 @@ Deno.serve(async (req) => {
       ],
       contactStateDistribution: Object.entries(stateCounts).sort(([,a],[,b]) => b-a).map(([state, count]) => ({ state, count })),
       contactUnknownStateCount: unknownStateCount,
+      dealerWithDealStateDistribution: Object.entries(dealerWithDealStateCounts).sort(([,a],[,b]) => b-a).map(([state, count]) => ({ state, count })),
+      dealerWithoutDealStateDistribution: Object.entries(dealerWithoutDealStateCounts).sort(([,a],[,b]) => b-a).map(([state, count]) => ({ state, count })),
       emails: current.emails,
       deliveryOverTime,
       stateDistribution: Object.entries(stateDistribution).map(([name, value]) => ({ name, value })),

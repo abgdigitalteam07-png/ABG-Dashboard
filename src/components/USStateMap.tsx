@@ -1,15 +1,19 @@
 import { useMemo, useState } from "react";
 import { MapPin, MapPinOff } from "lucide-react";
-import { STATE_PATHS } from "@/lib/us-state-paths";
+import usStatesSvg from "@/assets/us-states.svg?raw";
 
 interface StateData {
   state: string;
   count: number;
 }
 
+type MapMode = "all" | "with-deal" | "no-deal";
+
 interface USStateMapProps {
   stateDistribution: StateData[];
   unknownCount?: number;
+  dealerWithDealDistribution?: StateData[];
+  dealerWithoutDealDistribution?: StateData[];
 }
 
 const STATE_NAMES: Record<string, string> = {
@@ -27,188 +31,275 @@ const STATE_NAMES: Record<string, string> = {
 };
 
 function getHeatColor(ratio: number): string {
-  if (ratio === 0) return "#cbd5e1";
-  if (ratio < 0.1) return "#dbeafe";
-  if (ratio < 0.2) return "#bfdbfe";
-  if (ratio < 0.35) return "#93c5fd";
-  if (ratio < 0.5) return "#60a5fa";
-  if (ratio < 0.65) return "#3b82f6";
-  if (ratio < 0.8) return "#2563eb";
-  return "#1d4ed8";
+  if (ratio <= 0) return "#E7EDF4";
+  if (ratio < 0.15) return "#D6E6F8";
+  if (ratio < 0.3) return "#AFCBED";
+  if (ratio < 0.5) return "#79AADD";
+  if (ratio < 0.7) return "#4D86C7";
+  return "#2E5F9E";
 }
 
-export function USStateMap({ stateDistribution, unknownCount = 0 }: USStateMapProps) {
-  const [hoveredState, setHoveredState] = useState<string | null>(null);
-  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
+function getDealerColor(ratio: number): string {
+  if (ratio <= 0) return "#E7EDF4";
+  if (ratio < 0.15) return "#D1FAE5";
+  if (ratio < 0.3) return "#A7F3D0";
+  if (ratio < 0.5) return "#6EE7B7";
+  if (ratio < 0.7) return "#10B981";
+  return "#047857";
+}
 
-  const { stateMap, knownCount, totalUnknownCount, maxCount, topStates } = useMemo(() => {
-    const map: Record<string, number> = {};
-    let known = 0;
-    let unknown = unknownCount;
+function getUnassignedColor(ratio: number): string {
+  if (ratio <= 0) return "#E7EDF4";
+  if (ratio < 0.15) return "#FEF3C7";
+  if (ratio < 0.3) return "#FDE68A";
+  if (ratio < 0.5) return "#FCD34D";
+  if (ratio < 0.7) return "#F59E0B";
+  return "#B45309";
+}
 
-    for (const entry of stateDistribution) {
-      if (entry.state === "UNKNOWN" || !STATE_NAMES[entry.state]) {
-        unknown += entry.count;
-      } else {
-        map[entry.state] = (map[entry.state] || 0) + entry.count;
-        known += entry.count;
-      }
+const MODE_CONFIG = {
+  all: {
+    label: "All Contacts",
+    title: "Contact Distribution by State",
+    subtitle: "Geographic choropleth using the HubSpot IP State/Region field",
+    knownLabel: "Known States",
+    tooltipUnit: "contacts",
+    colorFn: getHeatColor,
+  },
+  "with-deal": {
+    label: "Dealer Assigned",
+    title: "Contacts with Assigned Dealer by State",
+    subtitle: "Contacts where dealer_assigned is set — opportunity coverage",
+    knownLabel: "States with Assigned",
+    tooltipUnit: "assigned",
+    colorFn: getDealerColor,
+  },
+  "no-deal": {
+    label: "No Dealer Assigned",
+    title: "Contacts Without Assigned Dealer by State",
+    subtitle: "Contacts where dealer_assigned is empty — coverage gaps",
+    knownLabel: "States with Gaps",
+    tooltipUnit: "unassigned",
+    colorFn: getUnassignedColor,
+  },
+} as const;
+
+function buildStateData(distribution: StateData[]) {
+  const map: Record<string, number> = {};
+  let known = 0;
+  let unknown = 0;
+  for (const s of distribution) {
+    if (!STATE_NAMES[s.state]) { unknown += s.count; continue; }
+    map[s.state] = (map[s.state] || 0) + s.count;
+    known += s.count;
+  }
+  const max = Math.max(...Object.values(map), 1);
+  const top = Object.entries(map)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 8)
+    .map(([state, count]) => ({ state, name: STATE_NAMES[state], count }));
+  return { stateMap: map, knownCount: known, unknownCount: unknown, maxCount: max, topStates: top };
+}
+
+function MapModeToggle({ mode, onChange }: { mode: MapMode; onChange: (m: MapMode) => void }) {
+  const options: { value: MapMode; label: string }[] = [
+    { value: "all", label: "All Contacts" },
+    { value: "with-deal", label: "Dealer Assigned" },
+    { value: "no-deal", label: "No Dealer Assigned" },
+  ];
+  return (
+    <div className="flex rounded-lg border border-slate-200 bg-slate-100/60 p-0.5 text-xs shrink-0">
+      {options.map((o) => (
+        <button
+          key={o.value}
+          onClick={() => onChange(o.value)}
+          className={`rounded-md px-3 py-1 font-medium transition-all whitespace-nowrap ${
+            mode === o.value
+              ? "bg-white shadow-sm text-slate-900"
+              : "text-slate-500 hover:text-slate-800"
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export function USStateMap({
+  stateDistribution,
+  unknownCount: externalUnknownCount,
+  dealerWithDealDistribution,
+  dealerWithoutDealDistribution,
+}: USStateMapProps) {
+  const showDealerToggle =
+    (dealerWithDealDistribution && dealerWithDealDistribution.length > 0) ||
+    (dealerWithoutDealDistribution && dealerWithoutDealDistribution.length > 0);
+
+  const [mode, setMode] = useState<MapMode>("all");
+
+  // Always compute all-contacts base for the summary cards
+  const base = useMemo(() => buildStateData(stateDistribution), [stateDistribution]);
+
+  // Active distribution for the map and top-states panel
+  const active = useMemo(() => {
+    if (mode === "with-deal") return buildStateData(dealerWithDealDistribution ?? []);
+    if (mode === "no-deal") return buildStateData(dealerWithoutDealDistribution ?? []);
+    return base;
+  }, [mode, base, dealerWithDealDistribution, dealerWithoutDealDistribution]);
+
+  const totalKnownAndUnknown = base.knownCount + (externalUnknownCount ?? base.unknownCount);
+  const cfg = MODE_CONFIG[mode];
+
+  const svgMarkup = useMemo(() => {
+    const fillRules = Object.keys(STATE_NAMES)
+      .map((abbr) => {
+        const ratio = (active.stateMap[abbr] || 0) / active.maxCount;
+        return `.${abbr.toLowerCase()}{fill:${cfg.colorFn(ratio)};}`;
+      })
+      .join("\n");
+
+    const titleRules = Object.entries(STATE_NAMES).map(([abbr, name]) => {
+      const count = active.stateMap[abbr] || 0;
+      return {
+        original: `<title>${name}</title>`,
+        replacement: `<title>${name}: ${count.toLocaleString()} ${cfg.tooltipUnit}</title>`,
+      };
+    });
+
+    let svg = usStatesSvg.replace(
+      "</style>",
+      `
+.state path{transition:fill 180ms ease,opacity 180ms ease;cursor:default;}
+.state path:hover{opacity:.84;}
+.borders{stroke:#FFFFFF;stroke-width:1.25;}
+.separator1{stroke:#C8D5E3;stroke-width:1.4;}
+${fillRules}
+</style>`,
+    );
+
+    for (const { original, replacement } of titleRules) {
+      svg = svg.replace(original, replacement);
     }
 
-    const max = Math.max(...Object.values(map), 1);
-    const top = Object.entries(map)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 10)
-      .map(([state, count]) => ({ state, name: STATE_NAMES[state], count }));
+    return svg;
+  }, [active.stateMap, active.maxCount, cfg]);
 
-    return {
-      stateMap: map,
-      knownCount: known,
-      totalUnknownCount: unknown,
-      maxCount: max,
-      topStates: top,
-    };
-  }, [stateDistribution, unknownCount]);
-
-  const totalKnownAndUnknown = knownCount + totalUnknownCount;
-
-  const handleMouseMove = (e: React.MouseEvent<SVGPathElement>, abbr: string) => {
-    const rect = e.currentTarget.closest("svg")?.getBoundingClientRect();
-    if (rect) {
-      setTooltipPos({ x: e.clientX - rect.left, y: e.clientY - rect.top - 10 });
-    }
-    setHoveredState(abbr);
-  };
+  const legendRatios = [0, 0.15, 0.3, 0.5, 0.7, 1];
 
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-2 gap-4">
-        <div className="flex items-center gap-3 rounded-2xl border border-border bg-card p-5">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15">
+      {/* Summary cards — always reflect all-contacts totals */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/12">
             <MapPin className="h-5 w-5 text-emerald-600" />
           </div>
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Known States</p>
-            <p className="text-2xl font-bold tabular-nums text-foreground">{knownCount.toLocaleString()}</p>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Known States</p>
+            <p className="text-2xl font-bold tabular-nums text-slate-900">{base.knownCount.toLocaleString()}</p>
+            <p className="text-xs text-slate-500">Mapped from IP State/Region</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3 rounded-2xl border border-border bg-card p-5">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-500/15">
-            <MapPinOff className="h-5 w-5 text-orange-600" />
+        <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/12">
+            <MapPinOff className="h-5 w-5 text-amber-600" />
           </div>
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Unknown States</p>
-            <p className="text-2xl font-bold tabular-nums text-foreground">{totalUnknownCount.toLocaleString()}</p>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Unknown States</p>
+            <p className="text-2xl font-bold tabular-nums text-slate-900">
+              {(externalUnknownCount ?? base.unknownCount).toLocaleString()}
+            </p>
+            <p className="text-xs text-slate-500">Missing IP State/Region</p>
           </div>
         </div>
       </div>
 
-      {knownCount > 0 && (
-        <div className="rounded-2xl border border-border bg-card p-6">
-          <h3 className="mb-1 text-sm font-semibold text-foreground">Contact Distribution by State</h3>
-          <p className="mb-5 text-xs text-muted-foreground">Heat map based on contact state data — darker = more contacts</p>
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.5fr)_320px]">
+        {/* Map card */}
+        <div className="rounded-[28px] border border-slate-200 bg-gradient-to-b from-slate-50 to-white p-6 shadow-sm">
+          <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h3 className="text-sm font-semibold text-slate-900">{cfg.title}</h3>
+              <p className="mt-1 text-xs text-slate-500">{cfg.subtitle}</p>
+            </div>
 
-          <div className="relative overflow-hidden">
-            <svg
-              viewBox="60 40 830 500"
-              className="h-auto w-full"
-              style={{ maxHeight: 440 }}
-              onMouseLeave={() => setHoveredState(null)}
-            >
-              {Object.entries(STATE_PATHS).map(([abbr, path]) => {
-                const count = stateMap[abbr] || 0;
-                const ratio = count / maxCount;
-                const isHovered = hoveredState === abbr;
-
-                return (
-                  <path
-                    key={abbr}
-                    d={path}
-                    fill={getHeatColor(ratio)}
-                    stroke={isHovered ? "#1e293b" : "#94a3b8"}
-                    strokeWidth={isHovered ? 2 : 0.5}
-                    className="cursor-default transition-colors duration-150"
-                    style={{
-                      filter: isHovered ? "brightness(0.85)" : undefined,
-                      opacity: count > 0 ? 1 : 0.45,
-                    }}
-                    onMouseMove={(e) => handleMouseMove(e, abbr)}
-                    onMouseEnter={() => setHoveredState(abbr)}
-                  />
-                );
-              })}
-            </svg>
-
-            {hoveredState && (
-              <div
-                className="pointer-events-none absolute z-50 rounded-lg border border-border bg-card px-3 py-2 text-xs shadow-xl"
-                style={{
-                  left: tooltipPos.x,
-                  top: tooltipPos.y,
-                  transform: "translate(-50%, -100%)",
-                }}
-              >
-                <p className="font-bold text-foreground">
-                  {STATE_NAMES[hoveredState]} ({hoveredState})
-                </p>
-                <p className="text-muted-foreground">
-                  {(stateMap[hoveredState] || 0).toLocaleString()} contacts
-                  {totalKnownAndUnknown > 0 && (
-                    <span className="ml-1">
-                      ({(((stateMap[hoveredState] || 0) / totalKnownAndUnknown) * 100).toFixed(1)}%)
-                    </span>
-                  )}
-                </p>
+            <div className="flex flex-wrap items-center gap-3">
+              {showDealerToggle && <MapModeToggle mode={mode} onChange={setMode} />}
+              <div className="flex items-center gap-2 text-[11px] text-slate-500">
+                <span>Lower</span>
+                <div className="flex overflow-hidden rounded-full border border-slate-200">
+                  {legendRatios.map((ratio) => (
+                    <span
+                      key={ratio}
+                      className="h-3 w-7"
+                      style={{ backgroundColor: cfg.colorFn(ratio === 0 ? 0.01 : ratio) }}
+                    />
+                  ))}
+                </div>
+                <span>Higher</span>
               </div>
-            )}
+            </div>
           </div>
 
-          <div className="mt-4 flex items-center justify-center gap-2 text-[10px] text-muted-foreground">
-            <span>Fewer</span>
-            <div className="flex gap-0.5">
-              {[0.05, 0.15, 0.3, 0.5, 0.7, 0.9].map((ratio) => (
-                <div
-                  key={ratio}
-                  className="h-3 w-6 rounded-sm"
-                  style={{ backgroundColor: getHeatColor(ratio) }}
-                />
-              ))}
-            </div>
-            <span>More</span>
+          <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white p-4">
+            <div
+              className="w-full [&_svg]:h-auto [&_svg]:w-full"
+              dangerouslySetInnerHTML={{ __html: svgMarkup }}
+            />
           </div>
         </div>
-      )}
 
-      {topStates.length > 0 && (
-        <div className="rounded-2xl border border-border bg-card p-6">
-          <h3 className="mb-4 text-sm font-semibold text-foreground">Top 10 States</h3>
-          <div className="space-y-2">
-            {topStates.map((state, index) => {
-              const pct = totalKnownAndUnknown > 0 ? (state.count / totalKnownAndUnknown) * 100 : 0;
+        {/* Top states panel */}
+        <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+          <h3 className="text-sm font-semibold text-slate-900">
+            Top States{mode !== "all" ? ` — ${cfg.label}` : ""}
+          </h3>
+          <p className="mt-1 text-xs text-slate-500">
+            {mode === "all"
+              ? "Share of contacts with a known IP State/Region"
+              : `Share of ${cfg.tooltipUnit} contacts per state`}
+          </p>
+
+          <div className="mt-5 space-y-3">
+            {active.topStates.length > 0 ? active.topStates.map((s, i) => {
+              const pct = totalKnownAndUnknown > 0 ? (s.count / totalKnownAndUnknown) * 100 : 0;
+              const width = active.topStates[0]?.count
+                ? Math.max((s.count / active.topStates[0].count) * 100, 8)
+                : 0;
               return (
-                <div key={state.state} className="flex items-center gap-3">
-                  <span className="w-5 text-right text-xs font-medium text-muted-foreground">{index + 1}</span>
-                  <span className="w-8 text-xs font-bold text-foreground">{state.state}</span>
-                  <div className="h-5 flex-1 overflow-hidden rounded-full bg-muted/50">
+                <div key={s.state} className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-3 text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="w-5 text-right font-medium text-slate-400">{i + 1}</span>
+                      <span className="font-semibold text-slate-900">{s.name}</span>
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                        {s.state}
+                      </span>
+                    </div>
+                    <span className="font-semibold tabular-nums text-slate-900">{s.count.toLocaleString()}</span>
+                  </div>
+
+                  <div className="h-2 overflow-hidden rounded-full bg-slate-100">
                     <div
-                      className="h-full rounded-full transition-all"
+                      className="h-full rounded-full"
                       style={{
-                        width: `${Math.max((state.count / topStates[0].count) * 100, 2)}%`,
-                        backgroundColor: getHeatColor(state.count / maxCount),
+                        width: `${width}%`,
+                        backgroundColor: cfg.colorFn((active.stateMap[s.state] || 0) / active.maxCount),
                       }}
                     />
                   </div>
-                  <span className="w-16 text-right text-xs font-semibold tabular-nums text-foreground">
-                    {state.count.toLocaleString()}
-                  </span>
-                  <span className="w-12 text-right text-[10px] text-muted-foreground">{pct.toFixed(1)}%</span>
+
+                  <div className="text-right text-[11px] text-slate-500">{pct.toFixed(1)}%</div>
                 </div>
               );
-            })}
+            }) : (
+              <p className="text-sm text-slate-500">No state data available.</p>
+            )}
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
