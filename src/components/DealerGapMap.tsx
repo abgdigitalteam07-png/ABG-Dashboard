@@ -45,6 +45,12 @@ function getStatusColor(status: CoverageStatus): string {
   }
 }
 
+function getListColor(status: CoverageStatus): string {
+  if (status === "gap") return "#FCA5A5";
+  if (status === "partial") return "#93C5FD";
+  return getStatusColor(status);
+}
+
 function getStatusLabel(status: CoverageStatus): string {
   switch (status) {
     case "covered": return "Covered";
@@ -344,20 +350,20 @@ ${fillRules}
                         <span className="w-5 text-right font-medium text-muted-foreground">{i + 1}</span>
                         <span className="font-semibold text-foreground">{s.name}</span>
                         <span
-                          className="rounded-full px-2 py-0.5 text-[10px] font-semibold text-white"
-                          style={{ backgroundColor: getStatusColor(s.status) }}
+                          className="rounded-full px-2 py-0.5 text-[10px] font-semibold text-slate-700"
+                          style={{ backgroundColor: getListColor(s.status) }}
                         >
                           {s.abbr}
                         </span>
                       </div>
-                      <span className="font-semibold tabular-nums text-rose-600 dark:text-rose-400">
+                      <span className="font-semibold tabular-nums text-red-400 dark:text-red-300">
                         {s.unassigned.toLocaleString()} unassigned
                       </span>
                     </div>
                     <div className="h-2 overflow-hidden rounded-full bg-muted">
                       <div
                         className="h-full rounded-full"
-                        style={{ width: `${barPct}%`, backgroundColor: getStatusColor(s.status) }}
+                        style={{ width: `${barPct}%`, backgroundColor: getListColor(s.status) }}
                       />
                     </div>
                     <div className="flex justify-between text-[10px] text-muted-foreground">
