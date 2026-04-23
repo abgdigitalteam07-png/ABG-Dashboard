@@ -38,10 +38,10 @@ type CoverageStatus = "covered" | "gap" | "partial" | "none";
 
 function getStatusColor(status: CoverageStatus): string {
   switch (status) {
-    case "covered": return "#10B981";
-    case "partial": return "#2E5F9E";
-    case "gap":     return "#EF4444";
-    case "none":    return "#E2E8F0";
+    case "covered": return "#0D6E7A";
+    case "partial": return "#4AAAB8";
+    case "gap":     return "#A8D8DD";
+    case "none":    return "#E0F2F4";
   }
 }
 
