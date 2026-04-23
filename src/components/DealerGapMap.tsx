@@ -38,10 +38,10 @@ type CoverageStatus = "covered" | "gap" | "partial" | "none";
 
 function getStatusColor(status: CoverageStatus): string {
   switch (status) {
-    case "covered": return "#0D6E7A";
-    case "partial": return "#4AAAB8";
-    case "gap":     return "#A8D8DD";
-    case "none":    return "#E0F2F4";
+    case "covered": return "#0A6270";
+    case "partial": return "#2BAAB2";
+    case "gap":     return "#7ECBCF";
+    case "none":    return "#D8F0F2";
   }
 }
 
@@ -253,7 +253,7 @@ ${fillRules}
               <h3 className="text-sm font-semibold text-foreground">Dealer Coverage by State</h3>
               <p className="mt-1 text-xs text-muted-foreground">
                 {hasStateData
-                  ? "Green = fully covered · Blue = partial · Red = gap (no dealer assigned)"
+                  ? "Dark teal = fully covered · Medium = partial · Light = gap (no dealer assigned)"
                   : "State-level breakdown requires contacts with State field populated"}
               </p>
             </div>
@@ -270,12 +270,14 @@ ${fillRules}
             </div>
           </div>
 
-          <div className="relative overflow-hidden rounded-[24px] border border-border bg-white dark:bg-slate-900 p-4">
+          <div
+            ref={mapRef}
+            className="relative overflow-hidden rounded-[24px] border border-border bg-white dark:bg-slate-900 p-4"
+            onMouseMove={handleMouseMove}
+            onMouseLeave={handleMouseLeave}
+          >
             <div
-              ref={mapRef}
               className="w-full [&_svg]:h-auto [&_svg]:w-full"
-              onMouseMove={handleMouseMove}
-              onMouseLeave={handleMouseLeave}
               dangerouslySetInnerHTML={{ __html: svgMarkup }}
             />
 
