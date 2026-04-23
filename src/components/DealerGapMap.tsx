@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState, useRef } from "react";
 import { MapPin, AlertTriangle, CheckCircle2, SplitSquareHorizontal } from "lucide-react";
 import usStatesSvg from "@/assets/us-states.svg?raw";
 
@@ -28,12 +28,18 @@ const STATE_NAMES: Record<string, string> = {
   DC: "District of Columbia",
 };
 
+// Lowercase → uppercase lookup for SVG class matching
+const STATE_CLASS_MAP: Record<string, string> = {};
+for (const code of Object.keys(STATE_NAMES)) {
+  STATE_CLASS_MAP[code.toLowerCase()] = code;
+}
+
 type CoverageStatus = "covered" | "gap" | "partial" | "none";
 
 function getStatusColor(status: CoverageStatus): string {
   switch (status) {
     case "covered": return "#10B981";
-    case "partial": return "#F59E0B";
+    case "partial": return "#3B82F6";
     case "gap":     return "#EF4444";
     case "none":    return "#E2E8F0";
   }
@@ -48,6 +54,12 @@ function getStatusLabel(status: CoverageStatus): string {
   }
 }
 
+interface TooltipState {
+  x: number;
+  y: number;
+  stateCode: string;
+}
+
 export function DealerGapMap({
   dealerWithDealDistribution = [],
   dealerWithoutDealDistribution = [],
@@ -57,13 +69,15 @@ export function DealerGapMap({
   const hasStateData =
     dealerWithDealDistribution.length > 0 || dealerWithoutDealDistribution.length > 0;
 
-  // Use totals from props when available, otherwise sum from state distributions
   const totalAssigned = dealerAssignedTotal > 0
     ? dealerAssignedTotal
     : dealerWithDealDistribution.reduce((s, d) => s + d.count, 0);
   const totalUnassigned = dealerUnassignedTotal > 0
     ? dealerUnassignedTotal
     : dealerWithoutDealDistribution.reduce((s, d) => s + d.count, 0);
+
+  const [tooltip, setTooltip] = useState<TooltipState | null>(null);
+  const mapRef = useRef<HTMLDivElement>(null);
 
   const { assignedMap, unassignedMap, statusMap, summaryStats, gapList } = useMemo(() => {
     const assigned: Record<string, number> = {};
@@ -119,38 +133,65 @@ export function DealerGapMap({
       })
       .join("\n");
 
-    const titleRules = Object.entries(STATE_NAMES).map(([abbr, name]) => {
-      const a = assignedMap[abbr] || 0;
-      const u = unassignedMap[abbr] || 0;
-      const status = statusMap[abbr] || "none";
-      let tooltip = `${name}: No contacts`;
-      if (status === "covered") tooltip = `${name}: ${a} assigned ✓`;
-      else if (status === "gap") tooltip = `${name}: ${u} unassigned ⚠`;
-      else if (status === "partial") tooltip = `${name}: ${a} assigned ✓ · ${u} unassigned ⚠`;
-      return { original: `<title>${name}</title>`, replacement: `<title>${tooltip}</title>` };
-    });
-
     let svg = usStatesSvg.replace(
       "</style>",
       `
-.state path{transition:fill 180ms ease,opacity 180ms ease;cursor:default;}
-.state path:hover{opacity:.84;}
+.state path{transition:fill 180ms ease,opacity 180ms ease;cursor:pointer;}
+.state path:hover{opacity:.78;}
 .borders{stroke:#FFFFFF;stroke-width:1.25;}
 .separator1{stroke:#C8D5E3;stroke-width:1.4;}
 ${fillRules}
 </style>`,
     );
 
-    for (const { original, replacement } of titleRules) {
-      svg = svg.replace(original, replacement);
-    }
+    // Remove SVG titles — we handle tooltips in React
+    svg = svg.replace(/<title>[^<]*<\/title>/g, "");
 
     return svg;
-  }, [statusMap, assignedMap, unassignedMap]);
+  }, [statusMap]);
+
+  function handleMouseMove(e: React.MouseEvent<HTMLDivElement>) {
+    const container = mapRef.current;
+    if (!container) return;
+
+    const el = e.target as Element;
+    let cur: Element | null = el;
+    let stateCode: string | null = null;
+
+    while (cur && cur !== container) {
+      const cls = (cur.getAttribute("class") || "").trim().split(/\s+/);
+      for (const c of cls) {
+        if (STATE_CLASS_MAP[c]) { stateCode = STATE_CLASS_MAP[c]; break; }
+      }
+      if (stateCode) break;
+      cur = cur.parentElement;
+    }
+
+    if (stateCode && (statusMap[stateCode] || assignedMap[stateCode] || unassignedMap[stateCode])) {
+      const rect = container.getBoundingClientRect();
+      setTooltip({
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
+        stateCode,
+      });
+    } else {
+      setTooltip(null);
+    }
+  }
+
+  function handleMouseLeave() {
+    setTooltip(null);
+  }
+
+  const tooltipData = tooltip ? {
+    name: STATE_NAMES[tooltip.stateCode],
+    status: statusMap[tooltip.stateCode] || "none",
+    assigned: assignedMap[tooltip.stateCode] || 0,
+    unassigned: unassignedMap[tooltip.stateCode] || 0,
+  } : null;
 
   return (
     <div className="space-y-5">
-      {/* Section label */}
       <div className="flex items-center gap-3">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-600">
           <AlertTriangle className="h-4 w-4 text-white" />
@@ -159,7 +200,6 @@ ${fillRules}
         <div className="flex-1 border-t border-border" />
       </div>
 
-      {/* Summary cards — always show, use totals */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div className="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 dark:bg-emerald-950/20 dark:border-emerald-800 p-4">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15">
@@ -183,14 +223,14 @@ ${fillRules}
           </div>
         </div>
 
-        <div className="flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800 p-4">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/15">
-            <SplitSquareHorizontal className="h-5 w-5 text-amber-600" />
+        <div className="flex items-center gap-3 rounded-2xl border border-blue-200 bg-blue-50 dark:bg-blue-950/20 dark:border-blue-800 p-4">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-500/15">
+            <SplitSquareHorizontal className="h-5 w-5 text-blue-600" />
           </div>
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-400">Partial States</p>
-            <p className="text-2xl font-bold tabular-nums text-amber-700 dark:text-amber-300">{summaryStats.partial}</p>
-            <p className="text-[10px] text-amber-600/70 dark:text-amber-500">Mixed coverage</p>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-blue-700 dark:text-blue-400">Partial States</p>
+            <p className="text-2xl font-bold tabular-nums text-blue-700 dark:text-blue-300">{summaryStats.partial}</p>
+            <p className="text-[10px] text-blue-600/70 dark:text-blue-500">Mixed coverage</p>
           </div>
         </div>
 
@@ -206,7 +246,6 @@ ${fillRules}
         </div>
       </div>
 
-      {/* Map + gap list */}
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.5fr)_320px]">
         <div className="rounded-[28px] border border-border bg-gradient-to-b from-slate-50 to-white dark:from-slate-900 dark:to-slate-800 p-6">
           <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
@@ -214,8 +253,8 @@ ${fillRules}
               <h3 className="text-sm font-semibold text-foreground">Dealer Coverage by State</h3>
               <p className="mt-1 text-xs text-muted-foreground">
                 {hasStateData
-                  ? "Green = fully covered · Amber = partial · Red = gap (no dealer assigned)"
-                  : "State-level breakdown requires contacts with IP State/Region populated"}
+                  ? "Green = fully covered · Blue = partial · Red = gap (no dealer assigned)"
+                  : "State-level breakdown requires contacts with State field populated"}
               </p>
             </div>
             <div className="flex items-center gap-4 text-[11px] text-muted-foreground flex-wrap">
@@ -231,11 +270,41 @@ ${fillRules}
             </div>
           </div>
 
-          <div className="overflow-hidden rounded-[24px] border border-border bg-white dark:bg-slate-900 p-4">
+          <div className="relative overflow-hidden rounded-[24px] border border-border bg-white dark:bg-slate-900 p-4">
             <div
+              ref={mapRef}
               className="w-full [&_svg]:h-auto [&_svg]:w-full"
+              onMouseMove={handleMouseMove}
+              onMouseLeave={handleMouseLeave}
               dangerouslySetInnerHTML={{ __html: svgMarkup }}
             />
+
+            {tooltip && tooltipData && (
+              <div
+                className="pointer-events-none absolute z-10 rounded-xl border border-slate-200 bg-white shadow-lg px-3 py-2 text-xs"
+                style={{
+                  left: tooltip.x + 12,
+                  top: tooltip.y - 10,
+                  transform: tooltip.x > 400 ? "translateX(-110%)" : undefined,
+                }}
+              >
+                <p className="font-semibold text-slate-900 mb-1">{tooltipData.name}</p>
+                {tooltipData.status === "none" ? (
+                  <p className="text-slate-400">No contacts</p>
+                ) : (
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className="h-2 w-2 rounded-full bg-emerald-500 inline-block" />
+                      <span className="text-slate-600">{tooltipData.assigned.toLocaleString()} assigned</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="h-2 w-2 rounded-full bg-red-500 inline-block" />
+                      <span className="text-slate-600">{tooltipData.unassigned.toLocaleString()} unassigned</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -247,13 +316,13 @@ ${fillRules}
 
           <div className="mt-5 space-y-3">
             {!hasStateData ? (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-950/20 p-4 text-center">
-                <p className="text-xs font-medium text-amber-700 dark:text-amber-400">
+              <div className="rounded-xl border border-blue-200 bg-blue-50 dark:bg-blue-950/20 p-4 text-center">
+                <p className="text-xs font-medium text-blue-700 dark:text-blue-400">
                   No state breakdown available
                 </p>
-                <p className="mt-1 text-[10px] text-amber-600/80 dark:text-amber-500">
+                <p className="mt-1 text-[10px] text-blue-600/80 dark:text-blue-500">
                   {totalUnassigned > 0
-                    ? `${totalUnassigned.toLocaleString()} unassigned contacts exist but don't have IP State/Region set in HubSpot`
+                    ? `${totalUnassigned.toLocaleString()} unassigned contacts exist but don't have State populated in HubSpot`
                     : "Contacts may not have the dealer_assigned property populated yet"}
                 </p>
               </div>
