@@ -430,8 +430,6 @@ export function ContactCharts({
               : stateDistribution
           }
           unknownCount={externalUnknownStateCount ?? 0}
-          dealerWithDealDistribution={dealerWithDealDistribution}
-          dealerWithoutDealDistribution={dealerWithoutDealDistribution}
         />
       )}
 
