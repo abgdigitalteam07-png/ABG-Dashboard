@@ -182,13 +182,25 @@ export function USStateMap({
       })
       .join("\n");
 
-    // Inject state count labels as SVG text elements
+    // Inject state count labels — pill badge with adaptive color
     const labels = Object.entries(STATE_CENTROIDS)
       .filter(([abbr]) => (active.stateMap[abbr] || 0) > 0)
       .map(([abbr, [cx, cy]]) => {
         const count = active.stateMap[abbr];
-        const label = count >= 1000 ? `${(count / 1000).toFixed(count >= 10000 ? 0 : 1)}k` : String(count);
-        return `<text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central" style="font-size:9px;font-family:system-ui,sans-serif;font-weight:700;fill:#1e3a5f;pointer-events:none;paint-order:stroke;stroke:#ffffff;stroke-width:2.5;stroke-linejoin:round;">${label}</text>`;
+        const label = count >= 10000 ? `${Math.round(count / 1000)}k`
+          : count >= 1000 ? `${(count / 1000).toFixed(1)}k`
+          : String(count);
+        const ratio = count / active.maxCount;
+        const isDark = ratio >= 0.45;
+        const textFill = isDark ? "#ffffff" : "#0d2147";
+        const pillFill = isDark ? "#ffffff" : "#0d2147";
+        const pillOpacity = isDark ? "0.22" : "0.13";
+        const w = label.length <= 2 ? 18 : label.length === 3 ? 24 : 30;
+        const h = 13;
+        return `<g pointer-events="none">
+<rect x="${cx - w / 2}" y="${cy - h / 2}" width="${w}" height="${h}" rx="${h / 2}" fill="${pillFill}" fill-opacity="${pillOpacity}"/>
+<text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central" style="font-size:9.5px;font-family:Inter,system-ui,sans-serif;font-weight:700;letter-spacing:-0.2px;fill:${textFill};">${label}</text>
+</g>`;
       })
       .join("\n");
 

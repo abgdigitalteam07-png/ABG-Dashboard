@@ -28,6 +28,23 @@ const STATE_NAMES: Record<string, string> = {
   DC: "District of Columbia",
 };
 
+// Approximate SVG-space centroids (viewBox 0 0 959 593)
+const STATE_CENTROIDS: Record<string, [number, number]> = {
+  AL: [660, 450], AK: [178, 553], AZ: [196, 367], AR: [563, 402],
+  CA: [112, 345], CO: [340, 286], CT: [858, 184], DE: [833, 243],
+  FL: [725, 505], GA: [722, 442], HI: [290, 556], ID: [207, 218],
+  IL: [590, 282], IN: [655, 273], IA: [532, 226], KS: [460, 315],
+  KY: [672, 338], LA: [578, 478], ME: [900, 115], MD: [822, 243],
+  MA: [875, 174], MI: [655, 206], MN: [512, 162], MS: [625, 443],
+  MO: [566, 332], MT: [286, 172], NE: [436, 268], NV: [184, 295],
+  NH: [882, 152], NJ: [838, 223], NM: [292, 390], NY: [820, 178],
+  NC: [778, 363], ND: [438, 166], OH: [705, 273], OK: [490, 377],
+  OR: [144, 216], PA: [788, 218], RI: [882, 186], SC: [772, 398],
+  SD: [444, 213], TN: [680, 378], TX: [460, 438], UT: [244, 313],
+  VT: [858, 150], VA: [795, 333], WA: [153, 167], WV: [758, 298],
+  WI: [588, 202], WY: [322, 228], DC: [827, 260],
+};
+
 // Lowercase → uppercase lookup for SVG class matching
 const STATE_CLASS_MAP: Record<string, string> = {};
 for (const code of Object.keys(STATE_NAMES)) {
@@ -153,8 +170,32 @@ ${fillRules}
     // Remove SVG titles — we handle tooltips in React
     svg = svg.replace(/<title>[^<]*<\/title>/g, "");
 
+    // Inject state contact labels — pill badge with adaptive color
+    const labels = Object.entries(STATE_CENTROIDS)
+      .filter(([abbr]) => (assignedMap[abbr] || 0) + (unassignedMap[abbr] || 0) > 0)
+      .map(([abbr, [cx, cy]]) => {
+        const total = (assignedMap[abbr] || 0) + (unassignedMap[abbr] || 0);
+        const label = total >= 10000 ? `${Math.round(total / 1000)}k`
+          : total >= 1000 ? `${(total / 1000).toFixed(1)}k`
+          : String(total);
+        const status = statusMap[abbr] || "none";
+        const isDark = status === "covered" || status === "partial";
+        const textFill = isDark ? "#ffffff" : "#0d4a52";
+        const pillFill = isDark ? "#ffffff" : "#0d4a52";
+        const pillOpacity = isDark ? "0.22" : "0.13";
+        const w = label.length <= 2 ? 18 : label.length === 3 ? 24 : 30;
+        const h = 13;
+        return `<g pointer-events="none">
+<rect x="${cx - w / 2}" y="${cy - h / 2}" width="${w}" height="${h}" rx="${h / 2}" fill="${pillFill}" fill-opacity="${pillOpacity}"/>
+<text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central" style="font-size:9.5px;font-family:Inter,system-ui,sans-serif;font-weight:700;letter-spacing:-0.2px;fill:${textFill};">${label}</text>
+</g>`;
+      })
+      .join("\n");
+
+    svg = svg.replace("</svg>", `${labels}\n</svg>`);
+
     return svg;
-  }, [statusMap]);
+  }, [statusMap, assignedMap, unassignedMap]);
 
   function handleMouseMove(e: React.MouseEvent<HTMLDivElement>) {
     const container = mapRef.current;
