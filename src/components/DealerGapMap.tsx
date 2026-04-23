@@ -186,9 +186,9 @@ ${fillRules}
           : String(total);
         const a = assignedMap[abbr] || 0;
         const u = unassignedMap[abbr] || 0;
-        const isTealDark = a > 0 && u === 0; // covered = dark teal
-        const textFill = isTealDark ? "#ffffff" : "#0d2a2e";
-        const pillFill = isTealDark ? "#ffffff" : "#0d2a2e";
+        const isDark = a > 0 && u === 0; // covered = dark teal
+        const textFill = isDark ? "#ffffff" : "#0d2a2e";
+        const pillFill = isDark ? "#ffffff" : "#0d2a2e";
         const pillOpacity = isDark ? "0.22" : "0.13";
         const w = label.length <= 2 ? 18 : label.length === 3 ? 24 : 30;
         const h = 13;
