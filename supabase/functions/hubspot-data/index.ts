@@ -451,6 +451,11 @@ Deno.serve(async (req) => {
     // All-time lifecycle + job title data — populated inside if/else branches
     let lifecycleStagesAllTime: { stage: string; label: string; count: number }[] = [];
     let jobTitleCountsAllTime: Record<string, number> = {};
+    // Dealer assignment state distributions (secondary brands only)
+    const dealerWithDealStateCounts: Record<string, number> = {};
+    const dealerWithoutDealStateCounts: Record<string, number> = {};
+    let dealerAssignedTotal = 0;
+    let dealerUnassignedTotal = 0;
 
     // Use HubSpot's exact internal lifecycle stage values so the frontend key mapping works.
     // Frontend ALL_LIFECYCLE_ORDER uses: subscriber, lead, marketingqualifiedlead, salesqualifiedlead, opportunity, customer
@@ -466,8 +471,6 @@ Deno.serve(async (req) => {
     const contactsByDate: Record<string, { total: number; hubspot: number; salesforce: number; import: number }> = {};
     const jobTitleCounts: Record<string, number> = {};
     const industryCounts: Record<string, number> = {};
-    const dealerWithDealStateCounts: Record<string, number> = {};
-    const dealerWithoutDealStateCounts: Record<string, number> = {};
 
     // State full names (HubSpot state/ip_state values) → 2-letter codes used by the map
     const STATE_FULL_NAMES: Record<string, string> = {
@@ -536,81 +539,70 @@ Deno.serve(async (req) => {
     }
 
     if (isSecondary) {
-      // Secondary account: filter by "brands" multi-select property using CONTAINS_TOKEN.
-      // CONTAINS_TOKEN matches the internal option *value* (not the display label), so we first
-      // fetch the property definition to resolve the correct internal value for this brand.
-      // If the lookup fails, fall back to the raw brand name (works when value === label).
-      let brandTokenValue = brandName;
+      // Secondary account: the "brands" property is NOT filterable via HubSpot's search API
+      // (CONTAINS_TOKEN on "brands" returns 400 errors). Fetch all contacts by date range
+      // only, then filter in-code by checking the brands property value on each contact.
       try {
-        const propDef = await hubspotFetch("/crm/v3/properties/contacts/brands", token);
-        const options: any[] = propDef.options || [];
-        const match = options.find((opt: any) =>
-          (opt.label || "").toLowerCase() === brandName.toLowerCase() ||
-          (opt.value || "").toLowerCase() === brandName.toLowerCase()
-        );
-        if (match) {
-          brandTokenValue = match.value;
-          console.log(`Resolved brand token for "${brandName}": "${brandTokenValue}"`);
-        } else {
-          console.warn(`No option match for "${brandName}". Available: ${options.map(o => `${o.label}=${o.value}`).join(", ")}`);
-        }
-      } catch (e) {
-        console.warn("Could not fetch brands property definition:", e);
-      }
-
-      const brandFilter = { propertyName: "brands", operator: "CONTAINS_TOKEN", value: brandTokenValue };
-      const dateFilters = [
-        { propertyName: "createdate", operator: "GTE", value: String(startMs) },
-        { propertyName: "createdate", operator: "LTE", value: String(endMs) },
-      ];
-
-      try {
-        // ── 1. All-time total: parallel year-by-year CONTAINS_TOKEN count queries ──
-        // A single unbounded query underreports (HubSpot search index incomplete for old contacts).
-        // CONTAINS_TOKEN + date range IS accurate. Run all years in parallel so 22 calls
-        // complete in ~1s instead of timing out sequentially.
+        // ── 1. In-period contacts: date-only filter, filter by brands in code ──
         {
-          const currentYear = new Date().getFullYear();
-          const years = Array.from({ length: currentYear - 2005 + 1 }, (_, i) => 2005 + i);
-          const yearCounts = await Promise.all(years.map(async (year) => {
-            const yStart = String(new Date(`${year}-01-01T00:00:00Z`).getTime());
-            const yEnd   = String(new Date(`${year}-12-31T23:59:59Z`).getTime());
-            try {
-              const yr = await hubspotPost("/crm/v3/objects/contacts/search", token, {
-                filterGroups: [{ filters: [
-                  brandFilter,
-                  { propertyName: "createdate", operator: "GTE", value: yStart },
-                  { propertyName: "createdate", operator: "LTE", value: yEnd },
-                ]}],
-                properties: [],
-                limit: 1,
-              });
-              return yr.total ?? 0;
-            } catch (e) {
-              console.error(`  year ${year} count error:`, e);
-              return 0;
-            }
-          }));
-          totalContactsAllTime = yearCounts.reduce((sum, n) => sum + n, 0);
-          // Validation: log per-year breakdown so we can cross-check against HubSpot property settings
-          years.forEach((y, i) => { if (yearCounts[i] > 0) console.log(`  ${y}: ${yearCounts[i]}`); });
-          console.log(`Secondary all-time total for "${brandName}": ${totalContactsAllTime}`);
+          let after: string | undefined;
+          while (true) {
+            const searchBody: any = {
+              filterGroups: [{ filters: [
+                { propertyName: "createdate", operator: "GTE", value: String(startMs) },
+                { propertyName: "createdate", operator: "LTE", value: String(endMs) },
+              ]}],
+              properties: [
+                "createdate", "brands", "lifecyclestage",
+                "ip_state", "ip_state_code", "state", "hs_state",
+                "hs_object_source", "hs_object_source_detail_1",
+                "hs_analytics_source", "hs_analytics_source_data_1",
+                "jobtitle", profileProperty, "dealer_assigned",
+              ],
+              sorts: [{ propertyName: "createdate", direction: "ASCENDING" }],
+              limit: 100,
+            };
+            if (after) searchBody.after = after;
 
-          // Wide date range (> 365 days): HubSpot's search index returns 0 for a single GTE/LTE
-          // query spanning multiple years. Reuse the year-by-year counts already computed above
-          // to derive an accurate in-period total — no extra API calls needed.
-          const dateSpanDays = (endMs - startMs) / 86400000;
-          if (dateSpanDays > 365) {
-            const periodStartYear = new Date(startMs).getFullYear();
-            const periodEndYear = new Date(endMs).getFullYear();
-            totalContacts = years.reduce((sum, year, i) => {
-              return year >= periodStartYear && year <= periodEndYear ? sum + yearCounts[i] : sum;
-            }, 0);
-            console.log(`Wide range (${periodStartYear}–${periodEndYear}): period total = ${totalContacts}`);
+            const res = await hubspotPost("/crm/v3/objects/contacts/search", token, searchBody);
+            for (const c of (res.results || [])) {
+              const contactBrands = (c.properties?.brands || "").toLowerCase();
+              if (!contactBrands.includes(brandName.toLowerCase())) continue;
+
+              totalContacts++;
+              const props = c.properties || {};
+              const stage = (props.lifecyclestage || "").toLowerCase().trim();
+              const match = lifecycleStages.find(ls => ls.stage === stage);
+              if (match) match.count++;
+              countContactAnalytics(props);
+
+              const stateCode = normalizeStateCode(props.state, props.ip_state_code, props.ip_state, props.hs_state);
+              if (stateCode) {
+                stateCounts[stateCode] = (stateCounts[stateCode] || 0) + 1;
+                // Split by dealer_assigned for the gap analysis map
+                const hasDealer = !!(props.dealer_assigned || "").trim();
+                if (hasDealer) {
+                  dealerWithDealStateCounts[stateCode] = (dealerWithDealStateCounts[stateCode] || 0) + 1;
+                  dealerAssignedTotal++;
+                } else {
+                  dealerWithoutDealStateCounts[stateCode] = (dealerWithoutDealStateCounts[stateCode] || 0) + 1;
+                  dealerUnassignedTotal++;
+                }
+              } else {
+                unknownStateCount++;
+                // Still count dealer status even for unknown-state contacts
+                const hasDealer = !!(props.dealer_assigned || "").trim();
+                if (hasDealer) dealerAssignedTotal++;
+                else dealerUnassignedTotal++;
+              }
+            }
+            if (res.paging?.next?.after) after = res.paging.next.after;
+            else break;
           }
+          console.log(`Secondary account: ${totalContacts} contacts for "${brandName}" in date range (dealer assigned: ${dealerAssignedTotal}, unassigned: ${dealerUnassignedTotal})`);
         }
 
-        // ── 2. All-time lifecycle stage counts (6 parallel count queries) ──
+        // ── 2. All-time: parallel year-by-year page scans, filter brands in code ──
         lifecycleStagesAllTime = [
           { stage: "subscriber",             label: "Subscriber",  count: 0 },
           { stage: "lead",                   label: "Lead",        count: 0 },
@@ -619,108 +611,48 @@ Deno.serve(async (req) => {
           { stage: "opportunity",            label: "Opportunity", count: 0 },
           { stage: "customer",              label: "Customer",    count: 0 },
         ];
-        await Promise.all(lifecycleStagesAllTime.map(async (ls) => {
-          try {
-            const res = await hubspotPost("/crm/v3/objects/contacts/search", token, {
-              filterGroups: [{ filters: [brandFilter, { propertyName: "lifecyclestage", operator: "EQ", value: ls.stage }] }],
-              properties: [],
-              limit: 1,
-            });
-            ls.count = res.total ?? 0;
-          } catch (e) {
-            console.error(`Secondary lifecycle EQ ${ls.stage}:`, e);
-          }
-        }));
 
-        // ── 3. In-period contacts: date + brand filter, paginate for charts/state data ──
-        // Cap at 100 pages (10,000 contacts) for chart data — count is already accurate
-        // from res.total on the first page, so no data is lost for the summary cards.
-        let after: string | undefined;
-        let chartPage = 0;
-        const MAX_CHART_PAGES = 100;
-        while (chartPage < MAX_CHART_PAGES) {
-          chartPage++;
-          const searchBody: any = {
-            filterGroups: [{ filters: [brandFilter, ...dateFilters] }],
-            properties: [
-              "createdate", "brands", "lifecyclestage",
-              "ip_state", "ip_state_code", "state", "hs_state",
-              "hs_object_source", "hs_object_source_detail_1",
-              "hs_analytics_source", "hs_analytics_source_data_1",
-              "jobtitle", profileProperty,
-            ],
-            sorts: [{ propertyName: "createdate", direction: "ASCENDING" }],
-            limit: 100,
-          };
-          if (after) searchBody.after = after;
-
-          const res = await hubspotPost("/crm/v3/objects/contacts/search", token, searchBody);
-          // Use res.total from first page for the period count (accurate, no need to count manually)
-          // Only use res.total for short date ranges — wide ranges already have an
-          // accurate totalContacts from the year-by-year computation above.
-          if (!after && totalContacts === 0) totalContacts = res.total ?? 0;
-
-          for (const c of (res.results || [])) {
-            const props = c.properties || {};
-            const stage = (props.lifecyclestage || "").toLowerCase().trim();
-            const match = lifecycleStages.find(ls => ls.stage === stage);
-            if (match) match.count++;
-            countContactAnalytics(props);
-            const stateCode = normalizeStateCode(props.ip_state_code, props.ip_state, props.state, props.hs_state);
-            if (stateCode) {
-              stateCounts[stateCode] = (stateCounts[stateCode] || 0) + 1;
-            } else {
-              unknownStateCount++;
-            }
-          }
-          if (res.paging?.next?.after) after = res.paging.next.after;
-          else break;
-        }
-        console.log(`Secondary account: ${totalContacts} contacts for "${brandName}" in date range`);
-
-        // ── 4. Dealer assignment state distributions (separate passes, isolated from contact count) ──
-        // Two paginated fetches: contacts WITH dealer_assigned set, and contacts WITHOUT.
-        // Kept separate so any error here never affects the main contact counts above.
-        const dealerStateProps = ["ip_state", "ip_state_code", "state", "hs_state", "dealer_assigned"];
-        for (const hasDealer of [true, false]) {
-          try {
-            const dealerFilters = [
-              brandFilter,
-              {
-                propertyName: "dealer_assigned",
-                operator: hasDealer ? "HAS_PROPERTY" : "NOT_HAS_PROPERTY",
-              },
-            ];
-            let dAfter: string | undefined;
-            let dPage = 0;
-            while (dPage < 50) {
-              dPage++;
-              const dBody: any = {
-                filterGroups: [{ filters: dealerFilters }],
-                properties: dealerStateProps,
+        const currentYear = new Date().getFullYear();
+        const years = Array.from({ length: currentYear - 2012 + 1 }, (_, i) => 2012 + i);
+        const yearAllTimeCounts = await Promise.all(years.map(async (year) => {
+          const yStart = String(new Date(`${year}-01-01T00:00:00Z`).getTime());
+          const yEnd   = String(new Date(`${year}-12-31T23:59:59Z`).getTime());
+          let yearCount = 0;
+          let yAfter: string | undefined;
+          while (true) {
+            try {
+              const searchBody: any = {
+                filterGroups: [{ filters: [
+                  { propertyName: "createdate", operator: "GTE", value: yStart },
+                  { propertyName: "createdate", operator: "LTE", value: yEnd },
+                ]}],
+                properties: ["brands", "lifecyclestage"],
                 sorts: [{ propertyName: "createdate", direction: "ASCENDING" }],
                 limit: 100,
               };
-              if (dAfter) dBody.after = dAfter;
-              const dRes = await hubspotPost("/crm/v3/objects/contacts/search", token, dBody);
-              for (const c of (dRes.results || [])) {
-                const p = c.properties || {};
-                const sc = normalizeStateCode(p.ip_state_code, p.ip_state, p.state, p.hs_state);
-                if (sc) {
-                  if (hasDealer) {
-                    dealerWithDealStateCounts[sc] = (dealerWithDealStateCounts[sc] || 0) + 1;
-                  } else {
-                    dealerWithoutDealStateCounts[sc] = (dealerWithoutDealStateCounts[sc] || 0) + 1;
-                  }
-                }
+              if (yAfter) searchBody.after = yAfter;
+              const res = await hubspotPost("/crm/v3/objects/contacts/search", token, searchBody);
+              if ((res.total ?? 0) === 0) break;
+              for (const c of (res.results || [])) {
+                const contactBrands = (c.properties?.brands || "").toLowerCase();
+                if (!contactBrands.includes(brandName.toLowerCase())) continue;
+                yearCount++;
+                const stageVal = (c.properties?.lifecyclestage || "").toLowerCase().trim();
+                const matchAll = lifecycleStagesAllTime.find(ls => ls.stage === stageVal);
+                if (matchAll) matchAll.count++;
               }
-              if (dRes.paging?.next?.after) dAfter = dRes.paging.next.after;
+              if (res.paging?.next?.after) yAfter = res.paging.next.after;
               else break;
+            } catch (e) {
+              console.error(`  all-time year ${year} error:`, e);
+              break;
             }
-          } catch (e) {
-            console.warn(`Dealer distribution fetch (hasDealer=${hasDealer}) failed:`, e);
           }
-        }
+          return yearCount;
+        }));
+        totalContactsAllTime = yearAllTimeCounts.reduce((sum, n) => sum + n, 0);
+        years.forEach((y, i) => { if (yearAllTimeCounts[i] > 0) console.log(`  all-time ${y}: ${yearAllTimeCounts[i]}`); });
+        console.log(`Secondary all-time total for "${brandName}": ${totalContactsAllTime}`);
       } catch (e) {
         console.error("Secondary account contacts fetch error:", e);
       }
@@ -1091,6 +1023,8 @@ Deno.serve(async (req) => {
       contactUnknownStateCount: unknownStateCount,
       dealerWithDealStateDistribution: Object.entries(dealerWithDealStateCounts).sort(([,a],[,b]) => b-a).map(([state, count]) => ({ state, count })),
       dealerWithoutDealStateDistribution: Object.entries(dealerWithoutDealStateCounts).sort(([,a],[,b]) => b-a).map(([state, count]) => ({ state, count })),
+      dealerAssignedTotal,
+      dealerUnassignedTotal,
       emails: current.emails,
       deliveryOverTime,
       stateDistribution: Object.entries(stateDistribution).map(([name, value]) => ({ name, value })),
