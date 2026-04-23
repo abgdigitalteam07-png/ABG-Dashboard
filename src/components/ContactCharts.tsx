@@ -15,6 +15,7 @@ import {
 } from "recharts";
 import { Brand } from "@/lib/brands";
 import { USStateMap } from "@/components/USStateMap";
+import { DealerGapMap } from "@/components/DealerGapMap";
 import {
   format,
   parseISO,
@@ -434,8 +435,16 @@ export function ContactCharts({
         />
       )}
 
-      {/* ── Contact Distribution by Channel — Coming Soon ── */}
-      <ChartCard
+      {/* ── Dealer Gap Map — secondary brands only ── */}
+      {brand.hubspotAccount === "secondary" && !loading && !error && (
+        <DealerGapMap
+          dealerWithDealDistribution={dealerWithDealDistribution}
+          dealerWithoutDealDistribution={dealerWithoutDealDistribution}
+        />
+      )}
+
+      {/* ── Contact Distribution by Channel — Coming Soon (hidden for secondary brands) ── */}
+      {brand.hubspotAccount !== "secondary" && <ChartCard
         title="Contact Distribution by Channel"
         subtitle="Account type breakdown for contacts in the selected period"
       >
@@ -492,7 +501,7 @@ export function ContactCharts({
             <span className="text-[10px] font-medium text-blue-500 dark:text-blue-400 tracking-wide">DRAFTING</span>
           </div>
         </div>
-      </ChartCard>
+      </ChartCard>}
 
       {/* ── Job Title Distribution ── */}
       <ChartCard
