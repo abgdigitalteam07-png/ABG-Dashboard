@@ -151,8 +151,14 @@ export function DealerGapMap({
   const svgMarkup = useMemo(() => {
     const fillRules = Object.keys(STATE_NAMES)
       .map((abbr) => {
-        const status = statusMap[abbr] || "none";
-        return `.${abbr.toLowerCase()}{fill:${getStatusColor(status)};}`;
+        const a = assignedMap[abbr] || 0;
+        const u = unassignedMap[abbr] || 0;
+        let color: string;
+        if (a === 0 && u === 0) color = "#D8F0F2";           // no contacts
+        else if (a > 0 && u === 0) color = "#0A6270";        // fully covered — dark teal
+        else if (u > a) color = "#FCA5A5";                   // more unassigned — light red
+        else color = "#2BAAB2";                               // balanced/more assigned — medium teal
+        return `.${abbr.toLowerCase()}{fill:${color};}`;
       })
       .join("\n");
 
@@ -178,10 +184,11 @@ ${fillRules}
         const label = total >= 10000 ? `${Math.round(total / 1000)}k`
           : total >= 1000 ? `${(total / 1000).toFixed(1)}k`
           : String(total);
-        const status = statusMap[abbr] || "none";
-        const isDark = status === "covered" || status === "partial";
-        const textFill = isDark ? "#ffffff" : "#0d4a52";
-        const pillFill = isDark ? "#ffffff" : "#0d4a52";
+        const a = assignedMap[abbr] || 0;
+        const u = unassignedMap[abbr] || 0;
+        const isTealDark = a > 0 && u === 0; // covered = dark teal
+        const textFill = isTealDark ? "#ffffff" : "#0d2a2e";
+        const pillFill = isTealDark ? "#ffffff" : "#0d2a2e";
         const pillOpacity = isDark ? "0.22" : "0.13";
         const w = label.length <= 2 ? 18 : label.length === 3 ? 24 : 30;
         const h = 13;
