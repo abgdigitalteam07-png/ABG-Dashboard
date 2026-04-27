@@ -7,7 +7,7 @@ import {
 } from "recharts";
 import { fetchHubSpotData } from "@/lib/api-client";
 import { Brand } from "@/lib/brands";
-import { ArrowRight, Users, TrendingUp, BarChart2, CheckCircle2 } from "lucide-react";
+import { Users, TrendingUp, BarChart2, CheckCircle2 } from "lucide-react";
 import { ContactCharts } from "@/components/ContactCharts";
 import { AIRecommendations } from "./AIRecommendations";
 import { cn } from "@/lib/utils";
@@ -207,31 +207,27 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo }: HubSpotCRMTabProps) {
           title="Subscriber to MQL Funnel"
           subtitle="Contacts created in selected period, by current lifecycle stage"
         >
-          {/* Funnel cards — horizontal flow */}
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch sm:gap-0">
-            {marketingFunnelData.map((stage, i) => (
-              <div key={stage.key} className={cn("flex items-center", i > 0 && "sm:flex-row")}>
-                {i > 0 && (
-                  <div className="hidden items-center px-3 sm:flex">
-                    <ArrowRight className="h-5 w-5 text-muted-foreground" />
-                  </div>
-                )}
-                <div
-                  className="flex-1 rounded-2xl border p-5 transition-all hover:shadow-md"
-                  style={{ borderColor: stage.color, background: `${stage.color}15` }}
+          {/* Funnel cards — minimal flat */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {marketingFunnelData.map((stage) => (
+              <div
+                key={stage.key}
+                className="rounded-xl bg-muted/40 p-5 transition-colors hover:bg-muted/60"
+              >
+                <p
+                  className="text-[11px] font-semibold uppercase tracking-wider"
+                  style={{ color: stage.color }}
                 >
-                  <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: stage.color }}>
-                    {stage.label}
+                  {stage.label}
+                </p>
+                <p className="mt-2 text-4xl font-bold tabular-nums text-foreground">
+                  {stage.count.toLocaleString()}
+                </p>
+                {stage.conversionRate !== undefined && (
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    {stage.conversionRate.toFixed(1)}% from prev stage
                   </p>
-                  <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">
-                    {stage.count.toLocaleString()}
-                  </p>
-                  {stage.conversionRate !== undefined && (
-                    <p className="mt-1 text-[11px] text-muted-foreground">
-                      {stage.conversionRate.toFixed(1)}% from prev stage
-                    </p>
-                  )}
-                </div>
+                )}
               </div>
             ))}
           </div>
@@ -280,30 +276,26 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo }: HubSpotCRMTabProps) {
             </div>
           }
         >
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch sm:gap-0">
-            {salesFunnelData.map((stage, i) => (
-              <div key={stage.key} className={cn("flex items-center", i > 0 && "sm:flex-row")}>
-                {i > 0 && (
-                  <div className="hidden items-center px-3 sm:flex">
-                    <ArrowRight className="h-5 w-5 text-muted-foreground" />
-                  </div>
-                )}
-                <div
-                  className="flex-1 rounded-2xl border p-5 transition-all hover:shadow-md"
-                  style={{ borderColor: stage.color, background: `${stage.color}15` }}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {salesFunnelData.map((stage) => (
+              <div
+                key={stage.key}
+                className="rounded-xl bg-muted/40 p-5 transition-colors hover:bg-muted/60"
+              >
+                <p
+                  className="text-[11px] font-semibold uppercase tracking-wider"
+                  style={{ color: stage.color }}
                 >
-                  <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: stage.color }}>
-                    {stage.label}
+                  {stage.label}
+                </p>
+                <p className="mt-2 text-4xl font-bold tabular-nums text-foreground">
+                  {stage.count.toLocaleString()}
+                </p>
+                {stage.conversionRate !== undefined && (
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    {stage.conversionRate.toFixed(1)}% from prev stage
                   </p>
-                  <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">
-                    {stage.count.toLocaleString()}
-                  </p>
-                  {stage.conversionRate !== undefined && (
-                    <p className="mt-1 text-[11px] text-muted-foreground">
-                      {stage.conversionRate.toFixed(1)}% from prev stage
-                    </p>
-                  )}
-                </div>
+                )}
               </div>
             ))}
           </div>
