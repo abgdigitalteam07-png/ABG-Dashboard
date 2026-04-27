@@ -16,7 +16,7 @@ export const brands: Brand[] = [
   { id: "accessible-home-store", name: "Accessible Home Store", hubspotBusinessUnitId: "2625978", hasGA4: false, hasGSC: false, hasHubSpot: true },
   { id: "aker", name: "Aker", gscSiteUrl: "http://www.akerbymaax.com/", hubspotBusinessUnitId: "1982881", hasGA4: false, hasGSC: true, hasHubSpot: true },
   { id: "amazing-shower-door", name: "Amazing Shower Door", ga4PropertyIds: ["392147256"], hasGA4: true, hasGSC: false, hasHubSpot: false },
-  { id: "american-bath-group", name: "American Bath Group", gscSiteUrl: "https://americanbathgroup.com/", hasGA4: false, hasGSC: true, hasHubSpot: false },
+  { id: "american-bath-group", name: "American Bath Group", gscSiteUrl: "https://americanbathgroup.com/", hubspotBusinessUnitId: "0", hasGA4: false, hasGSC: true, hasHubSpot: true },
   { id: "american-whirlpool", name: "American Whirlpool", ga4PropertyIds: ["391075012"], gscSiteUrl: "https://americanwhirlpool.com/", hubspotAccount: "secondary", hasGA4: true, hasGSC: true, hasHubSpot: true },
   { id: "aquarius", name: "Aquarius", ga4PropertyIds: ["368656609"], gscSiteUrl: "https://aquariusproducts.com/", hubspotBusinessUnitId: "1982883", hasGA4: true, hasGSC: true, hasHubSpot: true },
   { id: "aquatic", name: "Aquatic", ga4PropertyIds: ["385631854"], gscSiteUrl: "https://aquaticbath.com/", hubspotBusinessUnitId: "1982884", hasGA4: true, hasGSC: true, hasHubSpot: true },
