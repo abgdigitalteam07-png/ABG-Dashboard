@@ -113,6 +113,8 @@ Deno.serve(async (req) => {
     const contactsByDate: Record<string, { total: number; hubspot: number; salesforce: number }> = {};
     const jobTitleCounts: Record<string, number> = {};
     const stateCounts: Record<string, number> = {};
+    let dealerAssignedTotal = 0;
+    let dealerUnassignedTotal = 0;
 
     let after: string | undefined;
     let totalFetched = 0;
@@ -144,6 +146,7 @@ Deno.serve(async (req) => {
           "brands",
           "ip_state_code",
           "ip_state",
+          "dealer_assigned",
         ],
         sorts: [{ propertyName: "createdate", direction: "ASCENDING" }],
         limit: 100,
@@ -217,6 +220,13 @@ Deno.serve(async (req) => {
         } else {
           stateCounts["UNKNOWN"] = (stateCounts["UNKNOWN"] || 0) + 1;
         }
+
+        // Dealer assignment
+        if ((props.dealer_assigned || "").trim()) {
+          dealerAssignedTotal++;
+        } else {
+          dealerUnassignedTotal++;
+        }
       }
 
       if (res.paging?.next?.after) {
@@ -255,6 +265,8 @@ Deno.serve(async (req) => {
       contactsOverTime,
       jobTitles,
       stateDistribution,
+      dealerAssignedTotal,
+      dealerUnassignedTotal,
     };
 
     return new Response(JSON.stringify(result), {
