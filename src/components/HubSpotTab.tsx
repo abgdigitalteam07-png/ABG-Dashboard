@@ -277,19 +277,6 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
     return { ...data, brandName: brand.name };
   }, [data, brand]);
 
-  if (!loading && error) {
-    return (
-      <div className="p-6">
-        <div className="rounded-2xl border border-border bg-card p-6">
-          <h3 className="text-sm font-semibold text-foreground">HubSpot data unavailable</h3>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {error}
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   /* ── Aggregate chart data by granularity ── */
   const chartData = useMemo(() => {
     if (!d) return [];
@@ -386,6 +373,19 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
     const start = (currentPage - 1) * PAGE_SIZE;
     return d.emails.slice(start, start + PAGE_SIZE);
   }, [d, currentPage, showAll]);
+
+  if (!loading && error) {
+    return (
+      <div className="p-6">
+        <div className="rounded-2xl border border-border bg-card p-6">
+          <h3 className="text-sm font-semibold text-foreground">HubSpot data unavailable</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {error}
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (showLoader) {
     return <WaterFillLoader fullScreen={false} message="Loading emails…" />;
