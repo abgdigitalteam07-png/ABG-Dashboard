@@ -288,18 +288,6 @@ export default function Admin() {
     return "—";
   };
 
-  if (isAdmin === null) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-      </div>
-    );
-  }
-
-  const activeUsers = users.filter((u) => u.is_active).length;
-  const deactivatedUsers = users.filter((u) => !u.is_active).length;
-
-  // ── Daily Usage: last 30 days ──
   const last30Days = useMemo(() => {
     const today = startOfDay(new Date());
     return eachDayOfInterval({ start: subDays(today, 29), end: today }).reverse();
@@ -333,6 +321,17 @@ export default function Admin() {
     }
     return Object.values(map).sort((a, b) => b.views - a.views);
   }, [activity]);
+
+  if (isAdmin === null) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      </div>
+    );
+  }
+
+  const activeUsers = users.filter((u) => u.is_active).length;
+  const deactivatedUsers = users.filter((u) => !u.is_active).length;
 
   return (
     <div className="min-h-screen bg-background">
