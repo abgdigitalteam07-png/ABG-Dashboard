@@ -5,10 +5,11 @@ const corsHeaders = {
 };
 
 const TOKEN = Deno.env.get("HUBSPOT_ACCESS_TOKEN") || "";
+const SECONDARY_TOKEN = Deno.env.get("HUBSPOT_SECONDARY_ACCESS_TOKEN") || "";
 
-async function hubspotFetch(path: string): Promise<any> {
+async function hubspotFetch(path: string, token: string): Promise<any> {
   const res = await fetch(`https://api.hubapi.com${path}`, {
-    headers: { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" },
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
   });
   if (!res.ok) throw new Error(`HubSpot API ${path} → ${res.status}`);
   return res.json();
@@ -84,25 +85,38 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Fetch up to 500 published emails (paginated)
-    const allEmails: any[] = [];
-    let after: string | undefined;
-    let pages = 0;
-
-    while (pages < 5) {
-      pages++;
-      const url =
-        `/marketing/v3/emails?limit=100&orderBy=-publishDate&isPublished=true` +
-        `&property=name&property=subject&property=businessUnitId` +
-        `&property=hs_publish_date&property=publishDate&property=updatedAt` +
-        `&property=state&property=subcategory&property=from&property=publishedByName` +
-        (after ? `&after=${after}` : "");
-
-      const res = await hubspotFetch(url);
-      allEmails.push(...(res.results || []));
-      if (!res.paging?.next?.after) break;
-      after = res.paging.next.after;
+    async function fetchEmails(token: string, accountLabel: string): Promise<any[]> {
+      const collected: any[] = [];
+      let after: string | undefined;
+      let pages = 0;
+      while (pages < 5) {
+        pages++;
+        const url =
+          `/marketing/v3/emails?limit=100&orderBy=-updatedAt` +
+          `&property=name&property=subject&property=businessUnitId` +
+          `&property=hs_publish_date&property=publishDate&property=updatedAt` +
+          `&property=state&property=subcategory&property=from&property=publishedByName` +
+          (after ? `&after=${after}` : "");
+        try {
+          const res = await hubspotFetch(url, token);
+          collected.push(...(res.results || []));
+          if (!res.paging?.next?.after) break;
+          after = res.paging.next.after;
+        } catch (e) {
+          console.warn(`[${accountLabel}] fetch error:`, e);
+          break;
+        }
+      }
+      return collected;
     }
+
+    // Search primary + secondary accounts in parallel
+    const [primaryEmails, secondaryEmails] = await Promise.all([
+      fetchEmails(TOKEN, "primary"),
+      SECONDARY_TOKEN ? fetchEmails(SECONDARY_TOKEN, "secondary") : Promise.resolve([]),
+    ]);
+
+    const allEmails = [...primaryEmails, ...secondaryEmails];
 
     // Filter by query (name or subject)
     const matched = allEmails.filter((e) => {
@@ -115,7 +129,7 @@ Deno.serve(async (req) => {
     const results = matched.slice(0, 30).map((e) => {
       const buId = String(e.businessUnitId ?? "0");
       const brand = BU_TO_BRAND[buId] || "American Bath Group";
-      const state: string = (e.state || e.properties?.state || "PUBLISHED").toUpperCase();
+      const state: string = (e.state || e.properties?.state || "SENT").toUpperCase();
       const subcategory: string = e.subcategory || e.properties?.subcategory || "marketing_email";
       const sender: string = e.publishedByName || e.from?.fromName || "";
       return {
