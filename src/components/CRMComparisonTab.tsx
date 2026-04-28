@@ -286,27 +286,15 @@ function ComparisonContent() {
             <div className="rounded-2xl border border-border bg-card overflow-hidden">
               {/* table header */}
               <div className="grid border-b border-border bg-muted/30"
-                style={{ gridTemplateColumns: `160px repeat(${activeBrands.length * 2}, 1fr) repeat(${activeBrands.length}, 80px)` }}
+                style={{ gridTemplateColumns: `200px repeat(${activeBrands.length}, 1fr)` }}
               >
                 <div className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Metric</div>
                 {activeBrands.map((brand) => (
-                  <>
-                    <div key={`${brand}-curr`} className="px-3 py-3 text-[11px] font-semibold text-foreground">
-                      <div className="flex items-center gap-1.5">
-                        <span className="h-2 w-2 rounded-full shrink-0" style={{ background: BRAND_PALETTE[brand].solid }} />
-                        <span className="truncate">{brand}</span>
-                      </div>
-                      <div className="text-[10px] font-normal text-muted-foreground mt-0.5">Current</div>
+                  <div key={`${brand}-hd`} className="px-4 py-3 text-[11px] font-semibold text-foreground border-l border-border">
+                    <div className="flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-full shrink-0" style={{ background: BRAND_PALETTE[brand].solid }} />
+                      <span className="truncate">{brand}</span>
                     </div>
-                    <div key={`${brand}-prev`} className="px-3 py-3 text-[11px]">
-                      <div className="text-muted-foreground/60">↑</div>
-                      <div className="text-[10px] font-normal text-muted-foreground mt-0.5">Previous</div>
-                    </div>
-                  </>
-                ))}
-                {activeBrands.map((brand) => (
-                  <div key={`${brand}-chg`} className="px-3 py-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground text-right">
-                    Change
                   </div>
                 ))}
               </div>
@@ -323,7 +311,7 @@ function ComparisonContent() {
                     "grid items-center border-b border-border last:border-0",
                     ri % 2 === 1 && "bg-muted/10",
                   )}
-                  style={{ gridTemplateColumns: `160px repeat(${activeBrands.length * 2}, 1fr) repeat(${activeBrands.length}, 80px)` }}
+                  style={{ gridTemplateColumns: `200px repeat(${activeBrands.length}, 1fr)` }}
                 >
                   <div className="px-4 py-4">
                     <p className="text-sm font-semibold text-foreground">{label}</p>
@@ -334,27 +322,25 @@ function ComparisonContent() {
                     const currVal = r.curr[key];
                     const total   = r.curr.totalContacts;
                     return (
-                      <>
-                        <div key={`${brand}-c`} className="px-3 py-4">
+                      <div key={`${brand}-cell`} className="px-4 py-4 border-l border-border">
+                        <div className="flex items-baseline justify-between gap-2">
                           <p className="text-lg font-bold tabular-nums text-foreground">{currVal.toLocaleString()}</p>
+                          <ChangeBadge curr={currVal} prev={r.prev[key]} />
+                        </div>
+                        <div className="mt-1 flex items-baseline justify-between gap-2 text-[10px] text-muted-foreground">
+                          <span className="tabular-nums">
+                            prev: {r.prev[key].toLocaleString()}
+                            {key !== "totalContacts" && r.prev.totalContacts > 0 && (
+                              <span className="text-muted-foreground/60"> · {pct(r.prev[key], r.prev.totalContacts)}%</span>
+                            )}
+                          </span>
                           {key !== "totalContacts" && total > 0 && (
-                            <p className="text-[10px] text-muted-foreground">{pct(currVal, total)}% of total</p>
+                            <span>{pct(currVal, total)}% of total</span>
                           )}
                         </div>
-                        <div key={`${brand}-p`} className="px-3 py-4">
-                          <p className="text-sm tabular-nums text-muted-foreground">{r.prev[key].toLocaleString()}</p>
-                          {key !== "totalContacts" && r.prev.totalContacts > 0 && (
-                            <p className="text-[10px] text-muted-foreground/60">{pct(r.prev[key], r.prev.totalContacts)}%</p>
-                          )}
-                        </div>
-                      </>
+                      </div>
                     );
                   })}
-                  {activeBrands.map((brand) => (
-                    <div key={`${brand}-chg`} className="px-3 py-4 text-right">
-                      <ChangeBadge curr={results[brand].curr[key]} prev={results[brand].prev[key]} />
-                    </div>
-                  ))}
                 </div>
               ))}
             </div>
