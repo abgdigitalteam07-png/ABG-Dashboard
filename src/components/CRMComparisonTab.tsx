@@ -54,8 +54,6 @@ function getPeriods(days: number) {
 }
 
 async function fetchPeriodData(brand: string, from: Date, to: Date): Promise<PeriodData> {
-  // hubspot-data is used here (not hubspot-contacts) because it is the deployed function
-  // that already tracks dealer_assigned for secondary-account brands.
   const data = await callFunction("hubspot-data", {
     brandName: brand,
     startDate: dateStr(from),
