@@ -84,8 +84,10 @@ export function AuthGuard({ children }: AuthGuardProps) {
             metadata: {},
           });
           // Upsert profile — creates row for first-time magic-link users without overwriting is_active
+          const userEmail = session.user.email || "";
+          const userDomain = userEmail.split("@")[1] || "";
           supabase.from("user_profiles").upsert(
-            { id: session.user.id, email: session.user.email || "", last_login_at: now },
+            { id: session.user.id, email: userEmail, domain: userDomain, last_login_at: now },
             { onConflict: "id" }
           );
         }
