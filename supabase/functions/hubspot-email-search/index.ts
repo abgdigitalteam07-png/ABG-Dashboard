@@ -1,19 +1,13 @@
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 const TOKEN = Deno.env.get("HUBSPOT_ACCESS_TOKEN") || "";
 const SECONDARY_TOKEN = Deno.env.get("HUBSPOT_SECONDARY_ACCESS_TOKEN") || "";
-
-async function hubspotFetch(path: string, token: string): Promise<any> {
-  const res = await fetch(`https://api.hubapi.com${path}`, {
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-  });
-  if (!res.ok) throw new Error(`HubSpot API ${path} → ${res.status}`);
-  return res.json();
-}
+const BASE = "https://api.hubapi.com";
 
 // Primary account BU → brand name
 const BU_TO_BRAND: Record<string, string> = {
@@ -39,7 +33,6 @@ const BU_TO_BRAND: Record<string, string> = {
   "2659249": "Vintage.ca",
 };
 
-// Stable brand color palette (index by brand name hash)
 const BRAND_COLORS = [
   "#3B82F6","#10B981","#F59E0B","#EF4444","#8B5CF6",
   "#06B6D4","#EC4899","#14B8A6","#F97316","#6366F1",
@@ -52,12 +45,12 @@ function brandColor(name: string): string {
   return BRAND_COLORS[Math.abs(hash) % BRAND_COLORS.length];
 }
 
-function extractDate(email: any): string {
+function extractDate(props: any): string {
   const candidates = [
-    email.hs_publish_date,
-    email.publishDate,
-    email.properties?.hs_publish_date,
-    email.updatedAt,
+    props?.hs_publish_date,
+    props?.publishDate,
+    props?.updatedAt,
+    props?.createdate,
   ];
   for (const c of candidates) {
     if (!c) continue;
@@ -70,80 +63,139 @@ function extractDate(email: any): string {
   return "";
 }
 
+function mapEmail(e: any, buToName: Record<string, string>): any {
+  // Handles both v3 marketing API (top-level) and CRM API (nested under .properties)
+  const p = e.properties ?? e;
+  const name: string = p.name || p.hs_name || e.name || "Untitled";
+  const subject: string = p.hs_email_subject || p.subject || e.subject || "";
+  const buId = String(p.businessUnitId ?? e.businessUnitId ?? "0");
+  const brand = buToName[buId] || "American Bath Group";
+  const state: string = (p.state || p.hs_email_status || e.state || "SENT").toUpperCase();
+  const subcategory: string = p.subcategory || e.subcategory || "marketing_email";
+  const sender: string = p.publishedByName || p.hs_email_from_name || e.publishedByName || (e.from?.fromName) || "";
+  return {
+    id: String(e.id || ""),
+    name,
+    subject,
+    brand,
+    brandColor: brandColor(brand),
+    date: extractDate({ ...p, updatedAt: e.updatedAt }),
+    state,
+    subcategory,
+    sender,
+  };
+}
+
+// Strategy A: CRM v3 search — server-side full-text search across ALL emails
+async function crmSearch(rawQuery: string, token: string): Promise<any[]> {
+  try {
+    const res = await fetch(`${BASE}/crm/v3/objects/marketing_emails/search`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query: rawQuery,
+        limit: 50,
+        properties: [
+          "name", "hs_name", "hs_email_subject", "businessUnitId",
+          "state", "hs_email_status", "hs_publish_date", "subcategory",
+          "publishedByName", "hs_email_from_name",
+        ],
+      }),
+    });
+    if (!res.ok) {
+      console.warn(`[crmSearch] ${res.status} — falling back`);
+      return [];
+    }
+    const data = await res.json();
+    return data.results || [];
+  } catch (e) {
+    console.warn("[crmSearch] error:", e);
+    return [];
+  }
+}
+
+// Strategy B: List all emails paginated (fallback if CRM search unavailable)
+async function listSearch(rawQuery: string, token: string, label: string): Promise<any[]> {
+  const query = rawQuery.toLowerCase();
+  const collected: any[] = [];
+  let after: string | undefined;
+
+  for (let page = 0; page < 20; page++) {
+    const url =
+      `${BASE}/marketing/v3/emails?limit=100&orderBy=-createDate` +
+      `&property=name&property=subject&property=businessUnitId` +
+      `&property=hs_publish_date&property=publishDate&property=updatedAt` +
+      `&property=state&property=subcategory&property=from&property=publishedByName` +
+      (after ? `&after=${after}` : "");
+    try {
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      });
+      if (!res.ok) { console.warn(`[listSearch:${label}] ${res.status}`); break; }
+      const data = await res.json();
+      const rows: any[] = data.results || [];
+
+      for (const e of rows) {
+        const n = (e.name || "").toLowerCase();
+        const s = (e.subject || "").toLowerCase();
+        if (n.includes(query) || s.includes(query)) collected.push(e);
+      }
+
+      if (!data.paging?.next?.after) break;
+      after = data.paging.next.after;
+
+      // Stop early if we already have enough matches
+      if (collected.length >= 30) break;
+    } catch (e) {
+      console.warn(`[listSearch:${label}] error:`, e);
+      break;
+    }
+  }
+  return collected;
+}
+
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
     if (!TOKEN) throw new Error("HUBSPOT_ACCESS_TOKEN not set");
 
     const { searchQuery = "" } = await req.json();
-    const query = searchQuery.trim().toLowerCase();
-
-    if (query.length < 2) {
+    const rawQuery = searchQuery.trim();
+    if (rawQuery.length < 2) {
       return new Response(JSON.stringify({ results: [] }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    async function fetchEmails(token: string, accountLabel: string): Promise<any[]> {
-      const collected: any[] = [];
-      let after: string | undefined;
-      let pages = 0;
-      while (pages < 5) {
-        pages++;
-        const url =
-          `/marketing/v3/emails?limit=100&orderBy=-updatedAt` +
-          `&property=name&property=subject&property=businessUnitId` +
-          `&property=hs_publish_date&property=publishDate&property=updatedAt` +
-          `&property=state&property=subcategory&property=from&property=publishedByName` +
-          (after ? `&after=${after}` : "");
-        try {
-          const res = await hubspotFetch(url, token);
-          collected.push(...(res.results || []));
-          if (!res.paging?.next?.after) break;
-          after = res.paging.next.after;
-        } catch (e) {
-          console.warn(`[${accountLabel}] fetch error:`, e);
-          break;
-        }
-      }
-      return collected;
-    }
-
-    // Search primary + secondary accounts in parallel
-    const [primaryEmails, secondaryEmails] = await Promise.all([
-      fetchEmails(TOKEN, "primary"),
-      SECONDARY_TOKEN ? fetchEmails(SECONDARY_TOKEN, "secondary") : Promise.resolve([]),
+    // Run CRM search on both accounts in parallel (fastest, searches all emails)
+    const [crmPrimary, crmSecondary] = await Promise.all([
+      crmSearch(rawQuery, TOKEN),
+      SECONDARY_TOKEN ? crmSearch(rawQuery, SECONDARY_TOKEN) : Promise.resolve([]),
     ]);
 
-    const allEmails = [...primaryEmails, ...secondaryEmails];
+    let rawMatches = [...crmPrimary, ...crmSecondary];
 
-    // Filter by query (name or subject)
-    const matched = allEmails.filter((e) => {
-      const name = (e.name || "").toLowerCase();
-      const subject = (e.subject || "").toLowerCase();
-      return name.includes(query) || subject.includes(query);
+    // If CRM search returned nothing (API not available on plan), fall back to list
+    if (rawMatches.length === 0) {
+      console.log("[hubspot-email-search] CRM search empty — using list fallback");
+      const [listPrimary, listSecondary] = await Promise.all([
+        listSearch(rawQuery, TOKEN, "primary"),
+        SECONDARY_TOKEN ? listSearch(rawQuery, SECONDARY_TOKEN, "secondary") : Promise.resolve([]),
+      ]);
+      rawMatches = [...listPrimary, ...listSecondary];
+    }
+
+    // Deduplicate by id
+    const seen = new Set<string>();
+    const deduped = rawMatches.filter((e) => {
+      const id = String(e.id || "");
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
     });
 
-    // Map to result shape
-    const results = matched.slice(0, 30).map((e) => {
-      const buId = String(e.businessUnitId ?? "0");
-      const brand = BU_TO_BRAND[buId] || "American Bath Group";
-      const state: string = (e.state || e.properties?.state || "SENT").toUpperCase();
-      const subcategory: string = e.subcategory || e.properties?.subcategory || "marketing_email";
-      const sender: string = e.publishedByName || e.from?.fromName || "";
-      return {
-        id: e.id || "",
-        name: e.name || "Untitled",
-        subject: e.subject || "",
-        brand,
-        brandColor: brandColor(brand),
-        date: extractDate(e),
-        state,
-        subcategory,
-        sender,
-      };
-    });
+    const results = deduped.slice(0, 30).map((e) => mapEmail(e, BU_TO_BRAND));
 
     return new Response(JSON.stringify({ results }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
