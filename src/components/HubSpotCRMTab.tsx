@@ -10,12 +10,19 @@ import { Brand } from "@/lib/brands";
 import { Users, TrendingUp, BarChart2, CheckCircle2 } from "lucide-react";
 import { ContactCharts } from "@/components/ContactCharts";
 import { AIRecommendations } from "./AIRecommendations";
+import { CRMComparisonTab } from "./CRMComparisonTab";
 import { cn } from "@/lib/utils";
+
+const ALLOWED_COMPARISON_EMAILS = new Set([
+  "mali@americanbathgroup.com",
+  "clee@americanbathgroup.com",
+]);
 
 interface HubSpotCRMTabProps {
   brand: Brand;
   dateFrom: Date;
   dateTo: Date;
+  userEmail?: string;
 }
 
 // Marketing funnel: Subscriber → MQL only
@@ -107,7 +114,10 @@ function ChartTooltip({ active, payload, label }: any) {
   );
 }
 
-export function HubSpotCRMTab({ brand, dateFrom, dateTo }: HubSpotCRMTabProps) {
+export function HubSpotCRMTab({ brand, dateFrom, dateTo, userEmail = "" }: HubSpotCRMTabProps) {
+  const showComparison = ALLOWED_COMPARISON_EMAILS.has(userEmail);
+  const [crmSubTab, setCrmSubTab] = useState<"overview" | "comparison">("overview");
+
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -179,13 +189,49 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo }: HubSpotCRMTabProps) {
   const axisStyle = { fontSize: 11, fill: "hsl(var(--muted-foreground))" };
   const gridColor = "hsl(var(--border))";
 
+  // Sub-tab bar (only shown when Comparison is available)
+  const subTabBar = showComparison ? (
+    <div className="flex gap-1 border-b border-border px-6 pt-4">
+      {(["overview", "comparison"] as const).map((id) => (
+        <button
+          key={id}
+          onClick={() => setCrmSubTab(id)}
+          className={cn(
+            "px-4 py-2 text-sm font-medium transition-colors",
+            crmSubTab === id
+              ? "border-b-2 border-accent text-accent -mb-px"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {id === "overview" ? "Overview" : "Comparison"}
+        </button>
+      ))}
+    </div>
+  ) : null;
+
+  if (showComparison && crmSubTab === "comparison") {
+    return (
+      <>
+        {subTabBar}
+        <CRMComparisonTab userEmail={userEmail} />
+      </>
+    );
+  }
+
   if (loading) {
-    return <WaterFillLoader fullScreen={false} message="Loading CRM data…" />;
+    return (
+      <>
+        {subTabBar}
+        <WaterFillLoader fullScreen={false} message="Loading CRM data…" />
+      </>
+    );
   }
 
   if (!data) return null;
 
   return (
+    <>
+      {subTabBar}
     <div className="space-y-8 p-6">
 
       {/* ═══ TOP — Contacts Created ═══ */}
@@ -355,5 +401,6 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo }: HubSpotCRMTabProps) {
         }}
       />
     </div>
+    </>
   );
 }

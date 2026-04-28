@@ -12,6 +12,7 @@ import { toast } from "sonner";
 
 const Index = () => {
   const [selectedBrand, setSelectedBrand] = useState(brands.find(b => b.name === "Bootz") ?? brands[0]);
+  const [userEmail, setUserEmail] = useState("");
   const welcomeShown = useRef(false);
 
   useEffect(() => {
@@ -20,6 +21,7 @@ const Index = () => {
 
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (!session) return;
+      setUserEmail(session.user.email ?? "");
       const { data: profile } = await supabase
         .from("user_profiles")
         .select("full_name")
@@ -123,7 +125,7 @@ const Index = () => {
         {effectiveTab === "performance" && <PerformanceTab key={selectedBrand.id} brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />}
         {effectiveTab === "social" && <SocialMediaTab key={selectedBrand.id} brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />}
         {effectiveTab === "hubspot" && <HubSpotTab key={selectedBrand.id} brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />}
-        {effectiveTab === "hubspot-crm" && <HubSpotCRMTab key={selectedBrand.id} brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />}
+        {effectiveTab === "hubspot-crm" && <HubSpotCRMTab key={selectedBrand.id} brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} userEmail={userEmail} />}
         {effectiveTab === "readme" && <ReadMeTab key={selectedBrand.id} brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />}
       </main>
     </div>
