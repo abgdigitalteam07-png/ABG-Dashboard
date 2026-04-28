@@ -34,6 +34,15 @@ export function AuthGuard({ children }: AuthGuardProps) {
         return;
       }
 
+      // Enforce 30-day re-authentication window
+      const lastSignIn = new Date(session.user.last_sign_in_at ?? 0).getTime();
+      const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+      if (Date.now() - lastSignIn > thirtyDaysMs) {
+        await supabase.auth.signOut();
+        navigate("/login", { state: { sessionExpired: true }, replace: true });
+        return;
+      }
+
       // Check if user is active
       const { data: profile } = await supabase
         .from("user_profiles")
@@ -66,6 +75,7 @@ export function AuthGuard({ children }: AuthGuardProps) {
         }
 
         if (event === "SIGNED_IN") {
+          const now = new Date().toISOString();
           // Log login
           supabase.from("user_activity_log").insert({
             user_id: session.user.id,
@@ -73,10 +83,11 @@ export function AuthGuard({ children }: AuthGuardProps) {
             action: "login",
             metadata: {},
           });
-          supabase
-            .from("user_profiles")
-            .update({ last_login_at: new Date().toISOString() })
-            .eq("id", session.user.id);
+          // Upsert profile — creates row for first-time magic-link users without overwriting is_active
+          supabase.from("user_profiles").upsert(
+            { id: session.user.id, email: session.user.email || "", last_login_at: now },
+            { onConflict: "id" }
+          );
         }
 
         if (event === "TOKEN_REFRESHED" || event === "SIGNED_IN") {

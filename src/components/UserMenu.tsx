@@ -69,7 +69,7 @@ export function UserMenu() {
               <p className="text-xs text-muted-foreground">{profile.email}</p>
             </div>
             <DropdownMenuSeparator />
-            {profile.role === "admin" && (
+            {profile.email === "mali@americanbathgroup.com" && (
               <DropdownMenuItem onClick={() => navigate("/admin")} className="cursor-pointer">
                 <Shield className="mr-2 h-4 w-4" /> Admin Panel
               </DropdownMenuItem>

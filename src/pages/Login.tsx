@@ -18,6 +18,7 @@ export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
   const deactivated = (location.state as any)?.deactivated;
+  const sessionExpired = (location.state as any)?.sessionExpired;
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -64,7 +65,6 @@ export default function Login() {
         return;
       }
 
-      // Log login event + update last_login_at
       const { data: { session: activeSession } } = await supabase.auth.getSession();
       if (activeSession) {
         const now = new Date().toISOString();
@@ -115,6 +115,13 @@ export default function Login() {
             <div className="flex items-start gap-2 p-3 mb-4 rounded-lg bg-destructive/10 text-destructive text-sm">
               <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
               Your account has been deactivated. Contact your administrator.
+            </div>
+          )}
+
+          {sessionExpired && (
+            <div className="flex items-start gap-2 p-3 mb-4 rounded-lg bg-amber-50 text-amber-800 text-sm border border-amber-200">
+              <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+              Your session expired — please sign in again.
             </div>
           )}
 

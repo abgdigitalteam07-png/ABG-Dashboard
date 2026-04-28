@@ -124,12 +124,7 @@ export default function Admin() {
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (!session) { navigate("/login", { replace: true }); return; }
-      const { data: profile } = await supabase
-        .from("user_profiles")
-        .select("role")
-        .eq("id", session.user.id)
-        .single();
-      if (profile?.role !== "admin") {
+      if (session.user.email !== "mali@americanbathgroup.com") {
         navigate("/", { replace: true });
         return;
       }

@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { Search, ChevronDown, BarChart3, Globe } from "lucide-react";
 import { brands, Brand } from "@/lib/brands";
+import { cn } from "@/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 
@@ -26,6 +27,49 @@ const SOCIAL_MEDIA_BRANDS = new Set([
   "Vintage Tub",
   "Vintage Tub & Bath - Canada",
 ]);
+
+function BrandLogo({ brand, size = "sm" }: { brand: Brand; size?: "sm" | "md" }) {
+  const [failed, setFailed] = useState(false);
+  const dim = size === "md" ? "h-6 w-6" : "h-5 w-5";
+
+  if (brand.logoUrl && !failed) {
+    return (
+      <img
+        src={brand.logoUrl}
+        alt={brand.name}
+        className={cn(dim, "rounded-sm object-contain flex-shrink-0 bg-white p-[1px]")}
+        onError={() => setFailed(true)}
+      />
+    );
+  }
+
+  return (
+    <span className={cn(dim, "rounded-sm bg-primary-foreground/20 flex items-center justify-center text-[10px] font-bold text-primary-foreground flex-shrink-0")}>
+      {brand.name.charAt(0).toUpperCase()}
+    </span>
+  );
+}
+
+function BrandLogoDropdown({ brand }: { brand: Brand }) {
+  const [failed, setFailed] = useState(false);
+
+  if (brand.logoUrl && !failed) {
+    return (
+      <img
+        src={brand.logoUrl}
+        alt={brand.name}
+        className="h-5 w-5 rounded-sm object-contain flex-shrink-0 bg-muted p-[1px]"
+        onError={() => setFailed(true)}
+      />
+    );
+  }
+
+  return (
+    <span className="h-5 w-5 rounded-sm bg-muted flex items-center justify-center text-[10px] font-bold text-muted-foreground flex-shrink-0">
+      {brand.name.charAt(0).toUpperCase()}
+    </span>
+  );
+}
 
 function MetaIcon({ className, active }: { className?: string; active?: boolean }) {
   // Official Meta corporate logo (infinity M shape) — not the Facebook logo
@@ -88,6 +132,7 @@ export function BrandSwitcher({ selectedBrand, onSelect }: BrandSwitcherProps) {
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <button className="flex items-center gap-2 rounded-md bg-primary-foreground/10 px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary-foreground/20 transition-colors">
+            <BrandLogo brand={selectedBrand} size="sm" />
             <span>{selectedBrand.name}</span>
             <ChevronDown className="h-3.5 w-3.5 opacity-70" />
           </button>
@@ -131,7 +176,10 @@ export function BrandSwitcher({ selectedBrand, onSelect }: BrandSwitcherProps) {
                   setSearch("");
                 }}
               >
-                <span>{brand.name}</span>
+                <span className="flex items-center gap-2">
+                  <BrandLogoDropdown brand={brand} />
+                  {brand.name}
+                </span>
                 <IntegrationIcons brand={brand} />
               </button>
             ))}
