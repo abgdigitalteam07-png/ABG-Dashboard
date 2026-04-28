@@ -209,7 +209,7 @@ function ComparisonContent() {
             {PERIOD_OPTIONS.map(({ label, days }) => (
               <button
                 key={days}
-                onClick={() => setSelectedDays(days)}
+                onClick={() => { setSelectedDays(days); runReport(days, selectedBrands); }}
                 className={cn(
                   "rounded-full px-4 py-1.5 text-xs font-semibold transition-colors",
                   selectedDays === days
