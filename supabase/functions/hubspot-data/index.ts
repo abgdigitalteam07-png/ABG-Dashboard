@@ -9,6 +9,7 @@ interface HubSpotRequest {
   startDate: string;
   endDate: string;
   debug?: boolean;
+  contactsOnly?: boolean; // skip email fetching — returns just contact/dealer counts fast
 }
 
 interface EmailRecord {
@@ -866,6 +867,16 @@ Deno.serve(async (req) => {
     if (isSecondary) {
       const knownCount = Object.values(stateCounts).reduce((a, b) => a + b, 0);
       unknownStateCount = Math.max(0, totalContacts - knownCount);
+    }
+
+    // ── contactsOnly shortcut — skip email fetching entirely ──
+    if (body.contactsOnly) {
+      return new Response(JSON.stringify({
+        totalContacts,
+        dealerAssignedTotal,
+        dealerUnassignedTotal,
+        lifecycleStages: lifecycleStages.map(ls => ({ stage: ls.label, count: ls.count, key: ls.stage })),
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     // ── Fetch all emails from the appropriate account ──

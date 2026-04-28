@@ -60,6 +60,7 @@ async function fetchPeriodData(brand: string, from: Date, to: Date): Promise<Per
     brandName: brand,
     startDate: dateStr(from),
     endDate: dateStr(to),
+    contactsOnly: true,
   });
   if (data?.error) throw new Error(data.error);
   return {
