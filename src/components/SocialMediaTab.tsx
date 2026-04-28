@@ -706,18 +706,47 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
         </div>
       </ChartCard>
 
-      <AIRecommendations
-        tabName="social_media"
-        brandName={brand.name}
-        dateRange={`${format(dateFrom, "MMM d, yyyy")} – ${format(dateTo, "MMM d, yyyy")}`}
-        metrics={{
-          engagementRate: overview.engagementRate,
-          followerGrowth: avgFollowerGrowth,
-          websiteClicks: overview.websiteClicks,
-          postsPerWeek: overview.totalPosts / Math.max(1, Math.ceil((dateTo.getTime() - dateFrom.getTime()) / (7 * 86400000))),
-          reelCount: posts?.filter((p: any) => p.type === "reel").length ?? 0,
-        }}
-      />
+      {/* ── Platform Insights ── */}
+      <section className="space-y-4">
+        <AIRecommendations
+          tabName="social_facebook"
+          brandName={brand.name}
+          dateRange={`${format(dateFrom, "MMM d, yyyy")} – ${format(dateTo, "MMM d, yyyy")}`}
+          metrics={{
+            engagementRate: platformBreakdown.facebook?.engagementRate ?? overview.engagementRate,
+            followerGrowth: overview.followerGrowth.facebook,
+            reach: platformBreakdown.facebook?.reach ?? 0,
+            impressions: platformBreakdown.facebook?.impressions ?? 0,
+            topPostType: platformBreakdown.facebook?.topPostType,
+          }}
+          platform={{
+            name: "Facebook",
+            Icon: Facebook,
+            headerFrom: "#1877F2",
+            headerTo: "#0a5fd4",
+          }}
+        />
+        <AIRecommendations
+          tabName="social_instagram"
+          brandName={brand.name}
+          dateRange={`${format(dateFrom, "MMM d, yyyy")} – ${format(dateTo, "MMM d, yyyy")}`}
+          metrics={{
+            engagementRate: platformBreakdown.instagram?.engagementRate ?? overview.engagementRate,
+            followerGrowth: overview.followerGrowth.instagram,
+            reach: platformBreakdown.instagram?.reach ?? 0,
+            impressions: platformBreakdown.instagram?.impressions ?? 0,
+            reelCount: posts?.filter((p: any) => p.platform === "instagram" && p.type?.toLowerCase() === "reel").length ?? 0,
+            websiteClicks: overview.websiteClicks,
+            topPostType: platformBreakdown.instagram?.topPostType,
+          }}
+          platform={{
+            name: "Instagram",
+            Icon: Instagram,
+            headerFrom: "#E1306C",
+            headerTo: "#833AB4",
+          }}
+        />
+      </section>
     </div>
   );
 }

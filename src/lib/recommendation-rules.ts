@@ -102,41 +102,71 @@ function emailRules(m: Record<string, any>): Recommendation[] {
   return recs;
 }
 
-function socialRules(m: Record<string, any>): Recommendation[] {
+function facebookRules(m: Record<string, any>): Recommendation[] {
   const recs: Recommendation[] = [];
 
   const er = m.engagementRate;
   if (er != null) {
-    if (er < 1) recs.push(r("social_eng", "action_required", "Very low engagement — content strategy needs a refresh", `Your engagement rate of ${er}% is below the B2B social media average.`, "Low engagement tells algorithms to show your content to fewer people, creating a downward spiral.", ["Post more Reels/video content — they get 2-3x more reach", "Ask questions in captions to encourage comments", "Use relevant industry hashtags (5-10 targeted, not generic)", "Engage with your audience — reply to every comment within 24hrs"], "Engagement Rate", `${er}%`, "B2B social media average: 1-3%"));
-    else if (er < 3) recs.push(r("social_eng", "attention", `Engagement rate of ${er}% has room for growth`, `You're getting some engagement but below the optimal range.`, "Higher engagement drives algorithmic reach, creating a positive feedback loop.", ["Test different content formats to find what resonates", "Post at peak engagement times", "Use polls and questions to drive interaction"], "Engagement Rate", `${er}%`, "B2B target: 3%+"));
-    else recs.push(r("social_eng", "strong", `Strong engagement rate of ${er}%`, `Your content is resonating well with your audience.`, "High engagement signals to algorithms to show your content to more people.", ["Maintain content quality and posting consistency", "Analyze top-performing posts to replicate success", "Consider paid amplification of high-engagement organic posts"], "Engagement Rate", `${er}%`, "B2B average: 1-3%"));
+    if (er < 0.5) recs.push(r("fb_eng", "action_required", "Facebook engagement is very low — Page content needs rethinking", `Your Facebook engagement rate of ${er}% is well below the B2B Page average of 0.5–1%.`, "Facebook's algorithm deprioritizes Pages with low engagement, reducing your organic reach over time.", ["Share more link posts to industry news and your own blog", "Post Facebook-native video — it gets 3–5× more organic reach than links", "Run a 'tag a friend' or poll post to spark interaction", "Reply to every comment within 2 hours to boost comment thread ranking"], "Engagement Rate", `${er}%`, "B2B Facebook Page average: 0.5–1%"));
+    else if (er < 1.5) recs.push(r("fb_eng", "attention", `Facebook engagement of ${er}% is moderate — room to improve`, `You're above the floor but below the ideal range for B2B Facebook Pages.`, "Higher engagement signals Facebook to show your posts to a larger slice of your Page followers.", ["Test native video vs. image posts to find what your audience prefers", "Use Facebook Stories for behind-the-scenes content", "Post at peak times — Tuesday–Thursday 9am–1pm typically performs best for B2B"], "Engagement Rate", `${er}%`, "B2B target: 1.5%+"));
+    else recs.push(r("fb_eng", "strong", `Strong Facebook engagement at ${er}%`, `Your Facebook content is performing above the B2B benchmark.`, "High engagement earns you more organic reach and builds community trust.", ["Amplify top-performing organic posts with a small paid boost", "Repurpose high-engagement posts into Reels or Stories", "Use Facebook Insights to double down on best-performing content types"], "Engagement Rate", `${er}%`, "B2B Facebook average: 0.5–1%"));
   }
 
   const fg = m.followerGrowth;
   if (fg != null) {
-    if (fg < 0) recs.push(r("social_followers", "action_required", `Losing followers — content may need repositioning`, `Follower count decreased by ${Math.abs(fg).toFixed(1)}%.`, "Losing followers shrinks your organic reach potential.", ["Review recent content for relevance to your target audience", "Increase posting frequency with valuable content", "Run follower growth campaigns with targeted content"], "Follower Growth", `${fg.toFixed(1)}%`));
-    else if (fg < 2) recs.push(r("social_followers", "attention", `Slow follower growth of ${fg.toFixed(1)}%`, `Growth is positive but below the pace needed for meaningful audience building.`, "Consistent follower growth compounds into significant brand reach.", ["Cross-promote social channels in emails and website", "Collaborate with industry partners for exposure", "Create shareable content that attracts new followers"], "Follower Growth", `${fg.toFixed(1)}%`));
-    else recs.push(r("social_followers", "strong", `Healthy follower growth of ${fg.toFixed(1)}%`, `Your audience is growing at a solid pace.`, "Growing followers means expanding organic reach without additional spend.", ["Nurture new followers with engaging content", "Leverage growing audience for product launches", "Test community-building features like groups or close friends"], "Follower Growth", `${fg.toFixed(1)}%`));
+    if (fg < 0) recs.push(r("fb_followers", "action_required", "Facebook Page is losing followers — review content relevance", `Your Facebook follower count dropped by ${Math.abs(fg).toFixed(1)}% this period.`, "Declining followers shrinks your organic distribution — every post reaches fewer people.", ["Audit your last 20 posts — are they brand-relevant and valuable?", "Reduce overly promotional posts to no more than 20% of content", "Launch a Facebook 'Page Like' ad campaign with a small budget"], "Follower Growth", `${fg.toFixed(1)}%`));
+    else if (fg < 1) recs.push(r("fb_followers", "attention", `Facebook follower growth is slow at ${fg.toFixed(1)}%`, "Facebook organic growth is challenging — you need consistent, shareable content.", "A larger Page audience means more reach for every post, compounding over time.", ["Cross-promote your Facebook Page in HubSpot email signatures", "Add a Facebook 'Like' button on your website and blog", "Invite email contacts to follow your Page via Facebook's invite tool"], "Follower Growth", `${fg.toFixed(1)}%`));
+    else recs.push(r("fb_followers", "strong", `Facebook audience growing at ${fg.toFixed(1)}%`, "Your Page is gaining followers at a healthy rate.", "Growing Page likes expands your organic reach without additional ad spend.", ["Keep engaging new followers early — they're most likely to interact", "Use lookalike audiences based on your Page fans for targeted ads", "Pin a welcome post for new visitors to your Page"], "Follower Growth", `${fg.toFixed(1)}%`));
+  }
+
+  const reach = m.reach;
+  const impressions = m.impressions;
+  if (reach != null && impressions != null && reach > 0) {
+    const freq = parseFloat((impressions / reach).toFixed(2));
+    if (freq > 3) recs.push(r("fb_freq", "attention", `High ad/content frequency of ${freq}× — audience may be fatigued`, `Your content is being shown ${freq} times per unique person on average.`, "High frequency causes 'ad fatigue' — people stop engaging when they see the same content repeatedly.", ["Refresh creative assets — new images, copy, and formats", "Expand your target audience to reduce repetition", "Rotate content types: video one week, carousel the next"], "Impressions / Reach", `${freq}×`));
+    else if (freq < 1.2) recs.push(r("fb_freq", "attention", `Low content frequency of ${freq}× — audience isn't seeing enough of you`, `Each person in your audience sees your content only ${freq} times on average.`, "Very low frequency means your brand isn't staying top-of-mind.", ["Increase posting cadence to 1 post per day on Facebook", "Use Stories and Reels in addition to feed posts to fill the frequency gap", "Consider a small retargeting campaign to re-engage Page visitors"], "Impressions / Reach", `${freq}×`));
+    else recs.push(r("fb_freq", "strong", `Healthy content frequency of ${freq}× per person`, "Your content is reaching people at a good cadence — enough to build awareness without fatigue.", "The right frequency maximizes brand recall while minimizing unfollow risk.", ["Monitor engagement rate — if it drops, frequency may be creeping up", "Continue rotating content formats to keep things fresh"], "Impressions / Reach", `${freq}×`));
+  }
+
+  const topType = m.topPostType;
+  if (topType) recs.push(r("fb_top_type", "trending_up", `Your best-performing Facebook format is ${topType}`, `${topType} posts are generating the most engagement on your Facebook Page.`, "Doubling down on your top-performing format is the fastest way to increase overall performance.", [`Create more ${topType} content — aim for at least 3 per week`, `Repurpose your best ${topType} posts into Facebook Ads`, "Study the specific ${topType} posts with highest reach to identify patterns"], "Top Post Type", topType));
+
+  return recs;
+}
+
+function instagramRules(m: Record<string, any>): Recommendation[] {
+  const recs: Recommendation[] = [];
+
+  const er = m.engagementRate;
+  if (er != null) {
+    if (er < 1) recs.push(r("ig_eng", "action_required", "Instagram engagement is critically low — content needs a reset", `Your engagement rate of ${er}% is well below the Instagram B2B benchmark of 1–3%.`, "Instagram's algorithm gates reach behind engagement — low engagement creates a visibility spiral.", ["Post Reels exclusively for the next 2 weeks — they get the most algorithmic push", "Write longer, story-driven captions to encourage saves and shares", "Use 3–5 highly targeted hashtags (avoid banned or oversaturated ones)", "Add a clear question at the end of every caption to invite comments"], "Engagement Rate", `${er}%`, "Instagram B2B benchmark: 1–3%"));
+    else if (er < 3) recs.push(r("ig_eng", "attention", `Instagram engagement of ${er}% — approaching benchmark but not there yet`, `You're generating engagement but below the ideal range for Instagram B2B accounts.`, "Every percentage point of engagement directly increases how many non-followers Instagram shows your content to.", ["Test carousel posts — they average 3× more engagement than single images", "Use Instagram Collab posts with partner brands for shared reach", "Add interactive elements to Stories: polls, quizzes, question boxes"], "Engagement Rate", `${er}%`, "Instagram B2B target: 3%+"));
+    else recs.push(r("ig_eng", "strong", `Excellent Instagram engagement at ${er}%`, "Your content is performing above the Instagram B2B benchmark.", "Strong engagement unlocks the Explore page and Reels distribution — your content reaches beyond followers.", ["Submit your best-performing posts to Instagram's creator marketplace", "Test Instagram Shopping tags if you have direct-to-consumer products", "Maintain posting consistency — algorithms reward regular high-engagement accounts"], "Engagement Rate", `${er}%`, "Instagram B2B benchmark: 1–3%"));
+  }
+
+  const fg = m.followerGrowth;
+  if (fg != null) {
+    if (fg < 0) recs.push(r("ig_followers", "action_required", "Instagram is losing followers — pivot content strategy", `Follower count dropped ${Math.abs(fg).toFixed(1)}% — people are actively choosing to unfollow.`, "Instagram unfollows are a strong signal that content expectations aren't being met.", ["Review your last 30 posts — are they consistent in aesthetic and value?", "Stop posting overly promotional content — shift to educational or inspiring posts", "Check if posting frequency is too high — reduce to 4–5 posts/week if over-posting"], "Follower Growth", `${fg.toFixed(1)}%`));
+    else if (fg < 1.5) recs.push(r("ig_followers", "attention", `Instagram follower growth is slow at ${fg.toFixed(1)}%`, "Slow growth on Instagram usually means content isn't reaching new audiences.", "Instagram follower growth is driven by Reels discovery — non-followers find you through Explore and Reels.", ["Post at least 2 Reels per week to trigger Explore-page distribution", "Use location tags on posts for local discovery", "Collaborate with complementary brands on Collab posts for shared audiences"], "Follower Growth", `${fg.toFixed(1)}%`));
+    else recs.push(r("ig_followers", "strong", `Instagram growing at ${fg.toFixed(1)}% — great momentum`, "Your Instagram audience is expanding at a healthy rate.", "Sustained follower growth on Instagram compounds — a bigger audience means more reach for every future post.", ["Welcome new followers with an engaging Stories series", "Use new follower data to refine your audience targeting in paid campaigns", "Protect growth by maintaining posting consistency"], "Follower Growth", `${fg.toFixed(1)}%`));
+  }
+
+  const rc = m.reelCount;
+  if (rc != null) {
+    if (rc === 0) recs.push(r("ig_reels", "action_required", "No Reels posted — you're invisible to new Instagram audiences", "Instagram Reels are the primary discovery mechanism for reaching non-followers on Instagram.", "Without Reels, your content only reaches existing followers. Reels can reach 10–100× more people than feed posts.", ["Film a 15–30 second product showcase Reel this week", "Use trending audio — Instagram surfaces Reels with popular sounds to more users", "Repurpose existing product photos into a slideshow Reel with music"], "Reel Count", 0, "Recommended: 3–5 Reels/week"));
+    else if (rc < 3) recs.push(r("ig_reels", "attention", `Only ${rc} Reel${rc === 1 ? "" : "s"} posted — increase Reels frequency for more reach`, `With ${rc} Reel${rc === 1 ? "" : "s"} this period, you're underutilizing Instagram's most powerful reach format.`, "Accounts that post 3+ Reels per week see 2–3× higher follower growth than feed-only accounts.", ["Batch-create 3–4 Reels at once using a single product shoot", "Use Instagram's built-in templates to make Reel creation faster", "Repurpose your top Facebook videos as Instagram Reels"], "Reel Count", rc, "Recommended: 3–5 Reels/week"));
+    else recs.push(r("ig_reels", "strong", `Good Reels cadence with ${rc} Reels this period`, "You're using Instagram's most powerful discovery format consistently.", "Regular Reels posting keeps you in Instagram's distribution algorithm, reaching new audiences every week.", ["Test different Reel lengths — 7–15 seconds for max completion rate", "Add text overlays to Reels so they work without sound", "A/B test different cover images to improve Reels click-through"], "Reel Count", rc));
   }
 
   const wc = m.websiteClicks;
   if (wc != null) {
-    if (wc < 10) recs.push(r("social_clicks", "action_required", "Social media isn't driving website traffic", `Only ${wc} website clicks from social media this period.`, "Social should be a meaningful traffic driver — low clicks mean missed conversion opportunities.", ["Add clear 'Link in Bio' calls-to-action in posts", "Use Instagram Stories with 'link' stickers for direct traffic", "Create social-exclusive offers that require visiting your website", "Update bio links to point to relevant landing pages, not just homepage"], "Website Clicks", wc));
-    else if (wc < 50) recs.push(r("social_clicks", "attention", `${wc} website clicks from social — room to grow`, `Social is driving some traffic but has more potential.`, "Increasing social-to-web traffic creates a new conversion channel.", ["Test different CTA styles in posts", "Use link stickers in Stories more frequently", "Create content that teases website-only information"], "Website Clicks", wc));
-    else recs.push(r("social_clicks", "strong", `${wc} website clicks from social — good traffic driver`, `Social media is effectively driving traffic to your website.`, "Strong social-to-web traffic diversifies your traffic sources.", ["Optimize landing pages for social traffic", "Track social traffic conversions", "Scale what's working with paid amplification"], "Website Clicks", wc));
+    if (wc < 10) recs.push(r("ig_clicks", "action_required", "Instagram bio link isn't driving website visits", `Only ${wc} website clicks from Instagram this period.`, "Instagram is a top-of-funnel channel — without bio link clicks, it's not converting awareness into website visits.", ["Use a link-in-bio tool (Linktree or Milkshake) to feature multiple landing pages", "Add 'Link in bio' CTA to every caption and Story", "Use Instagram Stories link stickers — they drive direct clicks without needing bio visits"], "Website Clicks", wc));
+    else if (wc < 50) recs.push(r("ig_clicks", "attention", `${wc} bio link clicks from Instagram — more is possible`, "You're getting some website traffic from Instagram but there's room to grow.", "Each bio link click is a warm lead — someone interested enough to leave Instagram for your website.", ["Mention your bio link in Reels captions with a specific reason to click", "Update your bio link to point to a relevant campaign or seasonal page", "Post Stories with link stickers more frequently — at least 3×/week"], "Website Clicks", wc));
+    else recs.push(r("ig_clicks", "strong", `${wc} website clicks from Instagram — strong conversion from social`, "Instagram is driving meaningful traffic to your website.", "Social traffic from Instagram tends to be high-intent — these visitors explored your profile before clicking.", ["Tag products in feed posts to enable Instagram Shopping", "Ensure the landing page your bio link points to is mobile-optimized", "Track Instagram traffic in Google Analytics with UTM parameters"], "Website Clicks", wc));
   }
 
-  const ppw = m.postsPerWeek;
-  if (ppw != null) {
-    if (ppw < 2) recs.push(r("social_frequency", "attention", "Low posting frequency — consistency drives growth", `At ${ppw.toFixed(1)} posts per week, you're posting less than recommended.`, "Algorithms reward consistent posting with more reach.", ["Aim for at least 3-5 posts per week across platforms", "Batch-create content weekly using a content calendar", "Repurpose existing content — turn blog posts into carousels, product photos into Reels"], "Posts/Week", ppw.toFixed(1), "Recommended: 3-5x per week"));
-    else if (ppw < 4) recs.push(r("social_frequency", "attention", `Posting frequency of ${ppw.toFixed(1)}/week is okay — but more consistency would help`, `You're posting regularly but below the optimal range.`, "Increasing from 2-3x to 4-5x per week typically increases reach by 30-50%.", ["Add 1-2 more posts per week focusing on Stories or quick updates", "Use content batching to stay ahead of schedule", "Mix content types to keep the feed diverse"], "Posts/Week", ppw.toFixed(1), "Optimal: 4-5x per week"));
-    else recs.push(r("social_frequency", "strong", `Good posting consistency at ${ppw.toFixed(1)}/week`, `You're posting at or above the recommended frequency.`, "Consistent posting builds audience expectations and algorithmic favor.", ["Maintain current cadence", "Focus on quality over further increasing quantity", "Analyze which posts perform best at different times"], "Posts/Week", ppw.toFixed(1)));
-  }
-
-  const rc = m.reelCount;
-  if (rc != null && rc === 0) {
-    recs.push(r("social_reels", "attention", "No Reels or video content — you're missing the highest-reach format", "Reels consistently get 2-3x more reach than static image posts on Instagram and Facebook.", "Video content is prioritized by both Instagram and Facebook algorithms, meaning you're leaving reach on the table.", ["Start with simple product showcase Reels (15-30 seconds)", "Repurpose existing product photos into slideshow-style Reels", "Film behind-the-scenes or manufacturing process clips"], "Reel Count", 0));
-  }
+  const topType = m.topPostType;
+  if (topType) recs.push(r("ig_top_type", "trending_up", `Your top Instagram format is ${topType}`, `${topType} content is generating the most engagement on your Instagram account.`, "Instagram rewards accounts that master a specific format — your audience has shown you what they want.", [`Increase ${topType} posts to 4–5 per week`, `Study your top 5 ${topType} posts for common themes — caption length, time of day, topic`, "Test ${topType} content in Paid ads using your best organic performers as creative"], "Top Post Type", topType));
 
   return recs;
 }
@@ -181,8 +211,10 @@ export function generateRecommendations(
     recs = [...ga4Rules(metrics), ...gscRules(metrics)];
   } else if (tabName === "crm_email") {
     recs = emailRules(metrics);
-  } else if (tabName === "social_media") {
-    recs = socialRules(metrics);
+  } else if (tabName === "social_facebook") {
+    recs = facebookRules(metrics);
+  } else if (tabName === "social_instagram") {
+    recs = instagramRules(metrics);
   } else if (tabName === "hubspot_crm") {
     recs = crmRules(metrics);
   }
