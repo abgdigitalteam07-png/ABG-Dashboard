@@ -305,8 +305,8 @@ function ComparisonContent() {
               {/* rows */}
               {[
                 { key: "totalContacts" as const,    label: "Total Created",      sub: "New contacts in period" },
-                { key: "dealerAssigned" as const,   label: "Assigned to Dealer", sub: "With dealer_assigned set" },
-                { key: "dealerUnassigned" as const, label: "Not Assigned",       sub: "No dealer yet" },
+                { key: "dealerAssigned" as const,   label: "Assigned to Dealer", sub: "Nearest Dealer Email is known" },
+                { key: "dealerUnassigned" as const, label: "Not Assigned",       sub: "Nearest Dealer Email is empty" },
               ].map(({ key, label, sub }, ri) => (
                 <div
                   key={key}
