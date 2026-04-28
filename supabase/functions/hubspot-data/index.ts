@@ -558,7 +558,7 @@ Deno.serve(async (req) => {
                 "ip_state", "ip_state_code", "state", "hs_state",
                 "hs_object_source", "hs_object_source_detail_1",
                 "hs_analytics_source", "hs_analytics_source_data_1",
-                "jobtitle", profileProperty, "dealer_assigned",
+                "jobtitle", profileProperty, "nearest_dealer_email",
               ],
               sorts: [{ propertyName: "createdate", direction: "ASCENDING" }],
               limit: 100,
@@ -580,8 +580,8 @@ Deno.serve(async (req) => {
               const stateCode = normalizeStateCode(props.state, props.ip_state_code, props.ip_state, props.hs_state);
               if (stateCode) {
                 stateCounts[stateCode] = (stateCounts[stateCode] || 0) + 1;
-                // Split by dealer_assigned for the gap analysis map
-                const hasDealer = !!(props.dealer_assigned || "").trim();
+                // Split by nearest_dealer_email for the gap analysis map
+                const hasDealer = !!(props.nearest_dealer_email || "").trim();
                 if (hasDealer) {
                   dealerWithDealStateCounts[stateCode] = (dealerWithDealStateCounts[stateCode] || 0) + 1;
                   dealerAssignedTotal++;
@@ -592,7 +592,7 @@ Deno.serve(async (req) => {
               } else {
                 unknownStateCount++;
                 // Still count dealer status even for unknown-state contacts
-                const hasDealer = !!(props.dealer_assigned || "").trim();
+                const hasDealer = !!(props.nearest_dealer_email || "").trim();
                 if (hasDealer) dealerAssignedTotal++;
                 else dealerUnassignedTotal++;
               }

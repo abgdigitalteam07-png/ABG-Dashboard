@@ -146,7 +146,7 @@ Deno.serve(async (req) => {
           "brands",
           "ip_state_code",
           "ip_state",
-          "dealer_assigned",
+          "nearest_dealer_email",
         ],
         sorts: [{ propertyName: "createdate", direction: "ASCENDING" }],
         limit: 100,
@@ -222,7 +222,7 @@ Deno.serve(async (req) => {
         }
 
         // Dealer assignment
-        if ((props.dealer_assigned || "").trim()) {
+        if ((props.nearest_dealer_email || "").trim()) {
           dealerAssignedTotal++;
         } else {
           dealerUnassignedTotal++;
