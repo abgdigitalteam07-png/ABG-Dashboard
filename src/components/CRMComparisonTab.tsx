@@ -91,12 +91,19 @@ function ChangeBadge({ curr, prev }: { curr: number; prev: number }) {
 }
 
 // ─── tooltip ──────────────────────────────────────────────────────────────────
-function ChartTooltip({ active, payload, label }: any) {
+interface ChartTooltipPayload {
+  dataKey?: string | number;
+  fill?: string;
+  value?: string | number;
+  name?: string | number;
+}
+
+function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: ChartTooltipPayload[]; label?: string | number }) {
   if (!active || !payload?.length) return null;
   return (
     <div className="rounded-xl border border-border bg-card px-3 py-2.5 shadow-lg text-xs space-y-1.5">
       <p className="font-semibold text-muted-foreground">{label}</p>
-      {payload.map((p: any) => (
+      {payload.map((p) => (
         <div key={p.dataKey} className="flex items-center gap-2">
           <span className="h-2 w-2 rounded-full shrink-0" style={{ background: p.fill }} />
           <span className="text-foreground font-medium">{(p.value ?? 0).toLocaleString()}</span>
@@ -189,7 +196,7 @@ function ComparisonContent() {
 
   const chartData = results
     ? METRICS.map(({ key, label }) => {
-        const row: Record<string, any> = { metric: label };
+        const row: Record<string, string | number> = { metric: label };
         for (const brand of selectedBrands) {
           const r = results[brand];
           if (!r) continue;
