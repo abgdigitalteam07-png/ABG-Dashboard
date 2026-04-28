@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { subDays, format } from "date-fns";
 import { callFunction } from "@/lib/api-client";
 import { WaterFillLoader } from "@/components/WaterFillLoader";
@@ -129,19 +129,21 @@ function ComparisonContent() {
   const [results, setResults] = useState<BrandResults | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError]   = useState<string | null>(null);
+  const requestIdRef = useRef(0);
 
   function toggleBrand(b: SecondaryBrand) {
     setSelectedBrands((prev) => {
       const next = prev.includes(b)
         ? prev.length > 1 ? prev.filter((x) => x !== b) : prev   // keep at least 1
         : prev.length < 3 ? [...prev, b] : prev;                 // max 3
-      if (next !== prev) runReport(selectedDays, next);
       return next;
     });
   }
 
-  function runReport(days = selectedDays, brands = selectedBrands) {
+  function runReport(days: number, brands: SecondaryBrand[]) {
     if (!brands.length) return;
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
     setLoading(true);
     setError(null);
 
@@ -156,18 +158,20 @@ function ComparisonContent() {
         return { brand, curr, prev };
       })
     ).then((data) => {
+      if (requestIdRef.current !== requestId) return;
       const map = {} as BrandResults;
       for (const d of data) map[d.brand as SecondaryBrand] = { curr: d.curr, prev: d.prev };
       setResults(map);
       setLoading(false);
     }).catch((err) => {
+      if (requestIdRef.current !== requestId) return;
       setError(err instanceof Error ? err.message : "Failed to load");
       setLoading(false);
     });
   }
 
-  // Auto-run on first mount
-  useEffect(() => { runReport(); }, []);
+  // Always load data for the currently selected period + brands.
+  useEffect(() => { runReport(selectedDays, selectedBrands); }, [selectedDays, selectedBrands]);
 
   const { currStart, currEnd, prevStart, prevEnd } = getPeriods(selectedDays);
   const currLabel = `${format(currStart, "MMM d")} – ${format(currEnd, "MMM d, yyyy")}`;
@@ -209,7 +213,7 @@ function ComparisonContent() {
             {PERIOD_OPTIONS.map(({ label, days }) => (
               <button
                 key={days}
-                onClick={() => { setSelectedDays(days); runReport(days, selectedBrands); }}
+                onClick={() => setSelectedDays(days)}
                 className={cn(
                   "rounded-full px-4 py-1.5 text-xs font-semibold transition-colors",
                   selectedDays === days
@@ -264,7 +268,7 @@ function ComparisonContent() {
 
         {/* Run button */}
         <button
-          onClick={() => runReport()}
+          onClick={() => runReport(selectedDays, selectedBrands)}
           disabled={loading}
           className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-xs font-semibold text-accent-foreground hover:bg-accent/90 disabled:opacity-50 transition-colors"
         >
