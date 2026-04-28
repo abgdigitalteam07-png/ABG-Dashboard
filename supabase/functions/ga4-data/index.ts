@@ -2,6 +2,7 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
@@ -26,7 +27,6 @@ async function getAccessToken(serviceAccountJson: string): Promise<string> {
     })
   );
 
-  // Import private key and sign JWT
   const pemBody = sa.private_key
     .replace(/-----BEGIN PRIVATE KEY-----/, "")
     .replace(/-----END PRIVATE KEY-----/, "")
@@ -96,7 +96,7 @@ async function runReport(
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response("ok", { headers: corsHeaders });
   }
 
   try {
@@ -113,18 +113,24 @@ Deno.serve(async (req) => {
 
     const accessToken = await getAccessToken(saJson);
 
-    // Aggregate metrics: run summary report for each property and combine
-    const summaryMetrics = ["sessions", "screenPageViews", "active1DayUsers"];
-    const organicMetrics = ["sessions"];
-
-    // Summary report (all traffic)
     let totalSessions = 0, totalPageViews = 0, totalActiveUsers = 0, totalOrganicSessions = 0;
     const dailyMap: Record<string, { sessions: number; activeUsers: number; views: number }> = {};
     const pageMap: Record<string, { sessions: number; views: number; avgDuration: number; count: number }> = {};
+    const deviceMap: Record<string, number> = {};
+    const countryMap: Record<string, number> = {};
 
     for (const pid of propertyIds) {
+      // Run all 6 reports in parallel per property
+      const [summary, organic, daily, pages, devices, countries] = await Promise.all([
+        runReport(accessToken, pid, startDate, endDate, ["sessions", "screenPageViews", "active1DayUsers"], []),
+        runReport(accessToken, pid, startDate, endDate, ["sessions"], ["sessionDefaultChannelGroup"]),
+        runReport(accessToken, pid, startDate, endDate, ["sessions", "active1DayUsers", "screenPageViews"], ["date"]),
+        runReport(accessToken, pid, startDate, endDate, ["sessions", "screenPageViews", "averageSessionDuration"], ["pagePath"]),
+        runReport(accessToken, pid, startDate, endDate, ["sessions"], ["deviceCategory"]),
+        runReport(accessToken, pid, startDate, endDate, ["sessions"], ["country"]),
+      ]);
+
       // Summary totals
-      const summary = await runReport(accessToken, pid, startDate, endDate, summaryMetrics, []);
       if (summary.rows?.[0]) {
         const vals = summary.rows[0].metricValues;
         totalSessions += parseInt(vals[0].value) || 0;
@@ -133,7 +139,6 @@ Deno.serve(async (req) => {
       }
 
       // Organic sessions
-      const organic = await runReport(accessToken, pid, startDate, endDate, organicMetrics, ["sessionDefaultChannelGroup"]);
       for (const row of organic.rows || []) {
         if (row.dimensionValues[0].value === "Organic Search") {
           totalOrganicSessions += parseInt(row.metricValues[0].value) || 0;
@@ -141,9 +146,8 @@ Deno.serve(async (req) => {
       }
 
       // Daily time series
-      const daily = await runReport(accessToken, pid, startDate, endDate, ["sessions", "active1DayUsers", "screenPageViews"], ["date"]);
       for (const row of daily.rows || []) {
-        const d = row.dimensionValues[0].value; // YYYYMMDD
+        const d = row.dimensionValues[0].value;
         const dateKey = `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`;
         if (!dailyMap[dateKey]) dailyMap[dateKey] = { sessions: 0, activeUsers: 0, views: 0 };
         dailyMap[dateKey].sessions += parseInt(row.metricValues[0].value) || 0;
@@ -152,7 +156,6 @@ Deno.serve(async (req) => {
       }
 
       // Top pages
-      const pages = await runReport(accessToken, pid, startDate, endDate, ["sessions", "screenPageViews", "averageSessionDuration"], ["pagePath"]);
       for (const row of pages.rows || []) {
         const page = row.dimensionValues[0].value;
         const s = parseInt(row.metricValues[0].value) || 0;
@@ -163,6 +166,20 @@ Deno.serve(async (req) => {
         pageMap[page].views += v;
         pageMap[page].avgDuration += dur * s;
         pageMap[page].count += s;
+      }
+
+      // Device breakdown
+      for (const row of devices.rows || []) {
+        const device = row.dimensionValues[0].value;
+        const sessions = parseInt(row.metricValues[0].value) || 0;
+        deviceMap[device] = (deviceMap[device] || 0) + sessions;
+      }
+
+      // Geographic breakdown
+      for (const row of countries.rows || []) {
+        const country = row.dimensionValues[0].value;
+        const sessions = parseInt(row.metricValues[0].value) || 0;
+        countryMap[country] = (countryMap[country] || 0) + sessions;
       }
     }
 
@@ -191,7 +208,28 @@ Deno.serve(async (req) => {
         };
       });
 
-    const result = {
+    // Device breakdown
+    const totalDeviceSessions = Object.values(deviceMap).reduce((s, v) => s + v, 0);
+    const deviceBreakdown = Object.entries(deviceMap)
+      .sort(([, a], [, b]) => b - a)
+      .map(([device, sessions]) => ({
+        device,
+        sessions,
+        percentage: totalDeviceSessions > 0 ? parseFloat((sessions / totalDeviceSessions * 100).toFixed(1)) : 0,
+      }));
+
+    // Top countries
+    const totalCountrySessions = Object.values(countryMap).reduce((s, v) => s + v, 0);
+    const topCountries = Object.entries(countryMap)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 10)
+      .map(([country, sessions]) => ({
+        country,
+        sessions,
+        percentage: totalCountrySessions > 0 ? parseFloat((sessions / totalCountrySessions * 100).toFixed(1)) : 0,
+      }));
+
+    return new Response(JSON.stringify({
       sessions: totalSessions,
       sessionsDelta: 0,
       organicSessions: totalOrganicSessions,
@@ -203,9 +241,9 @@ Deno.serve(async (req) => {
       sessionsOverTime,
       activeUsersOverTime,
       topPages,
-    };
-
-    return new Response(JSON.stringify(result), {
+      deviceBreakdown,
+      topCountries,
+    }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {

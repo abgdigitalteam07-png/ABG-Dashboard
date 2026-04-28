@@ -2,6 +2,7 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
@@ -64,7 +65,7 @@ async function getAccessToken(serviceAccountJson: string): Promise<string> {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response("ok", { headers: corsHeaders });
   }
 
   try {
@@ -84,12 +85,35 @@ Deno.serve(async (req) => {
     const apiUrl = "https://www.googleapis.com/webmasters/v3/sites/" +
       encodeURIComponent(siteUrl) + "/searchAnalytics/query";
 
-    // Summary totals
-    const summaryRes = await fetch(apiUrl, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ startDate, endDate, dimensions: [], rowLimit: 1 }),
-    });
+    const authHeader = { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" };
+
+    // Run all queries in parallel
+    const [summaryRes, dailyRes, queriesRes, oppRes, landingPagesRes] = await Promise.all([
+      fetch(apiUrl, {
+        method: "POST", headers: authHeader,
+        body: JSON.stringify({ startDate, endDate, dimensions: [], rowLimit: 1 }),
+      }),
+      fetch(apiUrl, {
+        method: "POST", headers: authHeader,
+        body: JSON.stringify({ startDate, endDate, dimensions: ["date"], rowLimit: 25000 }),
+      }),
+      fetch(apiUrl, {
+        method: "POST", headers: authHeader,
+        body: JSON.stringify({ startDate, endDate, dimensions: ["query"], rowLimit: 25 }),
+      }),
+      fetch(apiUrl, {
+        method: "POST", headers: authHeader,
+        body: JSON.stringify({
+          startDate, endDate, dimensions: ["query"], rowLimit: 50,
+          orderBys: [{ fieldName: "impressions", sortOrder: "DESCENDING" }],
+        }),
+      }),
+      fetch(apiUrl, {
+        method: "POST", headers: authHeader,
+        body: JSON.stringify({ startDate, endDate, dimensions: ["page"], rowLimit: 20 }),
+      }),
+    ]);
+
     if (!summaryRes.ok) {
       const errText = await summaryRes.text();
       if (summaryRes.status === 403) {
@@ -100,7 +124,12 @@ Deno.serve(async (req) => {
       }
       throw new Error(`GSC API error: ${errText}`);
     }
-    const summaryData = await summaryRes.json();
+
+    const [summaryData, dailyData, queriesData] = await Promise.all([
+      summaryRes.json(),
+      dailyRes.ok ? dailyRes.json() : Promise.resolve({ rows: [] }),
+      queriesRes.ok ? queriesRes.json() : Promise.resolve({ rows: [] }),
+    ]);
 
     let totalClicks = 0, totalImpressions = 0, averageCTR = 0, averagePosition = 0;
     if (summaryData.rows?.[0]) {
@@ -110,31 +139,15 @@ Deno.serve(async (req) => {
       averagePosition = parseFloat(summaryData.rows[0].position.toFixed(1));
     }
 
-    // Daily time series
-    const dailyRes = await fetch(apiUrl, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ startDate, endDate, dimensions: ["date"], rowLimit: 25000 }),
-    });
-    if (!dailyRes.ok) throw new Error(`GSC daily error: ${await dailyRes.text()}`);
-    const dailyData = await dailyRes.json();
-
     const clicksImpressionsOverTime = (dailyData.rows || [])
       .sort((a: any, b: any) => a.keys[0].localeCompare(b.keys[0]))
       .map((row: any) => ({
         date: row.keys[0],
         clicks: row.clicks,
         impressions: row.impressions,
+        ctr: parseFloat((row.ctr * 100).toFixed(1)),
+        position: parseFloat(row.position.toFixed(1)),
       }));
-
-    // Top queries
-    const queriesRes = await fetch(apiUrl, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ startDate, endDate, dimensions: ["query"], rowLimit: 10 }),
-    });
-    if (!queriesRes.ok) throw new Error(`GSC queries error: ${await queriesRes.text()}`);
-    const queriesData = await queriesRes.json();
 
     const topQueries = (queriesData.rows || []).map((row: any) => ({
       query: row.keys[0],
@@ -144,7 +157,34 @@ Deno.serve(async (req) => {
       position: parseFloat(row.position.toFixed(1)),
     }));
 
-    const result = {
+    let opportunityQueries: any[] = [];
+    if (oppRes.ok) {
+      const oppData = await oppRes.json();
+      opportunityQueries = (oppData.rows || [])
+        .map((row: any) => ({
+          query: row.keys[0],
+          clicks: row.clicks,
+          impressions: row.impressions,
+          ctr: parseFloat((row.ctr * 100).toFixed(1)),
+          position: parseFloat(row.position.toFixed(1)),
+        }))
+        .filter((q: any) => q.impressions >= 50 && q.ctr < 5.0)
+        .slice(0, 15);
+    }
+
+    let topLandingPages: any[] = [];
+    if (landingPagesRes.ok) {
+      const landingData = await landingPagesRes.json();
+      topLandingPages = (landingData.rows || []).map((row: any) => ({
+        page: row.keys[0],
+        clicks: row.clicks,
+        impressions: row.impressions,
+        ctr: parseFloat((row.ctr * 100).toFixed(1)),
+        position: parseFloat(row.position.toFixed(1)),
+      }));
+    }
+
+    return new Response(JSON.stringify({
       totalClicks,
       totalClicksDelta: 0,
       totalImpressions,
@@ -155,9 +195,9 @@ Deno.serve(async (req) => {
       averagePositionDelta: 0,
       clicksImpressionsOverTime,
       topQueries,
-    };
-
-    return new Response(JSON.stringify(result), {
+      opportunityQueries,
+      topLandingPages,
+    }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {

@@ -4,6 +4,7 @@ import { WaterFillLoader } from "@/components/WaterFillLoader";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, LineChart, Line,
+  PieChart, Pie, Cell,
 } from "recharts";
 import { fetchGA4Data, fetchGSCData } from "@/lib/api-client";
 import { Brand } from "@/lib/brands";
@@ -266,6 +267,60 @@ export function PerformanceTab({ brand, dateFrom, dateTo }: PerformanceTabProps)
             </div>
           )}
 
+          {/* Device & Geographic breakdown */}
+          {!loading && ga4 && (ga4.deviceBreakdown?.length > 0 || ga4.topCountries?.length > 0) && (
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+              {ga4.deviceBreakdown?.length > 0 && (
+                <ChartCard title="Device Breakdown" subtitle="Sessions by device category">
+                  <div className="flex items-center gap-6">
+                    <ResponsiveContainer width={160} height={160}>
+                      <PieChart>
+                        <Pie data={ga4.deviceBreakdown} dataKey="sessions" cx="50%" cy="50%"
+                          innerRadius={45} outerRadius={72} paddingAngle={3}>
+                          {ga4.deviceBreakdown.map((_: any, i: number) => (
+                            <Cell key={i} fill={["#3B82F6", "#F97316", "#94A3B8"][i % 3]} />
+                          ))}
+                        </Pie>
+                        <Tooltip formatter={(v: number) => v.toLocaleString()} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="flex-1 space-y-3">
+                      {ga4.deviceBreakdown.map((d: any, i: number) => (
+                        <div key={d.device} className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="h-2.5 w-2.5 rounded-full" style={{ background: ["#3B82F6", "#F97316", "#94A3B8"][i % 3] }} />
+                            <span className="text-sm capitalize text-foreground">{d.device}</span>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-sm font-semibold tabular-nums">{d.sessions.toLocaleString()}</span>
+                            <span className="ml-1.5 text-xs text-muted-foreground">{d.percentage}%</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </ChartCard>
+              )}
+
+              {ga4.topCountries?.length > 0 && (
+                <ChartCard title="Top Countries" subtitle="Sessions by geography">
+                  <div className="space-y-2">
+                    {ga4.topCountries.slice(0, 6).map((c: any) => (
+                      <div key={c.country} className="flex items-center gap-2">
+                        <span className="w-28 truncate text-xs text-foreground">{c.country}</span>
+                        <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                          <div className="h-full rounded-full bg-blue-500" style={{ width: `${c.percentage}%` }} />
+                        </div>
+                        <span className="w-16 text-right text-xs tabular-nums text-muted-foreground">{c.sessions.toLocaleString()}</span>
+                        <span className="w-10 text-right text-xs font-medium tabular-nums">{c.percentage}%</span>
+                      </div>
+                    ))}
+                  </div>
+                </ChartCard>
+              )}
+            </div>
+          )}
+
           {/* Top Pages */}
           {!loading && ga4?.topPages?.length > 0 && (
             <ChartCard title="Top Pages" subtitle="Pages ranked by traffic">
@@ -348,6 +403,25 @@ export function PerformanceTab({ brand, dateFrom, dateTo }: PerformanceTabProps)
             </ChartCard>
           )}
 
+          {/* Position trend */}
+          {!loading && gsc?.clicksImpressionsOverTime?.length > 0 && (
+            <ChartCard title="Average Position Over Time" subtitle="Lower = better ranking. Track SEO improvements.">
+              <ResponsiveContainer width="100%" height={200}>
+                <LineChart
+                  data={gsc.clicksImpressionsOverTime}
+                  margin={{ top: 4, right: 4, left: -20, bottom: 0 }}
+                >
+                  <CartesianGrid vertical={false} stroke={gridColor} strokeDasharray="3 3" />
+                  <XAxis dataKey="date" tick={axisStyle} tickFormatter={(v) => v.slice(5)} tickLine={false} axisLine={false} />
+                  <YAxis tick={axisStyle} tickLine={false} axisLine={false} reversed />
+                  <Tooltip content={<ChartTooltip />} />
+                  <Line type="monotone" dataKey="position" name="Avg Position"
+                    stroke="#7C3AED" strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </ChartCard>
+          )}
+
           {!loading && gsc?.topQueries?.length > 0 && (
             <ChartCard title="Top Queries" subtitle="Search terms driving traffic">
               <div className="-mx-6 -mb-6 overflow-hidden rounded-b-2xl">
@@ -388,6 +462,83 @@ export function PerformanceTab({ brand, dateFrom, dateTo }: PerformanceTabProps)
                       </TableRow>
                     </TableFooter>
                   )}
+                </Table>
+              </div>
+            </ChartCard>
+          )}
+          {/* Keyword Opportunities */}
+          {!loading && gsc?.opportunityQueries?.length > 0 && (
+            <ChartCard title="Keyword Opportunities" subtitle="High impressions, low CTR — improve titles/meta to capture more clicks">
+              <div className="-mx-6 -mb-6 overflow-hidden rounded-b-2xl">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/50 hover:bg-muted/50">
+                      <TableHead className="pl-6 text-xs font-semibold">Query</TableHead>
+                      <TableHead className="text-right text-xs font-semibold">Impressions</TableHead>
+                      <TableHead className="text-right text-xs font-semibold">CTR</TableHead>
+                      <TableHead className="text-right text-xs font-semibold pr-6">Position</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {gsc.opportunityQueries.map((row: any) => (
+                      <TableRow key={row.query} className="hover:bg-muted/40 transition-colors">
+                        <TableCell className="pl-6">
+                          <div className="flex items-center gap-2.5">
+                            <span className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                              row.position <= 10
+                                ? "bg-emerald-50 text-emerald-700"
+                                : row.position <= 20
+                                ? "bg-amber-50 text-amber-700"
+                                : "bg-slate-100 text-slate-600"
+                            }`}>
+                              {row.position <= 10 ? "Quick Win" : row.position <= 20 ? "Near Miss" : "Long-term"}
+                            </span>
+                            <span className="text-sm text-foreground">{row.query}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums text-sm">{row.impressions.toLocaleString()}</TableCell>
+                        <TableCell className="text-right tabular-nums text-sm">{row.ctr}%</TableCell>
+                        <TableCell className="text-right tabular-nums text-sm pr-6 text-muted-foreground">{row.position.toFixed(1)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </ChartCard>
+          )}
+
+          {/* Top Landing Pages */}
+          {!loading && gsc?.topLandingPages?.length > 0 && (
+            <ChartCard title="Top Landing Pages" subtitle="Pages getting the most clicks from Google Search">
+              <div className="-mx-6 -mb-6 overflow-hidden rounded-b-2xl">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/50 hover:bg-muted/50">
+                      <TableHead className="pl-6 text-xs font-semibold">Page URL</TableHead>
+                      <TableHead className="text-right text-xs font-semibold">Clicks</TableHead>
+                      <TableHead className="text-right text-xs font-semibold">Impressions</TableHead>
+                      <TableHead className="text-right text-xs font-semibold">CTR</TableHead>
+                      <TableHead className="text-right text-xs font-semibold pr-6">Position</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {gsc.topLandingPages.map((row: any, i: number) => (
+                      <TableRow key={row.page} className="hover:bg-muted/40 transition-colors">
+                        <TableCell className="pl-6">
+                          <div className="flex items-center gap-2.5">
+                            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-muted text-[10px] font-bold text-muted-foreground">{i + 1}</span>
+                            <span className="font-mono text-xs text-foreground truncate max-w-[260px]">
+                              {row.page.replace(/^https?:\/\/[^/]+/, "")}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums text-sm font-medium">{row.clicks.toLocaleString()}</TableCell>
+                        <TableCell className="text-right tabular-nums text-sm">{row.impressions.toLocaleString()}</TableCell>
+                        <TableCell className="text-right tabular-nums text-sm">{row.ctr}%</TableCell>
+                        <TableCell className="text-right tabular-nums text-sm pr-6 text-muted-foreground">{row.position.toFixed(1)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
                 </Table>
               </div>
             </ChartCard>

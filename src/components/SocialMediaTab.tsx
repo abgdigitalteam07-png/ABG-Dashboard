@@ -444,6 +444,24 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
         </div>
       </section>
 
+      {/* ── Follower Growth ── */}
+      {data.followerTrend?.length > 0 && (
+        <section className="space-y-5">
+          <SectionHeader icon={TrendingUp} label="Follower Growth" color="bg-emerald-600" />
+          <ChartCard title="New Followers per Day" subtitle="Daily page fan additions (Facebook)">
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={data.followerTrend} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                <CartesianGrid vertical={false} stroke={gridColor} strokeDasharray="3 3" />
+                <XAxis dataKey="date" tick={axisStyle} tickFormatter={(v) => v.slice(5)} tickLine={false} axisLine={false} />
+                <YAxis tick={axisStyle} tickLine={false} axisLine={false} allowDecimals={false} />
+                <Tooltip content={<ChartTooltip />} />
+                <Bar dataKey="newFans" name="New Followers" radius={[3, 3, 0, 0]} fill="#10B981" />
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartCard>
+        </section>
+      )}
+
       {/* ── Content Performance Charts ── */}
       <section className="space-y-5">
         <SectionHeader icon={BarChart2} label="Content Performance" color="bg-violet-600" />
@@ -535,6 +553,57 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
           </ResponsiveContainer>
         </ChartCard>
       )}
+
+      {/* ── Top 5 Posts by Engagement Rate ── */}
+      {sortedPosts.length > 0 && (() => {
+        const top5 = [...sortedPosts]
+          .filter((p: any) => p.engagementRate > 0)
+          .sort((a: any, b: any) => b.engagementRate - a.engagementRate)
+          .slice(0, 5);
+        if (!top5.length) return null;
+        return (
+          <section className="space-y-5">
+            <SectionHeader icon={TrendingUp} label="Top Performing Posts" color="bg-amber-500" />
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+              {top5.map((post: any, i: number) => {
+                const totalEng = (post.likes || 0) + (post.comments || 0) + (post.shares || 0) + (post.saves || 0);
+                const Icon = post.platform === "facebook" ? Facebook : Instagram;
+                return (
+                  <div key={post.id} className="relative rounded-2xl border border-border bg-card p-4 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-100 text-xs font-bold text-amber-700">
+                        {i + 1}
+                      </span>
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <Icon className="h-3.5 w-3.5" />
+                        <Badge variant="outline" className="text-[10px] capitalize px-1.5 py-0">{post.type}</Badge>
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
+                      {post.caption || "(no caption)"}
+                    </p>
+                    <div className="pt-1 border-t border-border flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">
+                        {new Date(post.publishedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                      </span>
+                      <span className={`text-sm font-bold tabular-nums ${
+                        post.engagementRate >= 5 ? "text-emerald-600" : post.engagementRate >= 2 ? "text-blue-600" : "text-muted-foreground"
+                      }`}>
+                        {post.engagementRate}%
+                      </span>
+                    </div>
+                    <div className="flex gap-3 text-[10px] text-muted-foreground">
+                      <span>♥ {(post.likes || 0).toLocaleString()}</span>
+                      <span>💬 {(post.comments || 0).toLocaleString()}</span>
+                      <span>↗ {totalEng.toLocaleString()} total</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        );
+      })()}
 
       {/* ── Post Performance Table ── */}
       <ChartCard title="Post Performance" subtitle="All posts sorted by selected column">

@@ -85,6 +85,29 @@ function getDateChunks(since: string, until: string, maxDays = 89): Array<{ sinc
   return chunks;
 }
 
+async function getDailyMetric(
+  pageId: string, pageToken: string, metric: string, since: string, until: string
+): Promise<Array<{ date: string; value: number }>> {
+  const result: Array<{ date: string; value: number }> = [];
+  const chunks = getDateChunks(since, until, 89);
+  for (const chunk of chunks) {
+    try {
+      const url = `${GRAPH}/${pageId}/insights?metric=${metric}&since=${chunk.since}&until=${chunk.until}&period=day&access_token=${pageToken}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.error) continue;
+      for (const item of (data.data || [])) {
+        for (const v of (item.values || [])) {
+          if (v.end_time && typeof v.value === "number") {
+            result.push({ date: v.end_time.split("T")[0], value: v.value });
+          }
+        }
+      }
+    } catch { /* skip */ }
+  }
+  return result.sort((a, b) => a.date.localeCompare(b.date));
+}
+
 async function getPageInsights(pageId: string, pageToken: string, since: string, until: string): Promise<Record<string, number>> {
   const metrics = ["page_impressions_unique", "page_views_total", "page_post_engagements"];
   const result: Record<string, number> = {};
@@ -235,10 +258,11 @@ Deno.serve(async (req) => {
     const timeoutId = setTimeout(() => controller.abort(), 25000);
 
     try {
-      const [fbInsights, fbFans, fbPosts] = await Promise.all([
+      const [fbInsights, fbFans, fbPosts, fbDailyFans] = await Promise.all([
         getPageInsights(pageId, pageToken, startDate, endDate),
         getPageFanCount(pageId, pageToken),
         getPagePosts(pageId, pageToken, startDate, endDate),
+        getDailyMetric(pageId, pageToken, "page_fan_adds_unique", startDate, endDate).catch(() => [] as Array<{ date: string; value: number }>),
       ]);
 
       const fbReach = fbInsights["page_impressions_unique"] || 0;
@@ -412,6 +436,7 @@ Deno.serve(async (req) => {
         },
         contentPerformance: { byType, byDayOfWeek },
         dailyTrends,
+        followerTrend: fbDailyFans.map((d) => ({ date: d.date, newFans: d.value })),
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     } catch (e) {
       clearTimeout(timeoutId);
