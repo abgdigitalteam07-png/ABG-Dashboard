@@ -599,8 +599,7 @@ Deno.serve(async (req) => {
 
             const res = await hubspotPost("/crm/v3/objects/contacts/search", token, searchBody);
             for (const c of (res.results || [])) {
-              const contactBrands = (c.properties?.brands || "").toLowerCase();
-              if (!contactBrands.includes(brandName.toLowerCase())) continue;
+              if (!matchesBrand(c.properties?.brands)) continue;
 
               totalContacts++;
               const props = c.properties || {};
@@ -667,8 +666,7 @@ Deno.serve(async (req) => {
               const res = await hubspotPost("/crm/v3/objects/contacts/search", token, searchBody);
               if ((res.total ?? 0) === 0) break;
               for (const c of (res.results || [])) {
-                const contactBrands = (c.properties?.brands || "").toLowerCase();
-                if (!contactBrands.includes(brandName.toLowerCase())) continue;
+                if (!matchesBrand(c.properties?.brands)) continue;
                 yearCount++;
                 const stageVal = (c.properties?.lifecyclestage || "").toLowerCase().trim();
                 const matchAll = lifecycleStagesAllTime.find(ls => ls.stage === stageVal);
