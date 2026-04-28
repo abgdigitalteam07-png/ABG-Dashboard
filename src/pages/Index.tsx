@@ -70,10 +70,8 @@ const Index = () => {
     {
       id: "hubspot",
       label: "Emails",
-      disabled: !selectedBrand.hasHubSpot || selectedBrand.name === "Swan",
-      tooltip: selectedBrand.name === "Swan"
-        ? "Swan Emails is currently unavailable."
-        : "No HubSpot data for this brand.",
+      disabled: !selectedBrand.hasHubSpot,
+      tooltip: "No HubSpot data for this brand.",
     },
     {
       id: "hubspot-crm",
