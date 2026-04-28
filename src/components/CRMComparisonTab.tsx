@@ -131,11 +131,13 @@ function ComparisonContent() {
   const [error, setError]   = useState<string | null>(null);
 
   function toggleBrand(b: SecondaryBrand) {
-    setSelectedBrands((prev) =>
-      prev.includes(b)
+    setSelectedBrands((prev) => {
+      const next = prev.includes(b)
         ? prev.length > 1 ? prev.filter((x) => x !== b) : prev   // keep at least 1
-        : prev.length < 3 ? [...prev, b] : prev                  // max 3
-    );
+        : prev.length < 3 ? [...prev, b] : prev;                 // max 3
+      if (next !== prev) runReport(selectedDays, next);
+      return next;
+    });
   }
 
   function runReport(days = selectedDays, brands = selectedBrands) {
