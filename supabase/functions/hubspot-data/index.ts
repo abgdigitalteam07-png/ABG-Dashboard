@@ -442,6 +442,38 @@ Deno.serve(async (req) => {
     const buIds = isSecondary ? null : BRAND_TO_BU[brandName];
     const brandBuId = buIds ? buIds[0] : null;
 
+    // Resolve the internal value(s) of the "brands" multi-select option for this brand.
+    // HubSpot stores selected options as semicolon-separated INTERNAL VALUES (e.g. "american_whirlpool"),
+    // which often differ from the display LABEL ("American Whirlpool"). Without this we miss contacts.
+    const brandTokens = new Set<string>([brandName.toLowerCase()]);
+    if (isSecondary) {
+      try {
+        const propRes = await fetch("https://api.hubapi.com/crm/v3/properties/contacts/brands", {
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        });
+        if (propRes.ok) {
+          const propDef = await propRes.json();
+          const options: any[] = propDef.options || [];
+          for (const opt of options) {
+            const lbl = (opt.label || "").toLowerCase();
+            const val = (opt.value || "").toLowerCase();
+            if (lbl === brandName.toLowerCase() || val === brandName.toLowerCase()) {
+              if (val) brandTokens.add(val);
+              if (lbl) brandTokens.add(lbl);
+            }
+          }
+          console.log(`Resolved brand tokens for "${brandName}": ${[...brandTokens].join(", ")}`);
+        }
+      } catch (e) {
+        console.warn("Could not resolve brand option tokens:", e);
+      }
+    }
+    const matchesBrand = (raw: string | null | undefined): boolean => {
+      const tokens = (raw || "").toLowerCase().split(";").map((t) => t.trim()).filter(Boolean);
+      for (const t of tokens) if (brandTokens.has(t)) return true;
+      return false;
+    };
+
     const startMs = new Date(startDate + "T00:00:00Z").getTime();
     const endMs = new Date(endDate + "T23:59:59Z").getTime();
 
