@@ -4,7 +4,6 @@ import { WaterFillLoader } from "@/components/WaterFillLoader";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend, LineChart, Line,
-  PieChart, Pie, Cell,
 } from "recharts";
 import { fetchGA4Data, fetchGSCData } from "@/lib/api-client";
 import { Brand } from "@/lib/brands";
@@ -267,60 +266,6 @@ export function PerformanceTab({ brand, dateFrom, dateTo }: PerformanceTabProps)
             </div>
           )}
 
-          {/* Device & Geographic breakdown */}
-          {!loading && ga4 && (ga4.deviceBreakdown?.length > 0 || ga4.topCountries?.length > 0) && (
-            <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-              {ga4.deviceBreakdown?.length > 0 && (
-                <ChartCard title="Device Breakdown" subtitle="Sessions by device category">
-                  <div className="flex items-center gap-6">
-                    <ResponsiveContainer width={160} height={160}>
-                      <PieChart>
-                        <Pie data={ga4.deviceBreakdown} dataKey="sessions" cx="50%" cy="50%"
-                          innerRadius={45} outerRadius={72} paddingAngle={3}>
-                          {ga4.deviceBreakdown.map((_: any, i: number) => (
-                            <Cell key={i} fill={["#3B82F6", "#F97316", "#94A3B8"][i % 3]} />
-                          ))}
-                        </Pie>
-                        <Tooltip formatter={(v: number) => v.toLocaleString()} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                    <div className="flex-1 space-y-3">
-                      {ga4.deviceBreakdown.map((d: any, i: number) => (
-                        <div key={d.device} className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <span className="h-2.5 w-2.5 rounded-full" style={{ background: ["#3B82F6", "#F97316", "#94A3B8"][i % 3] }} />
-                            <span className="text-sm capitalize text-foreground">{d.device}</span>
-                          </div>
-                          <div className="text-right">
-                            <span className="text-sm font-semibold tabular-nums">{d.sessions.toLocaleString()}</span>
-                            <span className="ml-1.5 text-xs text-muted-foreground">{d.percentage}%</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </ChartCard>
-              )}
-
-              {ga4.topCountries?.length > 0 && (
-                <ChartCard title="Top Countries" subtitle="Sessions by geography">
-                  <div className="space-y-2">
-                    {ga4.topCountries.slice(0, 6).map((c: any) => (
-                      <div key={c.country} className="flex items-center gap-2">
-                        <span className="w-28 truncate text-xs text-foreground">{c.country}</span>
-                        <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
-                          <div className="h-full rounded-full bg-blue-500" style={{ width: `${c.percentage}%` }} />
-                        </div>
-                        <span className="w-16 text-right text-xs tabular-nums text-muted-foreground">{c.sessions.toLocaleString()}</span>
-                        <span className="w-10 text-right text-xs font-medium tabular-nums">{c.percentage}%</span>
-                      </div>
-                    ))}
-                  </div>
-                </ChartCard>
-              )}
-            </div>
-          )}
-
           {/* Top Pages */}
           {!loading && ga4?.topPages?.length > 0 && (
             <ChartCard title="Top Pages" subtitle="Pages ranked by traffic">
@@ -404,23 +349,45 @@ export function PerformanceTab({ brand, dateFrom, dateTo }: PerformanceTabProps)
           )}
 
           {/* Position trend */}
-          {!loading && gsc?.clicksImpressionsOverTime?.length > 0 && (
-            <ChartCard title="Average Position Over Time" subtitle="Lower = better ranking. Track SEO improvements.">
-              <ResponsiveContainer width="100%" height={200}>
-                <LineChart
-                  data={gsc.clicksImpressionsOverTime}
-                  margin={{ top: 4, right: 4, left: -20, bottom: 0 }}
-                >
-                  <CartesianGrid vertical={false} stroke={gridColor} strokeDasharray="3 3" />
-                  <XAxis dataKey="date" tick={axisStyle} tickFormatter={(v) => v.slice(5)} tickLine={false} axisLine={false} />
-                  <YAxis tick={axisStyle} tickLine={false} axisLine={false} reversed />
-                  <Tooltip content={<ChartTooltip />} />
-                  <Line type="monotone" dataKey="position" name="Avg Position"
-                    stroke="#7C3AED" strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
-                </LineChart>
-              </ResponsiveContainer>
-            </ChartCard>
-          )}
+          {!loading && (() => {
+            const posData = (gsc?.clicksImpressionsOverTime || []).filter((d: any) => d.position > 0);
+            if (!posData.length) return null;
+            const positions = posData.map((d: any) => d.position);
+            const minPos = Math.max(1, Math.floor(Math.min(...positions)) - 2);
+            const maxPos = Math.ceil(Math.max(...positions)) + 2;
+            return (
+              <ChartCard title="Average Position Over Time" subtitle="Lower number = better ranking (position 1 = top of Google)">
+                <ResponsiveContainer width="100%" height={200}>
+                  <LineChart data={posData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                    <CartesianGrid vertical={false} stroke={gridColor} strokeDasharray="3 3" />
+                    <XAxis dataKey="date" tick={axisStyle} tickFormatter={(v) => v.slice(5)} tickLine={false} axisLine={false} />
+                    <YAxis
+                      tick={axisStyle} tickLine={false} axisLine={false}
+                      reversed={true}
+                      domain={[minPos, maxPos]}
+                      tickFormatter={(v) => `#${v}`}
+                    />
+                    <Tooltip
+                      content={({ active, payload, label }: any) => {
+                        if (!active || !payload?.length) return null;
+                        return (
+                          <div className="rounded-xl border border-border bg-card px-3 py-2 shadow-lg text-xs">
+                            <p className="mb-1 font-semibold text-muted-foreground">{label}</p>
+                            <div className="flex items-center gap-2">
+                              <span className="h-2 w-2 rounded-full bg-violet-600" />
+                              <span className="text-foreground font-medium">Position #{payload[0].value}</span>
+                            </div>
+                          </div>
+                        );
+                      }}
+                    />
+                    <Line type="monotone" dataKey="position" name="Avg Position"
+                      stroke="#7C3AED" strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 0, fill: "#7C3AED" }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </ChartCard>
+            );
+          })()}
 
           {!loading && gsc?.topQueries?.length > 0 && (
             <ChartCard title="Top Queries" subtitle="Search terms driving traffic">
