@@ -139,7 +139,7 @@ export function EmailPreviewModal({ open, onClose, email }: EmailPreviewModalPro
           ) : showError ? (
             <div className="flex flex-col items-center justify-center py-16 gap-3">
               <p className="text-sm text-muted-foreground">
-                Email preview unavailable.
+                Due to this email containing HTML, please review it on HubSpot.
               </p>
               {hubspotUrl && (
                 <Button variant="outline" size="sm" asChild>

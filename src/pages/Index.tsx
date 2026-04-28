@@ -33,9 +33,9 @@ const Index = () => {
   const [activeTab, setActiveTab] = useState("performance");
 
   const now = new Date();
-  const start60 = new Date(now);
-  start60.setDate(start60.getDate() - 60);
-  const [dateFrom, setDateFrom] = useState(start60);
+  const start30 = new Date(now);
+  start30.setDate(start30.getDate() - 30);
+  const [dateFrom, setDateFrom] = useState(start30);
   const [dateTo, setDateTo] = useState(now);
 
   const handleDateChange = useCallback((from: Date, to: Date) => {
@@ -70,8 +70,10 @@ const Index = () => {
     {
       id: "hubspot",
       label: "Emails",
-      disabled: !selectedBrand.hasHubSpot,
-      tooltip: "No HubSpot data for this brand.",
+      disabled: !selectedBrand.hasHubSpot || selectedBrand.name === "Swan",
+      tooltip: selectedBrand.name === "Swan"
+        ? "Swan Emails is currently unavailable."
+        : "No HubSpot data for this brand.",
     },
     {
       id: "hubspot-crm",
@@ -120,11 +122,11 @@ const Index = () => {
           <h1 className="px-4 pt-4 text-lg font-semibold text-foreground">{selectedBrand.name} {effectiveTab === "hubspot" ? "Emails" : effectiveTab === "hubspot-crm" ? "HubSpot CRM" : ""} Performance Overview</h1>
         </div>
 
-        {effectiveTab === "performance" && <PerformanceTab brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />}
-        {effectiveTab === "social" && <SocialMediaTab brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />}
-        {effectiveTab === "hubspot" && <HubSpotTab brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />}
-        {effectiveTab === "hubspot-crm" && <HubSpotCRMTab brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />}
-        {effectiveTab === "readme" && <ReadMeTab brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />}
+        {effectiveTab === "performance" && <PerformanceTab key={selectedBrand.id} brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />}
+        {effectiveTab === "social" && <SocialMediaTab key={selectedBrand.id} brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />}
+        {effectiveTab === "hubspot" && <HubSpotTab key={selectedBrand.id} brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />}
+        {effectiveTab === "hubspot-crm" && <HubSpotCRMTab key={selectedBrand.id} brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />}
+        {effectiveTab === "readme" && <ReadMeTab key={selectedBrand.id} brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />}
       </main>
     </div>
   );

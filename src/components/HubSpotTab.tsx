@@ -13,22 +13,8 @@ import {
 import { cn } from "@/lib/utils";
 import {
   ArrowRight, ArrowDown, TrendingUp, TrendingDown, ChevronLeft, ChevronRight,
-  Mail, BarChart2, Search, X, ExternalLink, Clock, CheckCircle2,
+  Mail, BarChart2, ExternalLink, Clock, CheckCircle2,
 } from "lucide-react";
-import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from "@/integrations/supabase/client";
-
-const FUNCTIONS_URL = `${SUPABASE_URL}/functions/v1`;
-const ANON_KEY = SUPABASE_PUBLISHABLE_KEY;
-
-async function callEdgeFunction(name: string, body: any) {
-  const res = await fetch(`${FUNCTIONS_URL}/${name}`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${ANON_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) throw new Error(`${name} → ${res.status}`);
-  return res.json();
-}
 import {
   format, startOfWeek, startOfMonth, startOfDay, startOfQuarter,
   parseISO, addDays, addWeeks, addMonths, isBefore, isEqual,
@@ -224,26 +210,6 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [showAll, setShowAll] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<any[]>([]);
-  const [searchLoading, setSearchLoading] = useState(false);
-  const [searchFocused, setSearchFocused] = useState(false);
-
-  // Debounced global email search
-  useEffect(() => {
-    const q = searchQuery.trim();
-    if (q.length < 2) { setSearchResults([]); return; }
-    const timer = setTimeout(async () => {
-      setSearchLoading(true);
-      try {
-        const data = await callEdgeFunction("hubspot-email-search", { searchQuery: q });
-        setSearchResults(data.results || []);
-      } catch { setSearchResults([]); }
-      finally { setSearchLoading(false); }
-    }, 350);
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
-
   const openPreview = (email: any) => {
     setPreviewEmail(email);
     setPreviewOpen(true);
@@ -483,103 +449,6 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
         email={previewEmail}
       />
 
-      {/* ═══ GLOBAL EMAIL SEARCH ═══ */}
-      <div className="relative">
-        <div className={`flex items-center gap-3 rounded-2xl border bg-card px-4 py-3 transition-all duration-200 ${searchFocused ? "border-blue-400 ring-2 ring-blue-100 shadow-sm" : "border-border"}`}>
-          <Search className={`h-4 w-4 shrink-0 transition-colors ${searchFocused ? "text-blue-500" : "text-muted-foreground"}`} />
-          <input
-            type="text"
-            placeholder="Search emails across all brands…"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onFocus={() => setSearchFocused(true)}
-            onBlur={() => setTimeout(() => setSearchFocused(false), 200)}
-            className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
-          />
-          {searchQuery && (
-            <button onClick={() => { setSearchQuery(""); setSearchResults([]); }} className="text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
-              <X className="h-4 w-4" />
-            </button>
-          )}
-          {searchLoading && (
-            <div className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />
-          )}
-        </div>
-
-        {/* Search results dropdown */}
-        {searchQuery.trim().length >= 2 && (searchFocused || searchResults.length > 0) && (
-          <div className="absolute left-0 right-0 top-full z-50 mt-2 rounded-2xl border border-border bg-card shadow-xl overflow-hidden">
-            {searchResults.length === 0 && !searchLoading ? (
-              <div className="flex flex-col items-center gap-2 py-8 text-center">
-                <Mail className="h-7 w-7 text-muted-foreground/40" />
-                <p className="text-sm font-medium text-muted-foreground">No emails found for "{searchQuery}"</p>
-                <p className="text-xs text-muted-foreground/60">Try a different keyword or partial email name</p>
-              </div>
-            ) : (
-              <>
-                <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
-                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                    {searchResults.length} result{searchResults.length !== 1 ? "s" : ""} across all brands
-                  </span>
-                  <span className="text-[10px] text-muted-foreground">Click to preview</span>
-                </div>
-                <div className="max-h-[420px] overflow-y-auto divide-y divide-border/50">
-                  {searchResults.map((r: any) => (
-                    <button
-                      key={r.id}
-                      onMouseDown={() => openPreview(r)}
-                      className="w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-muted/50 transition-colors cursor-pointer group"
-                    >
-                      {/* Brand color dot */}
-                      <div
-                        className="mt-0.5 h-8 w-8 shrink-0 rounded-lg flex items-center justify-center text-white text-[10px] font-bold"
-                        style={{ backgroundColor: r.brandColor }}
-                      >
-                        {r.brand.split(" ").map((w: string) => w[0]).join("").slice(0, 2).toUpperCase()}
-                      </div>
-
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-xs font-semibold text-foreground truncate">{r.name}</span>
-                          <span
-                            className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold text-white"
-                            style={{ backgroundColor: r.brandColor }}
-                          >
-                            {r.brand}
-                          </span>
-                          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                            r.state === "PUBLISHED" || r.state === "SENT"
-                              ? "bg-emerald-100 text-emerald-700"
-                              : r.state === "SCHEDULED"
-                              ? "bg-blue-100 text-blue-700"
-                              : "bg-slate-100 text-slate-600"
-                          }`}>
-                            {r.state === "PUBLISHED" ? "Sent" : r.state === "SCHEDULED" ? "Scheduled" : r.state}
-                          </span>
-                        </div>
-                        {r.subject && (
-                          <p className="mt-0.5 text-xs text-muted-foreground truncate">{r.subject}</p>
-                        )}
-                        <div className="mt-1 flex items-center gap-3 text-[10px] text-muted-foreground/70">
-                          {r.date && (
-                            <span className="flex items-center gap-1">
-                              <Clock className="h-3 w-3" />
-                              {r.date}
-                            </span>
-                          )}
-                          {r.sender && <span>{r.sender}</span>}
-                        </div>
-                      </div>
-
-                      <ExternalLink className="h-3.5 w-3.5 shrink-0 mt-1 text-muted-foreground/40 group-hover:text-muted-foreground transition-colors" />
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-        )}
-      </div>
 
       {/* ═══ SECTION 1 — KPI Funnel ═══ */}
       <section className="space-y-5">
