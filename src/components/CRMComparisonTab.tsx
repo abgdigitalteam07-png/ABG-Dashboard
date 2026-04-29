@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { subDays, format } from "date-fns";
+import { subDays, format, addDays, parseISO, startOfWeek, startOfMonth } from "date-fns";
 import { callFunction } from "@/lib/api-client";
 import { WaterFillLoader } from "@/components/WaterFillLoader";
 import { TrendingUp, TrendingDown, Minus, RefreshCw, Check, Users, UserCheck, UserX } from "lucide-react";
@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell, LabelList, ReferenceLine,
+  AreaChart, Area,
 } from "recharts";
 
 // ─── access control ───────────────────────────────────────────────────────────
@@ -46,12 +47,15 @@ interface PeriodData {
 }
 
 type BrandResults = Record<SecondaryBrand, { curr: PeriodData; prev: PeriodData }>;
+type TimeSeries   = Record<string, number>; // date -> count
 
 const METRICS = [
-  { key: "totalContacts"    as const, label: "Total Created",      short: "Created",  Icon: Users,      color: "#3B82F6" },
-  { key: "dealerAssigned"   as const, label: "Assigned to Dealer", short: "Assigned", Icon: UserCheck,  color: "#10B981" },
-  { key: "dealerUnassigned" as const, label: "Not Assigned",       short: "Unassigned",Icon: UserX,     color: "#F59E0B" },
+  { key: "totalContacts"    as const, label: "Total Created",      Icon: Users,      color: "#3B82F6" },
+  { key: "dealerAssigned"   as const, label: "Assigned to Dealer", Icon: UserCheck,  color: "#10B981" },
+  { key: "dealerUnassigned" as const, label: "Not Assigned",       Icon: UserX,      color: "#F59E0B" },
 ] as const;
+
+type Granularity = "day" | "week" | "month";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function dateStr(d: Date) {
@@ -70,35 +74,85 @@ function getPeriods(days: number) {
 
 async function fetchAllBrandsForPeriod(
   brands: SecondaryBrand[], from: Date, to: Date,
-): Promise<Record<SecondaryBrand, PeriodData>> {
+): Promise<{ periodData: Record<SecondaryBrand, PeriodData>; timeSeries: TimeSeries }> {
   const data = await callFunction("hubspot-contacts", {
     brandNames: brands,
     startDate: dateStr(from),
     endDate: dateStr(to),
   });
   if (data?.error) throw new Error(data.error);
-  const result = {} as Record<SecondaryBrand, PeriodData>;
+
+  const periodData = {} as Record<SecondaryBrand, PeriodData>;
+  const timeSeries: TimeSeries = {};
+
   for (const brand of brands) {
     const s = data?.brandData?.[brand];
-    result[brand] = {
+    periodData[brand] = {
       totalContacts:    s?.totalContacts        ?? 0,
       dealerAssigned:   s?.dealerAssignedTotal   ?? 0,
       dealerUnassigned: s?.dealerUnassignedTotal ?? 0,
     };
+    // Combine daily series across all brands into one aggregate
+    const ts: TimeSeries = data?.brandTimeSeries?.[brand] ?? {};
+    for (const [date, count] of Object.entries(ts)) {
+      timeSeries[date] = (timeSeries[date] || 0) + (count as number);
+    }
   }
-  return result;
+  return { periodData, timeSeries };
+}
+
+/** Build chart rows: align current + previous by day-offset so they overlay */
+function buildTrendRows(
+  currSeries: TimeSeries, prevSeries: TimeSeries,
+  currStart: Date, prevStart: Date,
+  days: number, gran: Granularity,
+) {
+  // Day-level aligned pairs
+  const daily = Array.from({ length: days }, (_, i) => ({
+    cDate: dateStr(addDays(currStart, i)),
+    pDate: dateStr(addDays(prevStart, i)),
+  }));
+
+  if (gran === "day") {
+    return daily.map(({ cDate, pDate }) => ({
+      label:     format(parseISO(cDate), "MMM d"),
+      prevLabel: format(parseISO(pDate), "MMM d"),
+      curr:      currSeries[cDate] || 0,
+      prev:      prevSeries[pDate] || 0,
+    }));
+  }
+
+  // Aggregate into week/month buckets (keyed by current-period bucket)
+  type Bucket = { label: string; prevLabel: string; curr: number; prev: number };
+  const buckets = new Map<string, Bucket>();
+  for (const { cDate, pDate } of daily) {
+    const cd = parseISO(cDate);
+    const pd = parseISO(pDate);
+    const key   = gran === "week"
+      ? dateStr(startOfWeek(cd, { weekStartsOn: 0 }))
+      : format(startOfMonth(cd), "yyyy-MM");
+    const label = gran === "week"
+      ? `Wk ${format(cd, "MMM d")}`
+      : format(startOfMonth(cd), "MMM yyyy");
+    const prevLabel = gran === "week"
+      ? `Wk ${format(pd, "MMM d")}`
+      : format(startOfMonth(pd), "MMM yyyy");
+    if (!buckets.has(key)) buckets.set(key, { label, prevLabel, curr: 0, prev: 0 });
+    buckets.get(key)!.curr += currSeries[cDate] || 0;
+    buckets.get(key)!.prev += prevSeries[pDate] || 0;
+  }
+  return [...buckets.values()];
 }
 
 // ─── sub-components ───────────────────────────────────────────────────────────
 function Delta({ curr, prev, size = "md" }: { curr: number; prev: number; size?: "sm" | "md" }) {
-  if (!prev) return <span className="text-[10px] text-muted-foreground/40 tabular-nums">—</span>;
-  const d   = ((curr - prev) / prev) * 100;
-  const up  = d > 0.4;
-  const dn  = d < -0.4;
-  const cls = size === "sm" ? "px-1.5 py-0.5 text-[10px]" : "px-2 py-0.5 text-[11px]";
+  if (!prev) return <span className="text-[10px] text-muted-foreground/40">—</span>;
+  const d  = ((curr - prev) / prev) * 100;
+  const up = d > 0.4, dn = d < -0.4;
   return (
     <span className={cn(
-      "inline-flex items-center gap-0.5 rounded-full font-semibold tabular-nums", cls,
+      "inline-flex items-center gap-0.5 rounded-full font-semibold tabular-nums",
+      size === "sm" ? "px-1.5 py-0.5 text-[10px]" : "px-2 py-0.5 text-[11px]",
       up && "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400",
       dn && "bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400",
       !up && !dn && "bg-muted text-muted-foreground",
@@ -109,9 +163,8 @@ function Delta({ curr, prev, size = "md" }: { curr: number; prev: number; size?:
   );
 }
 
-function ChartTooltip({
-  active, payload, label, currLabel, prevLabel,
-}: { active?: boolean; payload?: any[]; label?: string; currLabel: string; prevLabel: string }) {
+function BarTooltip({ active, payload, label, currLabel, prevLabel }:
+  { active?: boolean; payload?: any[]; label?: string; currLabel: string; prevLabel: string }) {
   if (!active || !payload?.length) return null;
   const curr  = payload.find((p: any) => p.dataKey === "curr");
   const prev  = payload.find((p: any) => p.dataKey === "prev");
@@ -119,36 +172,59 @@ function ChartTooltip({
   return (
     <div className="rounded-xl border border-border bg-card shadow-xl px-4 py-3 text-xs min-w-[190px] space-y-2">
       <p className="font-bold text-sm text-foreground">{label}</p>
-      <div className="space-y-1.5 pt-0.5">
+      <div className="space-y-1.5">
+        {[{ p: curr, lbl: currLabel, dashed: false }, { p: prev, lbl: prevLabel, dashed: true }].map(({ p, lbl, dashed }) =>
+          p ? (
+            <div key={lbl} className="flex items-center justify-between gap-8">
+              <span className="flex items-center gap-1.5 text-muted-foreground">
+                <span className={cn("h-2.5 w-2.5 rounded-sm shrink-0", dashed && "border border-dashed border-muted-foreground/50")}
+                  style={{ background: p.fill }} />
+                {lbl}
+              </span>
+              <span className="font-bold text-foreground tabular-nums">{(p.value ?? 0).toLocaleString()}</span>
+            </div>
+          ) : null
+        )}
+      </div>
+      {delta !== null && (
+        <div className={cn("pt-1.5 border-t border-border text-[11px] font-semibold",
+          delta > 0.4  ? "text-emerald-600 dark:text-emerald-400" :
+          delta < -0.4 ? "text-red-500 dark:text-red-400" : "text-muted-foreground")}>
+          {delta > 0.4 ? "▲" : delta < -0.4 ? "▼" : "→"} {Math.abs(delta).toFixed(1)}% vs previous period
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TrendTooltip({ active, payload, label }:
+  { active?: boolean; payload?: any[]; label?: string }) {
+  if (!active || !payload?.length) return null;
+  const curr = payload.find((p: any) => p.dataKey === "curr");
+  const prev = payload.find((p: any) => p.dataKey === "prev");
+  const prevLabel = payload[0]?.payload?.prevLabel;
+  return (
+    <div className="rounded-xl border border-border bg-card shadow-xl px-3.5 py-3 text-xs min-w-[170px] space-y-1.5">
+      <div className="space-y-1.5">
         {curr && (
-          <div className="flex items-center justify-between gap-8">
+          <div className="flex items-center justify-between gap-6">
             <span className="flex items-center gap-1.5 text-muted-foreground">
-              <span className="h-2.5 w-2.5 rounded-sm shrink-0" style={{ background: curr.fill }} />
-              {currLabel}
+              <span className="h-2 w-2 rounded-full shrink-0 bg-[#3B82F6]" />
+              {label} <span className="text-muted-foreground/50 text-[10px]">(curr)</span>
             </span>
             <span className="font-bold text-foreground tabular-nums">{(curr.value ?? 0).toLocaleString()}</span>
           </div>
         )}
         {prev && (
-          <div className="flex items-center justify-between gap-8">
+          <div className="flex items-center justify-between gap-6">
             <span className="flex items-center gap-1.5 text-muted-foreground">
-              <span className="h-2.5 w-2.5 rounded-sm shrink-0 border border-dashed border-muted-foreground/50" style={{ background: prev.fill }} />
-              {prevLabel}
+              <span className="h-2 w-2 rounded-full shrink-0 bg-[#F97316]" />
+              {prevLabel || label} <span className="text-muted-foreground/50 text-[10px]">(prev)</span>
             </span>
             <span className="font-bold text-foreground tabular-nums">{(prev.value ?? 0).toLocaleString()}</span>
           </div>
         )}
       </div>
-      {delta !== null && (
-        <div className={cn(
-          "pt-1.5 border-t border-border text-[11px] font-semibold",
-          delta > 0.4  ? "text-emerald-600 dark:text-emerald-400" :
-          delta < -0.4 ? "text-red-500 dark:text-red-400" : "text-muted-foreground",
-        )}>
-          {delta > 0.4 ? "▲" : delta < -0.4 ? "▼" : "→"}{" "}
-          {Math.abs(delta).toFixed(1)}% vs previous period
-        </div>
-      )}
     </div>
   );
 }
@@ -169,6 +245,9 @@ function ComparisonContent() {
   const [selectedDays,   setSelectedDays]   = useState<number | null>(null);
   const [selectedBrands, setSelectedBrands] = useState<SecondaryBrand[]>([]);
   const [results,        setResults]        = useState<BrandResults | null>(null);
+  const [currSeries,     setCurrSeries]     = useState<TimeSeries | null>(null);
+  const [prevSeries,     setPrevSeries]     = useState<TimeSeries | null>(null);
+  const [granularity,    setGranularity]    = useState<Granularity>("day");
   const [loading,        setLoading]        = useState(false);
   const [error,          setError]          = useState<string | null>(null);
   const reqRef = useRef(0);
@@ -185,11 +264,13 @@ function ComparisonContent() {
     Promise.all([
       fetchAllBrandsForPeriod(brands, currStart, currEnd),
       fetchAllBrandsForPeriod(brands, prevStart, prevEnd),
-    ]).then(([c, p]) => {
+    ]).then(([cRes, pRes]) => {
       if (reqRef.current !== id) return;
       const map = {} as BrandResults;
-      for (const b of brands) map[b] = { curr: c[b], prev: p[b] };
+      for (const b of brands) map[b] = { curr: cRes.periodData[b], prev: pRes.periodData[b] };
       setResults(map);
+      setCurrSeries(cRes.timeSeries);
+      setPrevSeries(pRes.timeSeries);
       setLoading(false);
     }).catch(e => {
       if (reqRef.current !== id) return;
@@ -204,29 +285,32 @@ function ComparisonContent() {
   const axisStyle = { fontSize: 11, fill: "hsl(var(--muted-foreground))" };
   const canRun    = !!selectedDays && selectedBrands.length > 0;
 
+  // Build trend rows whenever we have series data
+  const trendRows = (currSeries && prevSeries && selectedDays && periods)
+    ? buildTrendRows(currSeries, prevSeries, periods.currStart, periods.prevStart, selectedDays, granularity)
+    : [];
+
+  // x-axis tick interval — show fewer labels when many points
+  const tickInterval = trendRows.length > 60 ? 13
+    : trendRows.length > 30 ? 6
+    : trendRows.length > 14 ? 3
+    : 0;
+
   return (
     <div className="space-y-4 p-6">
 
       {/* ══ TOOLBAR ══════════════════════════════════════════════════════════ */}
       <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-card px-4 py-3">
-
-        {/* Period */}
-        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mr-1">
-          Period
-        </span>
+        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mr-1">Period</span>
         <div className="flex items-center gap-1">
           {PERIOD_OPTIONS.map(({ label, days, full }) => (
-            <button
-              key={days}
-              title={full}
-              onClick={() => setSelectedDays(days)}
+            <button key={days} title={full} onClick={() => setSelectedDays(days)}
               className={cn(
                 "rounded-lg px-3 py-1.5 text-xs font-semibold cursor-pointer transition-all duration-150",
                 selectedDays === days
                   ? "bg-foreground text-background shadow-sm"
                   : "text-muted-foreground hover:bg-muted hover:text-foreground",
-              )}
-            >
+              )}>
               {label}
             </button>
           ))}
@@ -234,25 +318,17 @@ function ComparisonContent() {
 
         <div className="h-5 w-px bg-border mx-1" />
 
-        {/* Brands */}
-        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mr-1">
-          Brands
-        </span>
+        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mr-1">Brands</span>
         <div className="flex flex-wrap items-center gap-1.5">
           {SECONDARY_BRANDS.map((brand) => {
             const active = selectedBrands.includes(brand);
             return (
-              <button
-                key={brand}
-                onClick={() => toggleBrand(brand)}
+              <button key={brand} onClick={() => toggleBrand(brand)}
                 className={cn(
                   "flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold cursor-pointer transition-all duration-150",
-                  active
-                    ? "border-transparent text-white shadow-sm"
-                    : "border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground/40",
+                  active ? "border-transparent text-white shadow-sm" : "border-border text-muted-foreground hover:text-foreground",
                 )}
-                style={active ? { background: BRAND_PALETTE[brand].solid } : {}}
-              >
+                style={active ? { background: BRAND_PALETTE[brand].solid } : {}}>
                 {active && <Check className="h-3 w-3" />}
                 {brand}
               </button>
@@ -262,33 +338,31 @@ function ComparisonContent() {
 
         <div className="flex-1" />
 
-        {/* Run */}
         <button
           onClick={() => runReport(selectedDays, selectedBrands)}
           disabled={loading || !canRun}
-          className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-xs font-bold text-accent-foreground cursor-pointer hover:bg-accent/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-150"
-        >
+          className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-xs font-bold text-accent-foreground cursor-pointer hover:bg-accent/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-150">
           <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
           {loading ? "Loading…" : "Run Report"}
         </button>
       </div>
 
-      {/* Period range badge */}
+      {/* Period range labels */}
       {selectedDays && currLabel && (
         <div className="flex flex-wrap items-center gap-4 px-1 text-[11px] text-muted-foreground">
           <span className="flex items-center gap-2">
-            <span className="inline-block h-2.5 w-4 rounded-sm bg-foreground/25" />
+            <span className="inline-block h-2.5 w-4 rounded-sm bg-[#3B82F6]/40" />
             <span className="font-semibold text-foreground">Current</span> {currLabel}
           </span>
           <span className="text-muted-foreground/30">vs</span>
           <span className="flex items-center gap-2">
-            <span className="inline-block h-2.5 w-4 rounded-sm border border-dashed border-muted-foreground/40 bg-muted-foreground/15" />
+            <span className="inline-block h-2.5 w-4 rounded-sm bg-[#F97316]/40" />
             <span className="font-semibold text-foreground">Previous</span> {prevLabel}
           </span>
         </div>
       )}
 
-      {/* ══ HINTS / EMPTY ════════════════════════════════════════════════════ */}
+      {/* ══ EMPTY STATE ══════════════════════════════════════════════════════ */}
       {!loading && !results && !error && (
         <div className="rounded-2xl border border-dashed border-border bg-muted/20 py-20 text-center">
           <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-muted">
@@ -296,12 +370,9 @@ function ComparisonContent() {
           </div>
           <p className="text-sm font-semibold text-foreground">No data yet</p>
           <p className="mt-1 text-xs text-muted-foreground">
-            {!selectedDays && !selectedBrands.length
-              ? "Pick a period and at least one brand above, then click Run Report"
-              : !selectedDays
-              ? "Pick a period, then click Run Report"
-              : !selectedBrands.length
-              ? "Pick at least one brand, then click Run Report"
+            {!selectedDays && !selectedBrands.length ? "Pick a period and at least one brand, then click Run Report"
+              : !selectedDays ? "Pick a period, then click Run Report"
+              : !selectedBrands.length ? "Pick at least one brand, then click Run Report"
               : "Click Run Report to load data"}
           </p>
         </div>
@@ -316,18 +387,16 @@ function ComparisonContent() {
       {!loading && results && (() => {
         const activeBrands = selectedBrands.filter(b => results[b]);
 
-        /* ── 1. METRIC KPI CARDS ─────────────────────────────────────────── */
+        /* ── KPI cards ─────────────────────────────────────────────────────── */
         const kpiSection = (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            {METRICS.map(({ key, label, short: _short, Icon, color }) => {
+            {METRICS.map(({ key, label, Icon, color }) => {
               const grandCurr = activeBrands.reduce((s, b) => s + results[b].curr[key], 0);
               const grandPrev = activeBrands.reduce((s, b) => s + results[b].prev[key], 0);
               return (
                 <div key={key} className="rounded-2xl border border-border bg-card p-5 space-y-4">
-                  {/* header */}
                   <div className="flex items-center gap-2.5">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg shrink-0"
-                      style={{ background: `${color}18` }}>
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg shrink-0" style={{ background: `${color}18` }}>
                       <Icon className="h-4 w-4" style={{ color }} />
                     </div>
                     <div>
@@ -335,19 +404,11 @@ function ComparisonContent() {
                       <p className="mt-1 text-[10px] text-muted-foreground/60">All selected brands</p>
                     </div>
                   </div>
-
-                  {/* aggregate */}
                   <div className="flex items-baseline gap-2.5">
-                    <span className="text-3xl font-black tabular-nums text-foreground leading-none">
-                      {grandCurr.toLocaleString()}
-                    </span>
+                    <span className="text-3xl font-black tabular-nums text-foreground leading-none">{grandCurr.toLocaleString()}</span>
                     <Delta curr={grandCurr} prev={grandPrev} />
                   </div>
-                  <p className="text-[11px] text-muted-foreground -mt-2 tabular-nums">
-                    prev {grandPrev.toLocaleString()}
-                  </p>
-
-                  {/* per-brand breakdown */}
+                  <p className="text-[11px] text-muted-foreground -mt-2 tabular-nums">prev {grandPrev.toLocaleString()}</p>
                   {activeBrands.length > 1 && (
                     <div className="space-y-2.5 pt-1 border-t border-border">
                       {activeBrands.map(brand => {
@@ -367,10 +428,8 @@ function ComparisonContent() {
                                 <Delta curr={curr} prev={prev} size="sm" />
                               </div>
                             </div>
-                            {/* share bar */}
                             <div className="h-1.5 w-full rounded-full overflow-hidden" style={{ background: bg }}>
-                              <div className="h-full rounded-full transition-all duration-700"
-                                style={{ width: `${share}%`, background: solid }} />
+                              <div className="h-full rounded-full transition-all duration-700" style={{ width: `${share}%`, background: solid }} />
                             </div>
                           </div>
                         );
@@ -383,7 +442,109 @@ function ComparisonContent() {
           </div>
         );
 
-        /* ── 2. COMPARISON CHARTS ────────────────────────────────────────── */
+        /* ── Trend line chart ──────────────────────────────────────────────── */
+        const trendSection = trendRows.length > 0 && (
+          <div className="rounded-2xl border border-border bg-card overflow-hidden">
+            {/* header */}
+            <div className="flex flex-wrap items-center justify-between gap-4 px-6 pt-5 pb-4 border-b border-border">
+              <div>
+                <h3 className="text-sm font-bold text-foreground">Contact Trends</h3>
+                <p className="mt-0.5 text-[11px] text-muted-foreground">
+                  New contacts created — current vs previous period overlaid
+                </p>
+              </div>
+              <div className="flex items-center gap-5">
+                {/* Legend */}
+                <div className="flex items-center gap-4 text-[11px] text-muted-foreground">
+                  <span className="flex items-center gap-1.5">
+                    <span className="inline-block h-0.5 w-5 rounded-full bg-[#3B82F6]" />
+                    <span className="font-medium text-foreground">Current</span>
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="inline-block h-0.5 w-5 rounded-full bg-[#F97316]" />
+                    <span className="font-medium text-foreground">Previous</span>
+                  </span>
+                </div>
+                {/* Granularity toggle */}
+                <div className="flex items-center gap-1 rounded-lg border border-border p-0.5 bg-muted/30">
+                  {(["day", "week", "month"] as Granularity[]).map(g => (
+                    <button
+                      key={g}
+                      onClick={() => setGranularity(g)}
+                      className={cn(
+                        "rounded-md px-2.5 py-1 text-[11px] font-semibold cursor-pointer transition-all duration-150",
+                        granularity === g
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}>
+                      {g.charAt(0).toUpperCase() + g.slice(1)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* chart */}
+            <div className="px-2 py-4">
+              <ResponsiveContainer width="100%" height={230}>
+                <AreaChart data={trendRows} margin={{ top: 8, right: 20, bottom: 0, left: 0 }}>
+                  <defs>
+                    <linearGradient id="grad-curr" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%"  stopColor="#3B82F6" stopOpacity={0.25} />
+                      <stop offset="90%" stopColor="#3B82F6" stopOpacity={0.02} />
+                    </linearGradient>
+                    <linearGradient id="grad-prev" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%"  stopColor="#F97316" stopOpacity={0.18} />
+                      <stop offset="90%" stopColor="#F97316" stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+                  <XAxis
+                    dataKey="label"
+                    tick={axisStyle}
+                    tickLine={false}
+                    axisLine={false}
+                    interval={tickInterval}
+                  />
+                  <YAxis
+                    tick={axisStyle}
+                    tickLine={false}
+                    axisLine={false}
+                    width={36}
+                    tickFormatter={v => v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(v)}
+                    allowDecimals={false}
+                  />
+                  <Tooltip content={<TrendTooltip />} cursor={{ stroke: "hsl(var(--border))", strokeWidth: 1 }} />
+                  {/* Previous period area (behind) */}
+                  <Area
+                    type="monotone"
+                    dataKey="prev"
+                    name="Previous"
+                    stroke="#F97316"
+                    strokeWidth={2}
+                    strokeDasharray="5 3"
+                    fill="url(#grad-prev)"
+                    dot={false}
+                    activeDot={{ r: 4, fill: "#F97316", strokeWidth: 0 }}
+                  />
+                  {/* Current period area (in front) */}
+                  <Area
+                    type="monotone"
+                    dataKey="curr"
+                    name="Current"
+                    stroke="#3B82F6"
+                    strokeWidth={2.5}
+                    fill="url(#grad-curr)"
+                    dot={false}
+                    activeDot={{ r: 5, fill: "#3B82F6", strokeWidth: 0 }}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        );
+
+        /* ── Grouped bar charts ─────────────────────────────────────────────── */
         const buildRows = (metricKey: keyof PeriodData) =>
           activeBrands.map(b => ({
             name:  BRAND_SHORT[b],
@@ -393,15 +554,12 @@ function ComparisonContent() {
             faded: BRAND_PALETTE[b].faded,
           }));
 
-        const chartSection = (
+        const barCharts = (
           <div className="rounded-2xl border border-border bg-card overflow-hidden">
-            {/* chart header */}
             <div className="flex flex-wrap items-center justify-between gap-4 px-6 pt-5 pb-4 border-b border-border">
               <div>
                 <h3 className="text-sm font-bold text-foreground">Period Comparison</h3>
-                <p className="mt-0.5 text-[11px] text-muted-foreground">
-                  Current (solid) vs previous (faded) — hover for breakdown
-                </p>
+                <p className="mt-0.5 text-[11px] text-muted-foreground">Current (solid) vs previous (faded) — hover for detail</p>
               </div>
               <div className="flex items-center gap-5 text-[11px] text-muted-foreground">
                 <span className="flex items-center gap-2">
@@ -414,22 +572,15 @@ function ComparisonContent() {
                 </span>
               </div>
             </div>
-
-            {/* 3 charts */}
             <div className="grid grid-cols-1 divide-y divide-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
               {METRICS.map(({ key, label, Icon, color }) => {
                 const rows   = buildRows(key);
                 const maxVal = Math.max(...rows.flatMap(r => [r.curr, r.prev]), 1);
-                const prevAvg = rows.length > 0
-                  ? Math.round(rows.reduce((s, r) => s + r.prev, 0) / rows.length)
-                  : 0;
-
+                const prevAvg = rows.length > 0 ? Math.round(rows.reduce((s, r) => s + r.prev, 0) / rows.length) : 0;
                 return (
                   <div key={key} className="px-5 pt-5 pb-6">
-                    {/* metric title */}
                     <div className="flex items-center gap-2 mb-5">
-                      <div className="flex h-7 w-7 items-center justify-center rounded-lg shrink-0"
-                        style={{ background: `${color}18` }}>
+                      <div className="flex h-7 w-7 items-center justify-center rounded-lg shrink-0" style={{ background: `${color}18` }}>
                         <Icon className="h-3.5 w-3.5" style={{ color }} />
                       </div>
                       <div>
@@ -439,66 +590,33 @@ function ComparisonContent() {
                         </p>
                       </div>
                     </div>
-
                     <ResponsiveContainer width="100%" height={240}>
-                      <BarChart
-                        data={rows}
-                        margin={{ top: 22, right: 6, bottom: 0, left: -8 }}
-                        barGap={4}
-                        barCategoryGap={activeBrands.length === 1 ? "60%" : "28%"}
-                      >
-                        <CartesianGrid
-                          strokeDasharray="3 3"
-                          vertical={false}
-                          stroke="hsl(var(--border))"
-                        />
-                        <XAxis
-                          dataKey="name"
-                          tick={axisStyle}
-                          tickLine={false}
-                          axisLine={false}
-                          interval={0}
-                        />
-                        <YAxis
-                          tick={axisStyle}
-                          tickLine={false}
-                          axisLine={false}
-                          width={38}
+                      <BarChart data={rows} margin={{ top: 22, right: 6, bottom: 0, left: -8 }}
+                        barGap={4} barCategoryGap={activeBrands.length === 1 ? "60%" : "28%"}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+                        <XAxis dataKey="name" tick={axisStyle} tickLine={false} axisLine={false} interval={0} />
+                        <YAxis tick={axisStyle} tickLine={false} axisLine={false} width={38}
                           tickFormatter={v => v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(v)}
-                          domain={[0, Math.ceil(maxVal * 1.2)]}
-                        />
+                          domain={[0, Math.ceil(maxVal * 1.2)]} />
                         <Tooltip
-                          content={<ChartTooltip currLabel={currLabel} prevLabel={prevLabel} />}
+                          content={<BarTooltip currLabel={currLabel} prevLabel={prevLabel} />}
                           cursor={{ fill: "hsl(var(--muted))", opacity: 0.5, radius: 4 } as any}
                         />
-                        {/* prev avg reference line */}
                         {prevAvg > 0 && (
-                          <ReferenceLine
-                            y={prevAvg}
-                            stroke="hsl(var(--muted-foreground))"
-                            strokeDasharray="4 3"
-                            strokeOpacity={0.35}
-                          />
+                          <ReferenceLine y={prevAvg} stroke="hsl(var(--muted-foreground))"
+                            strokeDasharray="4 3" strokeOpacity={0.35} />
                         )}
-                        {/* Current bars */}
                         <Bar dataKey="curr" name="Current" radius={[5, 5, 0, 0]} maxBarSize={56}>
                           {rows.map((r, i) => <Cell key={i} fill={r.solid} />)}
-                          <LabelList
-                            dataKey="curr"
-                            position="top"
+                          <LabelList dataKey="curr" position="top"
                             style={{ fontSize: 11, fontWeight: 700, fill: "hsl(var(--foreground))" }}
-                            formatter={(v: number) => v > 0 ? v.toLocaleString() : ""}
-                          />
+                            formatter={(v: number) => v > 0 ? v.toLocaleString() : ""} />
                         </Bar>
-                        {/* Previous bars */}
                         <Bar dataKey="prev" name="Previous" radius={[5, 5, 0, 0]} maxBarSize={56}>
                           {rows.map((r, i) => <Cell key={i} fill={r.faded} />)}
-                          <LabelList
-                            dataKey="prev"
-                            position="top"
+                          <LabelList dataKey="prev" position="top"
                             style={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
-                            formatter={(v: number) => v > 0 ? v.toLocaleString() : ""}
-                          />
+                            formatter={(v: number) => v > 0 ? v.toLocaleString() : ""} />
                         </Bar>
                       </BarChart>
                     </ResponsiveContainer>
@@ -509,7 +627,7 @@ function ComparisonContent() {
           </div>
         );
 
-        /* ── 3. DETAIL TABLE ─────────────────────────────────────────────── */
+        /* ── Detail table ──────────────────────────────────────────────────── */
         const detailTable = (
           <div className="rounded-2xl border border-border bg-card overflow-hidden">
             <div className="px-5 py-3.5 border-b border-border bg-muted/20">
@@ -521,8 +639,7 @@ function ComparisonContent() {
                   <tr className="border-b border-border">
                     <th className="px-4 py-3 text-left text-[11px] font-semibold text-muted-foreground w-36">Metric</th>
                     {activeBrands.map(brand => (
-                      <th key={brand} colSpan={2}
-                        className="px-4 py-3 text-center text-[11px] font-semibold text-foreground border-l border-border">
+                      <th key={brand} colSpan={2} className="px-4 py-3 text-center text-[11px] font-semibold text-foreground border-l border-border">
                         <div className="flex items-center justify-center gap-1.5">
                           <span className="h-2 w-2 rounded-full shrink-0" style={{ background: BRAND_PALETTE[brand].solid }} />
                           {brand}
@@ -534,22 +651,15 @@ function ComparisonContent() {
                     <th className="px-4 py-2" />
                     {activeBrands.map(brand => (
                       <>
-                        <th key={`${brand}-curr`}
-                          className="px-4 py-2 text-center text-[10px] font-semibold text-foreground border-l border-border">
-                          Current
-                        </th>
-                        <th key={`${brand}-prev`}
-                          className="px-4 py-2 text-center text-[10px] font-medium text-muted-foreground">
-                          Previous
-                        </th>
+                        <th key={`${brand}-c`} className="px-4 py-2 text-center text-[10px] font-semibold text-foreground border-l border-border">Current</th>
+                        <th key={`${brand}-p`} className="px-4 py-2 text-center text-[10px] font-medium text-muted-foreground">Previous</th>
                       </>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {METRICS.map(({ key, label, color }, ri) => (
-                    <tr key={key}
-                      className={cn("border-b border-border last:border-0 transition-colors hover:bg-muted/20", ri % 2 === 1 && "bg-muted/5")}>
+                    <tr key={key} className={cn("border-b border-border last:border-0 transition-colors hover:bg-muted/20", ri % 2 === 1 && "bg-muted/5")}>
                       <td className="px-4 py-3.5">
                         <div className="flex items-center gap-2">
                           <span className="h-2 w-2 rounded-full shrink-0" style={{ background: color }} />
@@ -557,20 +667,18 @@ function ComparisonContent() {
                         </div>
                       </td>
                       {activeBrands.map(brand => {
-                        const r = results[brand];
+                        const r    = results[brand];
                         const curr = r.curr[key];
                         const prev = r.prev[key];
                         return (
                           <>
-                            <td key={`${brand}-curr`}
-                              className="px-4 py-3.5 text-center border-l border-border">
+                            <td key={`${brand}-c`} className="px-4 py-3.5 text-center border-l border-border">
                               <div className="flex flex-col items-center gap-1">
                                 <span className="font-bold tabular-nums text-foreground text-sm">{curr.toLocaleString()}</span>
                                 <Delta curr={curr} prev={prev} size="sm" />
                               </div>
                             </td>
-                            <td key={`${brand}-prev`}
-                              className="px-4 py-3.5 text-center">
+                            <td key={`${brand}-p`} className="px-4 py-3.5 text-center">
                               <span className="tabular-nums text-muted-foreground">{prev.toLocaleString()}</span>
                             </td>
                           </>
@@ -587,7 +695,8 @@ function ComparisonContent() {
         return (
           <div className="space-y-4">
             {kpiSection}
-            {chartSection}
+            {trendSection}
+            {barCharts}
             {detailTable}
           </div>
         );

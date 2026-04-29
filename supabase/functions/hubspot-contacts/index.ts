@@ -155,9 +155,13 @@ Deno.serve(async (req) => {
         console.warn("Could not resolve brand option tokens:", e);
       }
 
-      // Per-brand counters
+      // Per-brand counters + daily time series
       const brandStats: Record<string, { total: number; assigned: number; unassigned: number }> = {};
-      for (const bn of brandNames) brandStats[bn] = { total: 0, assigned: 0, unassigned: 0 };
+      const brandSeries: Record<string, Record<string, number>> = {};
+      for (const bn of brandNames) {
+        brandStats[bn] = { total: 0, assigned: 0, unassigned: 0 };
+        brandSeries[bn] = {};
+      }
 
       let after: string | undefined;
       let totalScanned = 0;
@@ -169,7 +173,7 @@ Deno.serve(async (req) => {
             { propertyName: "createdate", operator: "GTE", value: String(startMs) },
             { propertyName: "createdate", operator: "LTE", value: String(endMs) },
           ]}],
-          properties: ["brands", "nearest_dealer_email"],
+          properties: ["brands", "nearest_dealer_email", "createdate"],
           sorts: [{ propertyName: "createdate", direction: "ASCENDING" }],
           limit: 100,
         };
@@ -192,11 +196,17 @@ Deno.serve(async (req) => {
           totalScanned++;
           const props = contact.properties || {};
           const hasDealer = !!(props.nearest_dealer_email || "").trim();
+          const dateKey = props.createdate
+            ? new Date(props.createdate).toISOString().split("T")[0]
+            : null;
           for (const bn of brandNames) {
             if (matchesBrand(props, tokenSets.get(bn)!)) {
               brandStats[bn].total++;
               if (hasDealer) brandStats[bn].assigned++;
               else brandStats[bn].unassigned++;
+              if (dateKey) {
+                brandSeries[bn][dateKey] = (brandSeries[bn][dateKey] || 0) + 1;
+              }
             }
           }
         }
@@ -212,6 +222,7 @@ Deno.serve(async (req) => {
           dealerAssignedTotal: brandStats[bn].assigned,
           dealerUnassignedTotal: brandStats[bn].unassigned,
         }])),
+        brandTimeSeries: brandSeries,
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
