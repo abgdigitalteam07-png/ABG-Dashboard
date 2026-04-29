@@ -130,8 +130,8 @@ export function CRMComparisonTab({ userEmail }: CRMComparisonTabProps) {
 type BrandResults = Record<SecondaryBrand, { curr: PeriodData; prev: PeriodData }>;
 
 function ComparisonContent() {
-  const [selectedDays, setSelectedDays] = useState(90);
-  const [selectedBrands, setSelectedBrands] = useState<SecondaryBrand[]>(["American Whirlpool", "Vita Spa"]);
+  const [selectedDays, setSelectedDays] = useState<number | null>(null);
+  const [selectedBrands, setSelectedBrands] = useState<SecondaryBrand[]>([]);
   const [results, setResults] = useState<BrandResults | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError]   = useState<string | null>(null);
@@ -140,14 +140,14 @@ function ComparisonContent() {
   function toggleBrand(b: SecondaryBrand) {
     setSelectedBrands((prev) => {
       const next = prev.includes(b)
-        ? prev.length > 1 ? prev.filter((x) => x !== b) : prev   // keep at least 1
+        ? prev.filter((x) => x !== b)
         : prev.length < 3 ? [...prev, b] : prev;                 // max 3
       return next;
     });
   }
 
-  function runReport(days: number, brands: SecondaryBrand[]) {
-    if (!brands.length) return;
+  function runReport(days: number | null, brands: SecondaryBrand[]) {
+    if (!days || !brands.length) return;
     const requestId = requestIdRef.current + 1;
     requestIdRef.current = requestId;
     setLoading(true);
@@ -176,12 +176,9 @@ function ComparisonContent() {
     });
   }
 
-  // Always load data for the currently selected period + brands.
-  useEffect(() => { runReport(selectedDays, selectedBrands); }, [selectedDays, selectedBrands]);
-
-  const { currStart, currEnd, prevStart, prevEnd } = getPeriods(selectedDays);
-  const currLabel = `${format(currStart, "MMM d")} – ${format(currEnd, "MMM d, yyyy")}`;
-  const prevLabel = `${format(prevStart, "MMM d")} – ${format(prevEnd, "MMM d, yyyy")}`;
+  const periods = selectedDays ? getPeriods(selectedDays) : null;
+  const currLabel = periods ? `${format(periods.currStart, "MMM d")} – ${format(periods.currEnd, "MMM d, yyyy")}` : "—";
+  const prevLabel = periods ? `${format(periods.prevStart, "MMM d")} – ${format(periods.prevEnd, "MMM d, yyyy")}` : "—";
 
   const axisStyle = { fontSize: 11, fill: "hsl(var(--muted-foreground))" };
   const gridColor = "hsl(var(--border))";
@@ -214,7 +211,9 @@ function ComparisonContent() {
 
         {/* Period pills */}
         <div className="space-y-2">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Period</p>
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Period {!selectedDays && <span className="normal-case font-normal text-destructive/70">← pick one</span>}
+          </p>
           <div className="flex flex-wrap gap-2">
             {PERIOD_OPTIONS.map(({ label, days }) => (
               <button
@@ -231,24 +230,31 @@ function ComparisonContent() {
               </button>
             ))}
           </div>
-          {/* period labels */}
-          <div className="flex flex-wrap gap-3 pt-0.5">
-            <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-              <span className="h-2 w-5 rounded-sm inline-block bg-foreground/30" />
-              <span className="font-medium text-foreground">Current:</span> {currLabel}
+          {/* period labels — only shown once a period is selected */}
+          {selectedDays && (
+            <div className="flex flex-wrap gap-3 pt-0.5">
+              <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                <span className="h-2 w-5 rounded-sm inline-block bg-foreground/30" />
+                <span className="font-medium text-foreground">Current:</span> {currLabel}
+              </div>
+              <span className="text-muted-foreground/30">vs</span>
+              <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                <span className="h-2 w-5 rounded-sm inline-block bg-muted-foreground/30" />
+                <span className="font-medium text-foreground">Previous:</span> {prevLabel}
+              </div>
             </div>
-            <span className="text-muted-foreground/30">vs</span>
-            <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-              <span className="h-2 w-5 rounded-sm inline-block bg-muted-foreground/30" />
-              <span className="font-medium text-foreground">Previous:</span> {prevLabel}
-            </div>
-          </div>
+          )}
         </div>
 
         {/* Brand checkboxes */}
         <div className="space-y-2">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Brands <span className="normal-case font-normal">(select 1–3)</span>
+            Brands{" "}
+            <span className="normal-case font-normal">
+              {selectedBrands.length === 0
+                ? <span className="text-destructive/70">← pick 1–3</span>
+                : `(${selectedBrands.length} selected)`}
+            </span>
           </p>
           <div className="flex flex-wrap gap-2">
             {SECONDARY_BRANDS.map((brand) => {
@@ -275,13 +281,21 @@ function ComparisonContent() {
         {/* Run button */}
         <button
           onClick={() => runReport(selectedDays, selectedBrands)}
-          disabled={loading}
-          className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-xs font-semibold text-accent-foreground hover:bg-accent/90 disabled:opacity-50 transition-colors"
+          disabled={loading || !selectedDays || selectedBrands.length === 0}
+          className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-xs font-semibold text-accent-foreground hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
           {loading ? "Loading…" : "Run Report"}
         </button>
       </div>
+
+      {/* ═══ EMPTY STATE ═══ */}
+      {!loading && !results && !error && (
+        <div className="rounded-2xl border border-dashed border-border bg-muted/20 py-16 text-center">
+          <p className="text-sm font-medium text-foreground">Select a period and at least one brand, then click Run Report</p>
+          <p className="mt-1 text-xs text-muted-foreground">Data will only load when you're ready</p>
+        </div>
+      )}
 
       {/* ═══ RESULTS ═══ */}
       {loading && <WaterFillLoader fullScreen={false} message="Loading comparison data…" />}
