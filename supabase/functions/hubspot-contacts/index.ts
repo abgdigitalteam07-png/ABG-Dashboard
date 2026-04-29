@@ -106,6 +106,9 @@ Deno.serve(async (req) => {
       });
     }
 
+    // True when the caller passed brandNames[] — comparison tab always uses this path
+    // even for a single brand, and always expects the brandData{} response shape.
+    const useBrandNamesPath = !!body.brandNames?.length;
     const isMultiBrand = brandNames.length > 1;
     // All brands in the same call must be from the same HubSpot account
     const isSecondary = SECONDARY_BRANDS.has(brandNames[0]);
@@ -126,7 +129,7 @@ Deno.serve(async (req) => {
     // Fetches all secondary account contacts for the period ONCE, then counts
     // per-brand in code. One edge function call instead of N parallel calls —
     // eliminates rate-limit hammering that caused inconsistent results.
-    if (isMultiBrand && isSecondary) {
+    if (useBrandNamesPath && isSecondary) {
       // Build token sets for every requested brand, plus resolve option values.
       const tokenSets = new Map<string, Set<string>>();
       for (const bn of brandNames) tokenSets.set(bn, buildTokenSet(bn));
