@@ -53,9 +53,25 @@ async function hubspotPostWithRetry(path: string, token: string, body: unknown, 
 }
 
 interface ContactsRequest {
-  brandName: string;
+  brandName?: string;   // single brand — overview tab
+  brandNames?: string[]; // multiple brands — comparison tab (one call, all brands)
   startDate: string;
   endDate: string;
+}
+
+// Build a robust token set for matching the "brands" property value stored in HubSpot.
+function buildTokenSet(name: string): Set<string> {
+  return new Set([
+    name.toLowerCase(),
+    name.toLowerCase().replace(/\s+/g, "_"),
+    name.toLowerCase().replace(/\s+/g, ""),
+  ]);
+}
+
+function matchesBrand(props: Record<string, any>, tokenSet: Set<string>): boolean {
+  const raw = (props.brands || "").toLowerCase();
+  const tokens = raw.split(";").map((t: string) => t.trim()).filter(Boolean);
+  return tokens.some((t: string) => tokenSet.has(t));
 }
 
 Deno.serve(async (req) => {
@@ -64,16 +80,25 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { brandName, startDate, endDate }: ContactsRequest = await req.json();
-    if (!brandName || !startDate || !endDate) {
+    const body: ContactsRequest = await req.json();
+    const { startDate, endDate } = body;
+    // Support both single-brand and multi-brand calls
+    const brandNames: string[] = body.brandNames?.length
+      ? body.brandNames
+      : body.brandName ? [body.brandName] : [];
+
+    if (!brandNames.length || !startDate || !endDate) {
       return new Response(JSON.stringify({ error: "Missing required params" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Pick token and filter strategy based on which HubSpot account the brand belongs to
-    const isSecondary = SECONDARY_BRANDS.has(brandName);
+    const isMultiBrand = brandNames.length > 1;
+    // All brands in the same call must be from the same HubSpot account
+    const isSecondary = SECONDARY_BRANDS.has(brandNames[0]);
+    const brandName = brandNames[0]; // used for single-brand path and logging
+
     const token = isSecondary
       ? Deno.env.get("HUBSPOT_ACCESS_TOKEN_2")
       : Deno.env.get("HUBSPOT_ACCESS_TOKEN");
@@ -83,20 +108,103 @@ Deno.serve(async (req) => {
     const startMs = new Date(startDate + "T00:00:00Z").getTime();
     const endMs = new Date(endDate + "T23:59:59Z").getTime();
 
-    console.log(`Fetching contacts for brand="${brandName}" account=${isSecondary ? "secondary" : "primary"} buId="${buId}" from ${startDate} to ${endDate}`);
+    console.log(`Fetching contacts for brands=[${brandNames.join(",")}] account=${isSecondary ? "secondary" : "primary"} from ${startDate} to ${endDate}`);
 
-    // For secondary brands, the "brands" multi-select property is NOT reliably
-    // filterable via CONTAINS_TOKEN in this HubSpot account — it either returns a
-    // 400 error or silently returns 0 results when the token format doesn't match.
-    // Always fetch by date range only and filter in-code using multiple token variants.
-    // This is the same approach hubspot-data uses and gives consistent results.
-    const brandMatchTokens = new Set([
-      brandName.toLowerCase(),
-      brandName.toLowerCase().replace(/\s+/g, "_"),
-      brandName.toLowerCase().replace(/\s+/g, ""),
-    ]);
+    // ── Multi-brand path (comparison tab) ─────────────────────────────────────
+    // Fetches all secondary account contacts for the period ONCE, then counts
+    // per-brand in code. One edge function call instead of N parallel calls —
+    // eliminates rate-limit hammering that caused inconsistent results.
+    if (isMultiBrand && isSecondary) {
+      // Build token sets for every requested brand, plus resolve option values.
+      const tokenSets = new Map<string, Set<string>>();
+      for (const bn of brandNames) tokenSets.set(bn, buildTokenSet(bn));
 
-    // Try to also add the resolved internal option value to the match set.
+      try {
+        const propDef = await fetch(`https://api.hubapi.com/crm/v3/properties/contacts/brands`, {
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        }).then(r => r.json());
+        const options: any[] = propDef.options || [];
+        for (const bn of brandNames) {
+          const ts = tokenSets.get(bn)!;
+          for (const opt of options) {
+            const lbl = (opt.label || "").toLowerCase();
+            const val = (opt.value || "").toLowerCase();
+            if (lbl === bn.toLowerCase() || val === bn.toLowerCase()) {
+              if (val) ts.add(val);
+              if (lbl) ts.add(lbl);
+            }
+          }
+          console.log(`  ${bn} tokens: ${[...tokenSets.get(bn)!].join(", ")}`);
+        }
+      } catch (e) {
+        console.warn("Could not resolve brand option tokens:", e);
+      }
+
+      // Per-brand counters
+      const brandStats: Record<string, { total: number; assigned: number; unassigned: number }> = {};
+      for (const bn of brandNames) brandStats[bn] = { total: 0, assigned: 0, unassigned: 0 };
+
+      let after: string | undefined;
+      let totalScanned = 0;
+      const maxPages = 100;
+
+      for (let page = 0; page < maxPages; page++) {
+        const searchBody: any = {
+          filterGroups: [{ filters: [
+            { propertyName: "createdate", operator: "GTE", value: String(startMs) },
+            { propertyName: "createdate", operator: "LTE", value: String(endMs) },
+          ]}],
+          properties: ["brands", "nearest_dealer_email"],
+          sorts: [{ propertyName: "createdate", direction: "ASCENDING" }],
+          limit: 100,
+        };
+        if (after) searchBody.after = after;
+        if (page > 0) await new Promise(r => setTimeout(r, 150));
+
+        let res: any;
+        try {
+          res = await hubspotPostWithRetry("/crm/v3/objects/contacts/search", token, searchBody);
+        } catch (e: unknown) {
+          if (page === 0) {
+            return new Response(JSON.stringify({ brandData: Object.fromEntries(brandNames.map(bn => [bn, { totalContacts: 0, dealerAssignedTotal: 0, dealerUnassignedTotal: 0 }])) }), {
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+          throw e;
+        }
+
+        for (const contact of (res.results || [])) {
+          totalScanned++;
+          const props = contact.properties || {};
+          const hasDealer = !!(props.nearest_dealer_email || "").trim();
+          for (const bn of brandNames) {
+            if (matchesBrand(props, tokenSets.get(bn)!)) {
+              brandStats[bn].total++;
+              if (hasDealer) brandStats[bn].assigned++;
+              else brandStats[bn].unassigned++;
+            }
+          }
+        }
+        if (res.paging?.next?.after) after = res.paging.next.after;
+        else break;
+      }
+
+      console.log(`Multi-brand scan: ${totalScanned} contacts scanned, results: ${JSON.stringify(Object.fromEntries(Object.entries(brandStats).map(([k, v]) => [k, v.total])))}`);
+
+      return new Response(JSON.stringify({
+        brandData: Object.fromEntries(brandNames.map(bn => [bn, {
+          totalContacts: brandStats[bn].total,
+          dealerAssignedTotal: brandStats[bn].assigned,
+          dealerUnassignedTotal: brandStats[bn].unassigned,
+        }])),
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // ── Single-brand path (overview tab + primary brands) ────────────────────
+    // For secondary brands, the "brands" property is not reliably filterable
+    // server-side — always fetch by date range and filter in code.
+    const brandMatchTokens = buildTokenSet(brandName);
+
     if (isSecondary) {
       try {
         const propDef = await fetch(`https://api.hubapi.com/crm/v3/properties/contacts/brands`, {
@@ -117,12 +225,6 @@ Deno.serve(async (req) => {
       }
     }
 
-    function matchesBrandInCode(props: Record<string, any>): boolean {
-      const raw = (props.brands || "").toLowerCase();
-      const tokens = raw.split(";").map((t: string) => t.trim()).filter(Boolean);
-      return tokens.some((t: string) => brandMatchTokens.has(t));
-    }
-
     // ── 1. New contacts over time ──
     const contactsByDate: Record<string, { total: number; hubspot: number; salesforce: number }> = {};
     const jobTitleCounts: Record<string, number> = {};
@@ -132,7 +234,7 @@ Deno.serve(async (req) => {
 
     let after: string | undefined;
     let totalFetched = 0;
-    const maxPages = 100; // up to 10,000 contacts — matches HubSpot search API max
+    const maxPages = 100;
 
     for (let page = 0; page < maxPages; page++) {
       const filters: any[] = [
@@ -140,8 +242,6 @@ Deno.serve(async (req) => {
         { propertyName: "createdate", operator: "LTE", value: String(endMs) },
       ];
 
-      // Primary account: server-side filter by business unit (reliable).
-      // Secondary account: date-only filter — brand filtering happens in code below.
       if (!isSecondary && buId && buId !== "0") {
         filters.push({ propertyName: "hs_all_assigned_business_unit_ids", operator: "CONTAINS_TOKEN", value: buId });
       }
@@ -189,8 +289,7 @@ Deno.serve(async (req) => {
       for (const contact of results) {
         const props = contact.properties || {};
 
-        // Secondary brand: filter by brands property in code
-        if (isSecondary && !matchesBrandInCode(props)) continue;
+        if (isSecondary && !matchesBrand(props, brandMatchTokens)) continue;
 
         totalFetched++;
 

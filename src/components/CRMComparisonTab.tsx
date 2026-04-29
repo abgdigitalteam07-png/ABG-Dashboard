@@ -59,18 +59,30 @@ function getPeriods(days: number) {
   return { currStart, currEnd, prevStart, prevEnd };
 }
 
-async function fetchPeriodData(brand: string, from: Date, to: Date): Promise<PeriodData> {
+// Fetch all selected brands for one period in a single edge function call.
+// This avoids 4 parallel calls hitting the same HubSpot account concurrently
+// and causing rate-limit-induced partial results.
+async function fetchAllBrandsForPeriod(
+  brands: SecondaryBrand[],
+  from: Date,
+  to: Date,
+): Promise<Record<SecondaryBrand, PeriodData>> {
   const data = await callFunction("hubspot-contacts", {
-    brandName: brand,
+    brandNames: brands,
     startDate: dateStr(from),
     endDate: dateStr(to),
   });
   if (data?.error) throw new Error(data.error);
-  return {
-    totalContacts:    data?.totalContacts        ?? 0,
-    dealerAssigned:   data?.dealerAssignedTotal   ?? 0,
-    dealerUnassigned: data?.dealerUnassignedTotal ?? 0,
-  };
+  const result = {} as Record<SecondaryBrand, PeriodData>;
+  for (const brand of brands) {
+    const s = data?.brandData?.[brand];
+    result[brand] = {
+      totalContacts:    s?.totalContacts        ?? 0,
+      dealerAssigned:   s?.dealerAssignedTotal   ?? 0,
+      dealerUnassigned: s?.dealerUnassignedTotal ?? 0,
+    };
+  }
+  return result;
 }
 
 function pct(n: number, total: number) {
@@ -161,18 +173,18 @@ function ComparisonContent() {
 
     const { currStart, currEnd, prevStart, prevEnd } = getPeriods(days);
 
-    Promise.all(
-      brands.map(async (brand) => {
-        const [curr, prev] = await Promise.all([
-          fetchPeriodData(brand, currStart, currEnd),
-          fetchPeriodData(brand, prevStart, prevEnd),
-        ]);
-        return { brand, curr, prev };
-      })
-    ).then((data) => {
+    // Two calls only: current period + previous period, each counting all brands
+    // in a single pass. Previously this was 4 parallel calls all paging through
+    // the same HubSpot account simultaneously, hammering rate limits.
+    Promise.all([
+      fetchAllBrandsForPeriod(brands, currStart, currEnd),
+      fetchAllBrandsForPeriod(brands, prevStart, prevEnd),
+    ]).then(([currAll, prevAll]) => {
       if (requestIdRef.current !== requestId) return;
       const map = {} as BrandResults;
-      for (const d of data) map[d.brand as SecondaryBrand] = { curr: d.curr, prev: d.prev };
+      for (const brand of brands) {
+        map[brand] = { curr: currAll[brand], prev: prevAll[brand] };
+      }
       setResults(map);
       setLoading(false);
     }).catch((err) => {
