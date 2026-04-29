@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { BarChart2, Sparkles, Bath, Ruler, PenTool } from "lucide-react";
+import { BarChart2, Sparkles, Bath, Ruler, PenTool, Mail, MapPin, Hash, TrendingUp } from "lucide-react";
 import {
   AreaChart,
   Area,
@@ -12,6 +12,9 @@ import {
   ResponsiveContainer,
   Legend,
   LabelList,
+  Cell,
+  PieChart,
+  Pie,
 } from "recharts";
 import { Brand } from "@/lib/brands";
 import { USStateMap } from "@/components/USStateMap";
@@ -30,6 +33,14 @@ import {
   isEqual,
 } from "date-fns";
 
+interface DealerRow {
+  email: string;
+  name:  string;
+  state: string;
+  zip:   string;
+  count: number;
+}
+
 interface ContactChartsProps {
   brand: Brand;
   dateFrom: Date;
@@ -41,6 +52,7 @@ interface ContactChartsProps {
     jobTitles?: JobTitle[];
     contactStateDistribution?: { state: string; count: number }[];
     contactIndustryDistribution?: { industry: string; count: number }[];
+    dealerBreakdown?: DealerRow[];
   } | null;
   loading?: boolean;
   error?: string | null;
@@ -271,6 +283,7 @@ export function ContactCharts({
   dealerWithoutDealDistribution,
 }: ContactChartsProps) {
   const [granularity, setGranularity] = useState<Granularity>("week");
+  const [dealerSearch, setDealerSearch] = useState("");
   const contactsOverTime = data?.contactsOverTime || [];
   const totalContacts = data?.totalContacts || 0;
   const totalContactsAllTime = data?.totalContactsAllTime || 0;
@@ -278,6 +291,16 @@ export function ContactCharts({
   const stateDistribution = data?.contactStateDistribution || [];
   const groupedTitles = useMemo(() => groupJobTitles(jobTitles), [jobTitles]);
   const industryData = data?.contactIndustryDistribution || [];
+  const dealerBreakdown: DealerRow[] = data?.dealerBreakdown || [];
+  const filteredDealers = useMemo(() =>
+    dealerSearch.trim()
+      ? dealerBreakdown.filter(d =>
+          d.email.toLowerCase().includes(dealerSearch.toLowerCase()) ||
+          d.name.toLowerCase().includes(dealerSearch.toLowerCase()) ||
+          d.state.toLowerCase().includes(dealerSearch.toLowerCase()),
+        )
+      : dealerBreakdown,
+  [dealerBreakdown, dealerSearch]);
 
   // Aggregate by granularity
   const aggregatedContacts = useMemo(() => {
@@ -501,36 +524,187 @@ export function ContactCharts({
         </div>
       </ChartCard>}
 
-      {/* ── Job Title Distribution ── */}
-      <ChartCard
-        title="Contact Distribution by Job Title"
-        subtitle="Grouped by role type — hover a bar to see the breakdown"
-      >
+      {/* ── Dealer Emails Info ── */}
+      <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+        {/* Header */}
+        <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-4 border-b border-border bg-muted/20">
+          <div>
+            <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+              <Mail className="h-4 w-4 text-[#3B82F6]" />
+              Assigned Dealer Details
+            </h3>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
+              Dealers who received leads in this period — sorted by volume
+            </p>
+          </div>
+          {dealerBreakdown.length > 0 && (
+            <div className="flex items-center gap-3 shrink-0">
+              <div className="rounded-xl bg-[#3B82F6]/10 px-3 py-1.5 text-center">
+                <p className="text-[9px] font-bold uppercase tracking-widest text-[#3B82F6]">Dealers</p>
+                <p className="text-lg font-black tabular-nums text-[#3B82F6]">{dealerBreakdown.length}</p>
+              </div>
+              <div className="rounded-xl bg-emerald-500/10 px-3 py-1.5 text-center">
+                <p className="text-[9px] font-bold uppercase tracking-widest text-emerald-600">Assigned Leads</p>
+                <p className="text-lg font-black tabular-nums text-emerald-600">
+                  {dealerBreakdown.reduce((s, d) => s + d.count, 0).toLocaleString()}
+                </p>
+              </div>
+              {/* Search */}
+              <input
+                type="text"
+                placeholder="Search dealer…"
+                value={dealerSearch}
+                onChange={e => setDealerSearch(e.target.value)}
+                className="rounded-xl border border-border bg-background px-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-[#3B82F6]/40 w-40"
+              />
+            </div>
+          )}
+        </div>
+
         {loading ? (
-          <Skeleton className="h-[400px] w-full" />
+          <Skeleton className="h-[300px] w-full" />
         ) : error ? (
           <p className="py-12 text-center text-sm text-muted-foreground">{error}</p>
-        ) : groupedTitles.length === 0 ? (
-          <p className="py-12 text-center text-sm text-muted-foreground">No data available for {brand.name}</p>
+        ) : dealerBreakdown.length === 0 ? (
+          <p className="py-12 text-center text-sm text-muted-foreground">No assigned dealers for {brand.name} in this period</p>
         ) : (
-          <ResponsiveContainer width="100%" height={Math.max(300, groupedTitles.length * 40)}>
-            <BarChart data={groupedTitles} layout="vertical" margin={{ left: 20, right: 56, top: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={gridColor} />
-              <XAxis type="number" tick={axisStyle} tickLine={false} axisLine={false} />
-              <YAxis type="category" dataKey="group" tick={axisStyle} width={180} tickLine={false} axisLine={false} />
-              <Tooltip content={<JobTitleTooltip />} cursor={{ fill: "hsl(var(--muted)/0.4)" }} />
-              <Bar dataKey="count" name="Contacts" fill="#3B82F6" radius={[0, 4, 4, 0]}>
-                <LabelList
-                  dataKey="count"
-                  position="right"
-                  style={{ fontSize: 10, fill: "hsl(var(--muted-foreground))", fontVariantNumeric: "tabular-nums" }}
-                  formatter={(v: number) => v.toLocaleString()}
-                />
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+          <div className="flex flex-col lg:flex-row gap-0">
+            {/* ── Left: table ─────────────────────────────────────────── */}
+            <div className="flex-1 overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border bg-muted/30">
+                    <th className="px-4 py-3 text-left font-bold text-[10px] uppercase tracking-widest text-muted-foreground w-6">#</th>
+                    <th className="px-4 py-3 text-left font-bold text-[10px] uppercase tracking-widest text-muted-foreground">
+                      <span className="flex items-center gap-1.5"><Mail className="h-3 w-3" />Dealer Email</span>
+                    </th>
+                    <th className="px-4 py-3 text-left font-bold text-[10px] uppercase tracking-widest text-muted-foreground hidden sm:table-cell">
+                      <span className="flex items-center gap-1.5"><Hash className="h-3 w-3" />Name</span>
+                    </th>
+                    <th className="px-4 py-3 text-left font-bold text-[10px] uppercase tracking-widest text-muted-foreground hidden md:table-cell">
+                      <span className="flex items-center gap-1.5"><MapPin className="h-3 w-3" />State</span>
+                    </th>
+                    <th className="px-4 py-3 text-left font-bold text-[10px] uppercase tracking-widest text-muted-foreground hidden md:table-cell">ZIP</th>
+                    <th className="px-4 py-3 text-right font-bold text-[10px] uppercase tracking-widest text-muted-foreground">
+                      <span className="flex items-center justify-end gap-1.5"><TrendingUp className="h-3 w-3" />Leads</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredDealers.map((dealer, idx) => {
+                    const maxCount = dealerBreakdown[0]?.count || 1;
+                    const pct = Math.round((dealer.count / maxCount) * 100);
+                    const rank = idx + 1;
+                    return (
+                      <tr key={dealer.email}
+                        className={`border-b border-border/50 transition-colors hover:bg-muted/20 ${idx % 2 === 0 ? "bg-background" : "bg-muted/10"}`}>
+                        <td className="px-4 py-3 text-muted-foreground/50 font-mono font-bold text-[10px]">
+                          {rank <= 3 ? (
+                            <span className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-black text-white ${rank === 1 ? "bg-amber-400" : rank === 2 ? "bg-slate-400" : "bg-orange-400"}`}>
+                              {rank}
+                            </span>
+                          ) : rank}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="font-mono text-[11px] text-foreground truncate max-w-[200px] block">
+                            {dealer.email || <span className="text-muted-foreground/40 italic">—</span>}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 hidden sm:table-cell text-muted-foreground font-medium truncate max-w-[160px]">
+                          {dealer.name || <span className="italic text-muted-foreground/40">—</span>}
+                        </td>
+                        <td className="px-4 py-3 hidden md:table-cell">
+                          {dealer.state ? (
+                            <span className="inline-flex items-center rounded-md bg-[#3B82F6]/10 px-2 py-0.5 text-[10px] font-bold text-[#3B82F6]">
+                              {dealer.state}
+                            </span>
+                          ) : <span className="text-muted-foreground/40 italic text-[10px]">—</span>}
+                        </td>
+                        <td className="px-4 py-3 hidden md:table-cell text-muted-foreground font-mono text-[10px]">
+                          {dealer.zip || "—"}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex flex-col items-end gap-1">
+                            <span className="font-black tabular-nums text-foreground text-sm">{dealer.count.toLocaleString()}</span>
+                            <div className="h-1.5 w-24 rounded-full bg-muted overflow-hidden">
+                              <div className="h-full rounded-full bg-[#3B82F6]" style={{ width: `${pct}%` }} />
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {filteredDealers.length === 0 && dealerSearch && (
+                <p className="py-8 text-center text-xs text-muted-foreground">No dealers matching "{dealerSearch}"</p>
+              )}
+            </div>
+
+            {/* ── Right: Top 10 bar chart ──────────────────────────────── */}
+            {dealerBreakdown.length >= 3 && (
+              <div className="lg:w-[340px] shrink-0 border-t lg:border-t-0 lg:border-l border-border p-4 flex flex-col gap-3">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-1">
+                  Top 10 Dealers by Lead Volume
+                </p>
+                <ResponsiveContainer width="100%" height={Math.min(dealerBreakdown.slice(0, 10).length * 36, 360)}>
+                  <BarChart
+                    data={dealerBreakdown.slice(0, 10).map(d => ({
+                      name: d.name || d.email.split("@")[0],
+                      count: d.count,
+                      state: d.state,
+                    }))}
+                    layout="vertical"
+                    margin={{ left: 4, right: 40, top: 4, bottom: 4 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={gridColor} />
+                    <XAxis type="number" tick={axisStyle} tickLine={false} axisLine={false} allowDecimals={false} />
+                    <YAxis
+                      type="category"
+                      dataKey="name"
+                      tick={axisStyle}
+                      width={100}
+                      tickLine={false}
+                      axisLine={false}
+                      tickFormatter={v => v.length > 14 ? v.slice(0, 13) + "…" : v}
+                    />
+                    <Tooltip
+                      cursor={{ fill: "hsl(var(--muted)/0.4)" }}
+                      content={({ active, payload }) => {
+                        if (!active || !payload?.length) return null;
+                        const d = payload[0]?.payload;
+                        return (
+                          <div className="rounded-xl border border-border bg-card shadow-xl px-3 py-2.5 text-xs space-y-1">
+                            <p className="font-bold text-foreground">{d?.name}</p>
+                            {d?.state && <p className="text-muted-foreground">State: <span className="font-semibold text-foreground">{d.state}</span></p>}
+                            <p className="text-muted-foreground">Leads: <span className="font-black text-[#3B82F6]">{payload[0]?.value?.toLocaleString()}</span></p>
+                          </div>
+                        );
+                      }}
+                    />
+                    <Bar dataKey="count" radius={[0, 4, 4, 0]} maxBarSize={24}>
+                      {dealerBreakdown.slice(0, 10).map((_, i) => (
+                        <Cell key={i} fill={
+                          i === 0 ? "#3B82F6" :
+                          i === 1 ? "#60A5FA" :
+                          i === 2 ? "#93C5FD" :
+                          "hsl(var(--muted-foreground)/0.25)"
+                        } />
+                      ))}
+                      <LabelList
+                        dataKey="count"
+                        position="right"
+                        style={{ fontSize: 10, fill: "hsl(var(--muted-foreground))", fontVariantNumeric: "tabular-nums" }}
+                        formatter={(v: number) => v.toLocaleString()}
+                      />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </div>
         )}
-      </ChartCard>
+      </div>
     </>
   );
 }

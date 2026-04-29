@@ -257,6 +257,8 @@ Deno.serve(async (req) => {
     const stateCounts: Record<string, number> = {};
     let dealerAssignedTotal = 0;
     let dealerUnassignedTotal = 0;
+    // per-dealer lead counts { email -> { name, state, zip, count } }
+    const dealerCounts: Record<string, { name: string; state: string; zip: string; count: number }> = {};
 
     let after: string | undefined;
     let totalFetched = 0;
@@ -285,6 +287,9 @@ Deno.serve(async (req) => {
           "ip_state_code",
           "ip_state",
           "nearest_dealer_email",
+          "closest_dealer_name",
+          "closest_dealer_state",
+          "closest_dealer_zip",
         ],
         sorts: [{ propertyName: "createdate", direction: "ASCENDING" }],
         limit: 100,
@@ -362,8 +367,18 @@ Deno.serve(async (req) => {
         }
 
         // Dealer assignment
-        if ((props.nearest_dealer_email || "").trim()) {
+        const dealerEmail = (props.nearest_dealer_email || "").trim();
+        if (dealerEmail) {
           dealerAssignedTotal++;
+          if (!dealerCounts[dealerEmail]) {
+            dealerCounts[dealerEmail] = {
+              name:  (props.closest_dealer_name  || "").trim(),
+              state: (props.closest_dealer_state || "").trim().toUpperCase(),
+              zip:   (props.closest_dealer_zip   || "").trim(),
+              count: 0,
+            };
+          }
+          dealerCounts[dealerEmail].count++;
         } else {
           dealerUnassignedTotal++;
         }
@@ -400,6 +415,11 @@ Deno.serve(async (req) => {
       .map(([state, count]) => ({ state, count }))
       .sort((a, b) => b.count - a.count);
 
+    // Dealer breakdown — sorted by lead count descending
+    const dealerBreakdown = Object.entries(dealerCounts)
+      .map(([email, d]) => ({ email, ...d }))
+      .sort((a, b) => b.count - a.count);
+
     const result = {
       totalContacts: totalFetched,
       contactsOverTime,
@@ -407,6 +427,7 @@ Deno.serve(async (req) => {
       stateDistribution,
       dealerAssignedTotal,
       dealerUnassignedTotal,
+      dealerBreakdown,
     };
 
     return new Response(JSON.stringify(result), {

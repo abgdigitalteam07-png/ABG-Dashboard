@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo } from "react";
+import { useState, useRef, useMemo, useEffect } from "react";
 import { subDays, format, addDays, parseISO, startOfWeek, startOfMonth } from "date-fns";
 import { callFunction } from "@/lib/api-client";
 import { WaterFillLoader } from "@/components/WaterFillLoader";
@@ -812,6 +812,24 @@ function ComparisonContent() {
   const [showExclPanel,    setShowExclPanel]    = useState(false);
   const [exclInput,        setExclInput]        = useState("");
   const reqRef = useRef(0);
+
+  // Auto-exclude Nov 19, 2025 whenever the selected period window includes it
+  const NOV19 = "2025-11-19";
+  useEffect(() => {
+    if (!selectedDays) return;
+    const { currStart, currEnd, prevStart, prevEnd } = getPeriods(selectedDays);
+    const d = new Date(NOV19 + "T12:00:00");
+    const inRange =
+      (d >= currStart && d <= currEnd) ||
+      (d >= prevStart && d <= prevEnd);
+    setExcludedDates(prev =>
+      inRange && !prev.includes(NOV19)
+        ? [...prev, NOV19].sort()
+        : !inRange && prev.includes(NOV19)
+          ? prev.filter(x => x !== NOV19)
+          : prev,
+    );
+  }, [selectedDays]);
 
   function toggleBrand(b: SecondaryBrand) {
     setSelectedBrands(p => p.includes(b) ? p.filter(x => x !== b) : p.length < 3 ? [...p, b] : p);
