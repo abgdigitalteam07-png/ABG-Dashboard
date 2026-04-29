@@ -292,6 +292,10 @@ export function ContactCharts({
   const groupedTitles = useMemo(() => groupJobTitles(jobTitles), [jobTitles]);
   const industryData = data?.contactIndustryDistribution || [];
   const dealerBreakdown: DealerRow[] = data?.dealerBreakdown || [];
+  const dealerAssignedTotal: number = (data as any)?.dealerAssignedTotal ?? 0;
+  // If backend hasn't been deployed yet with dealerBreakdown, we can detect it:
+  // dealerAssignedTotal > 0 but dealerBreakdown is undefined means old function version
+  const dealerBreakdownPending = dealerAssignedTotal > 0 && !data?.dealerBreakdown;
   const filteredDealers = useMemo(() =>
     dealerSearch.trim()
       ? dealerBreakdown.filter(d =>
@@ -565,6 +569,21 @@ export function ContactCharts({
           <Skeleton className="h-[300px] w-full" />
         ) : error ? (
           <p className="py-12 text-center text-sm text-muted-foreground">{error}</p>
+        ) : dealerBreakdownPending ? (
+          <div className="py-12 flex flex-col items-center gap-3 text-center px-6">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 dark:bg-amber-900/30">
+              <Mail className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+            </div>
+            <p className="text-sm font-semibold text-foreground">
+              {dealerAssignedTotal.toLocaleString()} assigned dealer leads found
+            </p>
+            <p className="text-xs text-muted-foreground max-w-sm">
+              Dealer details require a one-time function deployment. Run this in your terminal:
+            </p>
+            <code className="rounded-lg bg-muted px-4 py-2 text-xs font-mono text-foreground select-all">
+              npx supabase functions deploy hubspot-data --project-ref ffxhonryhaadyudpopvv
+            </code>
+          </div>
         ) : dealerBreakdown.length === 0 ? (
           <p className="py-12 text-center text-sm text-muted-foreground">No assigned dealers for {brand.name} in this period</p>
         ) : (
