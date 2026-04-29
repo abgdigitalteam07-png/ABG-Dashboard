@@ -158,9 +158,11 @@ Deno.serve(async (req) => {
       // Per-brand counters + daily time series
       const brandStats: Record<string, { total: number; assigned: number; unassigned: number }> = {};
       const brandSeries: Record<string, Record<string, number>> = {};
+      const brandDealerCounts: Record<string, Record<string, { name: string; state: string; zip: string; count: number }>> = {};
       for (const bn of brandNames) {
         brandStats[bn] = { total: 0, assigned: 0, unassigned: 0 };
         brandSeries[bn] = {};
+        brandDealerCounts[bn] = {};
       }
 
       let after: string | undefined;
@@ -173,7 +175,7 @@ Deno.serve(async (req) => {
             { propertyName: "createdate", operator: "GTE", value: String(startMs) },
             { propertyName: "createdate", operator: "LTE", value: String(endMs) },
           ]}],
-          properties: ["brands", "nearest_dealer_email", "createdate"],
+          properties: ["brands", "nearest_dealer_email", "closest_dealer_name", "closest_dealer_state", "closest_dealer_zip", "createdate"],
           sorts: [{ propertyName: "createdate", direction: "ASCENDING" }],
           limit: 100,
         };
@@ -195,15 +197,28 @@ Deno.serve(async (req) => {
         for (const contact of (res.results || [])) {
           totalScanned++;
           const props = contact.properties || {};
-          const hasDealer = !!(props.nearest_dealer_email || "").trim();
+          const dealerEmail = (props.nearest_dealer_email || "").trim();
+          const hasDealer = !!dealerEmail;
           const dateKey = props.createdate
             ? new Date(props.createdate).toISOString().split("T")[0]
             : null;
           for (const bn of brandNames) {
             if (matchesBrand(props, tokenSets.get(bn)!)) {
               brandStats[bn].total++;
-              if (hasDealer) brandStats[bn].assigned++;
-              else brandStats[bn].unassigned++;
+              if (hasDealer) {
+                brandStats[bn].assigned++;
+                if (!brandDealerCounts[bn][dealerEmail]) {
+                  brandDealerCounts[bn][dealerEmail] = {
+                    name:  (props.closest_dealer_name  || "").trim(),
+                    state: (props.closest_dealer_state || "").trim().toUpperCase(),
+                    zip:   (props.closest_dealer_zip   || "").trim(),
+                    count: 0,
+                  };
+                }
+                brandDealerCounts[bn][dealerEmail].count++;
+              } else {
+                brandStats[bn].unassigned++;
+              }
               if (dateKey) {
                 brandSeries[bn][dateKey] = (brandSeries[bn][dateKey] || 0) + 1;
               }
@@ -216,6 +231,16 @@ Deno.serve(async (req) => {
 
       console.log(`Multi-brand scan: ${totalScanned} contacts scanned, results: ${JSON.stringify(Object.fromEntries(Object.entries(brandStats).map(([k, v]) => [k, v.total])))}`);
 
+      // Build sorted dealer breakdown per brand
+      const brandDealerBreakdown = Object.fromEntries(
+        brandNames.map(bn => [
+          bn,
+          Object.entries(brandDealerCounts[bn])
+            .map(([email, d]) => ({ email, ...d }))
+            .sort((a, b) => b.count - a.count),
+        ])
+      );
+
       return new Response(JSON.stringify({
         brandData: Object.fromEntries(brandNames.map(bn => [bn, {
           totalContacts: brandStats[bn].total,
@@ -223,6 +248,7 @@ Deno.serve(async (req) => {
           dealerUnassignedTotal: brandStats[bn].unassigned,
         }])),
         brandTimeSeries: brandSeries,
+        brandDealerBreakdown,
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 

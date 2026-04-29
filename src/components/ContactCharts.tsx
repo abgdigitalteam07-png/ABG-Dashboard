@@ -284,6 +284,8 @@ export function ContactCharts({
 }: ContactChartsProps) {
   const [granularity, setGranularity] = useState<Granularity>("week");
   const [dealerSearch, setDealerSearch] = useState("");
+  const [dealerPage,   setDealerPage]   = useState(0);
+  const DEALER_PAGE_SIZE = 10;
   const contactsOverTime = data?.contactsOverTime || [];
   const totalContacts = data?.totalContacts || 0;
   const totalContactsAllTime = data?.totalContactsAllTime || 0;
@@ -296,15 +298,22 @@ export function ContactCharts({
   // If backend hasn't been deployed yet with dealerBreakdown, we can detect it:
   // dealerAssignedTotal > 0 but dealerBreakdown is undefined means old function version
   const dealerBreakdownPending = dealerAssignedTotal > 0 && !data?.dealerBreakdown;
-  const filteredDealers = useMemo(() =>
-    dealerSearch.trim()
+  const filteredDealers = useMemo(() => {
+    setDealerPage(0); // reset page on search change
+    return dealerSearch.trim()
       ? dealerBreakdown.filter(d =>
           d.email.toLowerCase().includes(dealerSearch.toLowerCase()) ||
           d.name.toLowerCase().includes(dealerSearch.toLowerCase()) ||
           d.state.toLowerCase().includes(dealerSearch.toLowerCase()),
         )
-      : dealerBreakdown,
-  [dealerBreakdown, dealerSearch]);
+      : dealerBreakdown;
+  }, [dealerBreakdown, dealerSearch]);
+
+  const totalDealerPages = Math.ceil(filteredDealers.length / DEALER_PAGE_SIZE);
+  const pagedDealers = filteredDealers.slice(
+    dealerPage * DEALER_PAGE_SIZE,
+    (dealerPage + 1) * DEALER_PAGE_SIZE,
+  );
 
   // Aggregate by granularity
   const aggregatedContacts = useMemo(() => {
@@ -610,10 +619,10 @@ export function ContactCharts({
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredDealers.map((dealer, idx) => {
+                  {pagedDealers.map((dealer, idx) => {
                     const maxCount = dealerBreakdown[0]?.count || 1;
                     const pct = Math.round((dealer.count / maxCount) * 100);
-                    const rank = idx + 1;
+                    const rank = dealerPage * DEALER_PAGE_SIZE + idx + 1;
                     return (
                       <tr key={dealer.email}
                         className={`border-b border-border/50 transition-colors hover:bg-muted/20 ${idx % 2 === 0 ? "bg-background" : "bg-muted/10"}`}>
@@ -658,6 +667,40 @@ export function ContactCharts({
               {filteredDealers.length === 0 && dealerSearch && (
                 <p className="py-8 text-center text-xs text-muted-foreground">No dealers matching "{dealerSearch}"</p>
               )}
+              {/* Pagination */}
+              {totalDealerPages > 1 && (
+                <div className="flex items-center justify-between border-t border-border px-4 py-3">
+                  <p className="text-[11px] text-muted-foreground">
+                    Showing {dealerPage * DEALER_PAGE_SIZE + 1}–{Math.min((dealerPage + 1) * DEALER_PAGE_SIZE, filteredDealers.length)} of {filteredDealers.length} dealers
+                  </p>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setDealerPage(p => Math.max(0, p - 1))}
+                      disabled={dealerPage === 0}
+                      className="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground disabled:opacity-40 disabled:cursor-not-allowed hover:bg-muted cursor-pointer transition-colors">
+                      ← Prev
+                    </button>
+                    {Array.from({ length: totalDealerPages }, (_, i) => (
+                      <button key={i}
+                        onClick={() => setDealerPage(i)}
+                        className={cn(
+                          "rounded-lg border px-2.5 py-1.5 text-xs font-bold cursor-pointer transition-colors",
+                          dealerPage === i
+                            ? "bg-[#3B82F6] border-[#3B82F6] text-white"
+                            : "border-border bg-background text-muted-foreground hover:bg-muted",
+                        )}>
+                        {i + 1}
+                      </button>
+                    ))}
+                    <button
+                      onClick={() => setDealerPage(p => Math.min(totalDealerPages - 1, p + 1))}
+                      disabled={dealerPage === totalDealerPages - 1}
+                      className="rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground disabled:opacity-40 disabled:cursor-not-allowed hover:bg-muted cursor-pointer transition-colors">
+                      Next →
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* ── Right: Top 10 bar chart ──────────────────────────────── */}
@@ -674,18 +717,18 @@ export function ContactCharts({
                       state: d.state,
                     }))}
                     layout="vertical"
-                    margin={{ left: 4, right: 40, top: 4, bottom: 4 }}
+                    margin={{ left: 0, right: 36, top: 4, bottom: 4 }}
                   >
                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={gridColor} />
                     <XAxis type="number" tick={axisStyle} tickLine={false} axisLine={false} allowDecimals={false} />
                     <YAxis
                       type="category"
                       dataKey="name"
-                      tick={axisStyle}
-                      width={100}
+                      tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))", textAnchor: "end" }}
+                      width={140}
                       tickLine={false}
                       axisLine={false}
-                      tickFormatter={v => v.length > 14 ? v.slice(0, 13) + "…" : v}
+                      tickFormatter={v => v.length > 20 ? v.slice(0, 19) + "…" : v}
                     />
                     <Tooltip
                       cursor={{ fill: "hsl(var(--muted)/0.4)" }}

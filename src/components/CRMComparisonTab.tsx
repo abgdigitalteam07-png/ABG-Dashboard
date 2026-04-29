@@ -75,6 +75,9 @@ function getPeriods(days: number) {
 
 type BrandSeriesMap = Partial<Record<SecondaryBrand, TimeSeries>>;
 
+interface DealerRow { email: string; name: string; state: string; zip: string; count: number; }
+type BrandDealerMap = Partial<Record<SecondaryBrand, DealerRow[]>>;
+
 /** Zero-out excluded dates in a TimeSeries so they don't count in KPIs or trends */
 function filterSeries(series: TimeSeries, excluded: string[]): TimeSeries {
   if (!excluded.length) return series;
@@ -89,8 +92,9 @@ async function fetchAllBrandsForPeriod(
   brands: SecondaryBrand[], from: Date, to: Date,
 ): Promise<{
   periodData:  Record<SecondaryBrand, PeriodData>;
-  timeSeries:  TimeSeries;       // aggregate across all brands
-  brandSeries: BrandSeriesMap;   // per-brand series (for individual PDF pages)
+  timeSeries:  TimeSeries;
+  brandSeries: BrandSeriesMap;
+  brandDealerBreakdown: BrandDealerMap;
 }> {
   const data = await callFunction("hubspot-contacts", {
     brandNames: brands,
@@ -102,6 +106,7 @@ async function fetchAllBrandsForPeriod(
   const periodData  = {} as Record<SecondaryBrand, PeriodData>;
   const timeSeries: TimeSeries    = {};
   const brandSeries: BrandSeriesMap = {};
+  const brandDealerBreakdown: BrandDealerMap = {};
 
   for (const brand of brands) {
     const s = data?.brandData?.[brand];
@@ -111,12 +116,13 @@ async function fetchAllBrandsForPeriod(
       dealerUnassigned: s?.dealerUnassignedTotal ?? 0,
     };
     const ts: TimeSeries = data?.brandTimeSeries?.[brand] ?? {};
-    brandSeries[brand] = ts;                       // store per-brand
+    brandSeries[brand] = ts;
     for (const [date, count] of Object.entries(ts)) {
       timeSeries[date] = (timeSeries[date] || 0) + (count as number);
     }
+    brandDealerBreakdown[brand] = data?.brandDealerBreakdown?.[brand] ?? [];
   }
-  return { periodData, timeSeries, brandSeries };
+  return { periodData, timeSeries, brandSeries, brandDealerBreakdown };
 }
 
 /** Build chart rows: align current + previous by day-offset so they overlay */
@@ -806,8 +812,9 @@ function ComparisonContent() {
   const [granularity,      setGranularity]      = useState<Granularity>("week");
   const [loading,          setLoading]          = useState(false);
   const [error,            setError]            = useState<string | null>(null);
-  const [currBrandSeries,  setCurrBrandSeries]  = useState<BrandSeriesMap>({});
-  const [prevBrandSeries,  setPrevBrandSeries]  = useState<BrandSeriesMap>({});
+  const [currBrandSeries,        setCurrBrandSeries]        = useState<BrandSeriesMap>({});
+  const [prevBrandSeries,        setPrevBrandSeries]        = useState<BrandSeriesMap>({});
+  const [currBrandDealerBreakdown, setCurrBrandDealerBreakdown] = useState<BrandDealerMap>({});
   const [excludedDates,    setExcludedDates]    = useState<string[]>([]);
   const [showExclPanel,    setShowExclPanel]    = useState(false);
   const [exclInput,        setExclInput]        = useState("");
@@ -852,6 +859,7 @@ function ComparisonContent() {
       setPrevSeries(pRes.timeSeries);
       setCurrBrandSeries(cRes.brandSeries);
       setPrevBrandSeries(pRes.brandSeries);
+      setCurrBrandDealerBreakdown(cRes.brandDealerBreakdown);
       setLoading(false);
     }).catch(e => {
       if (reqRef.current !== id) return;
@@ -1496,6 +1504,171 @@ function ComparisonContent() {
                         </p>
                       </div>
                     ))}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* ── Top Dealers ──────────────────────────────────────────── */}
+            {(() => {
+              // Merge all active brands' dealer breakdown into one combined list
+              // (deduplicated by email, summing counts across brands)
+              const combined: Record<string, DealerRow & { brands: SecondaryBrand[] }> = {};
+              for (const brand of activeBrands) {
+                const rows = currBrandDealerBreakdown[brand] ?? [];
+                for (const row of rows) {
+                  if (!combined[row.email]) {
+                    combined[row.email] = { ...row, brands: [brand], count: row.count };
+                  } else {
+                    combined[row.email].count += row.count;
+                    if (!combined[row.email].brands.includes(brand))
+                      combined[row.email].brands.push(brand);
+                  }
+                }
+              }
+              const allDealers = Object.values(combined).sort((a, b) => b.count - a.count);
+              if (!allDealers.length) return null;
+
+              const top10 = allDealers.slice(0, 10);
+              const maxCount = top10[0]?.count || 1;
+
+              return (
+                <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-4 border-b border-border bg-muted/20">
+                    <div>
+                      <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+                        <Users className="h-4 w-4 text-[#3B82F6]" />
+                        Top Dealers by Lead Volume
+                      </h3>
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">
+                        Dealers who received leads — current period · {currLabel}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <div className="rounded-xl bg-[#3B82F6]/10 px-3 py-1.5 text-center">
+                        <p className="text-[9px] font-bold uppercase tracking-widest text-[#3B82F6]">Dealers</p>
+                        <p className="text-lg font-black tabular-nums text-[#3B82F6]">{allDealers.length}</p>
+                      </div>
+                      <div className="rounded-xl bg-emerald-500/10 px-3 py-1.5 text-center">
+                        <p className="text-[9px] font-bold uppercase tracking-widest text-emerald-600">Leads Assigned</p>
+                        <p className="text-lg font-black tabular-nums text-emerald-600">
+                          {allDealers.reduce((s, d) => s + d.count, 0).toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col lg:flex-row gap-0">
+                    {/* Table */}
+                    <div className="flex-1 overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="border-b border-border bg-muted/30">
+                            <th className="px-4 py-3 text-left font-bold text-[10px] uppercase tracking-widest text-muted-foreground w-8">#</th>
+                            <th className="px-4 py-3 text-left font-bold text-[10px] uppercase tracking-widest text-muted-foreground">Dealer Name / Email</th>
+                            <th className="px-4 py-3 text-left font-bold text-[10px] uppercase tracking-widest text-muted-foreground hidden md:table-cell">State</th>
+                            {activeBrands.length > 1 && (
+                              <th className="px-4 py-3 text-left font-bold text-[10px] uppercase tracking-widest text-muted-foreground hidden sm:table-cell">Brand(s)</th>
+                            )}
+                            <th className="px-4 py-3 text-right font-bold text-[10px] uppercase tracking-widest text-muted-foreground">Leads</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {top10.map((dealer, idx) => (
+                            <tr key={dealer.email}
+                              className={cn("border-b border-border/50 hover:bg-muted/20 transition-colors cursor-default",
+                                idx % 2 === 0 ? "bg-background" : "bg-muted/10")}>
+                              <td className="px-4 py-3">
+                                {idx < 3 ? (
+                                  <span className={cn(
+                                    "inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-black text-white",
+                                    idx === 0 ? "bg-amber-400" : idx === 1 ? "bg-slate-400" : "bg-orange-400",
+                                  )}>{idx + 1}</span>
+                                ) : (
+                                  <span className="text-[10px] font-mono text-muted-foreground/50">{idx + 1}</span>
+                                )}
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="flex flex-col gap-0.5">
+                                  {dealer.name ? (
+                                    <>
+                                      <span className="font-semibold text-foreground text-[11px]">{dealer.name}</span>
+                                      <span className="font-mono text-[10px] text-muted-foreground">{dealer.email}</span>
+                                    </>
+                                  ) : (
+                                    <span className="font-mono text-[11px] text-foreground">{dealer.email || "—"}</span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 hidden md:table-cell">
+                                {dealer.state ? (
+                                  <span className="inline-flex items-center rounded-md bg-[#3B82F6]/10 px-2 py-0.5 text-[10px] font-bold text-[#3B82F6]">
+                                    {dealer.state}
+                                  </span>
+                                ) : <span className="text-muted-foreground/40 text-[10px]">—</span>}
+                              </td>
+                              {activeBrands.length > 1 && (
+                                <td className="px-4 py-3 hidden sm:table-cell">
+                                  <div className="flex flex-wrap gap-1">
+                                    {dealer.brands.map(b => (
+                                      <span key={b} className="inline-flex items-center rounded-full px-2 py-0.5 text-[9px] font-bold text-white"
+                                        style={{ background: BRAND_PALETTE[b].solid }}>
+                                        {BRAND_SHORT[b]}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </td>
+                              )}
+                              <td className="px-4 py-3 text-right">
+                                <div className="flex flex-col items-end gap-1">
+                                  <span className="font-black tabular-nums text-foreground text-sm">{dealer.count.toLocaleString()}</span>
+                                  <div className="h-1.5 w-20 rounded-full bg-muted overflow-hidden">
+                                    <div className="h-full rounded-full bg-[#3B82F6]"
+                                      style={{ width: `${Math.round((dealer.count / maxCount) * 100)}%` }} />
+                                  </div>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {allDealers.length > 10 && (
+                        <p className="px-4 py-2.5 text-center text-[11px] text-muted-foreground border-t border-border">
+                          Showing top 10 of {allDealers.length} dealers
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Bar chart */}
+                    {top10.length >= 3 && (
+                      <div className="lg:w-[320px] shrink-0 border-t lg:border-t-0 lg:border-l border-border p-4 flex flex-col gap-3">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-1">Lead Volume</p>
+                        <ResponsiveContainer width="100%" height={Math.min(top10.length * 36, 360)}>
+                          <BarChart
+                            data={top10.map(d => ({ name: d.name || d.email.split("@")[0], count: d.count }))}
+                            layout="vertical"
+                            margin={{ left: 4, right: 36, top: 4, bottom: 4 }}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" />
+                            <XAxis type="number" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} allowDecimals={false} />
+                            <YAxis
+                              type="category" dataKey="name"
+                              tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                              width={110} tickLine={false} axisLine={false}
+                              tickFormatter={v => v.length > 16 ? v.slice(0, 15) + "…" : v}
+                            />
+                            <Bar dataKey="count" radius={[0, 4, 4, 0]} maxBarSize={22}>
+                              {top10.map((_, i) => (
+                                <Cell key={i} fill={i === 0 ? "#3B82F6" : i === 1 ? "#60A5FA" : i === 2 ? "#93C5FD" : "hsl(var(--muted-foreground)/0.25)"} />
+                              ))}
+                              <LabelList dataKey="count" position="right"
+                                style={{ fontSize: 10, fill: "hsl(var(--muted-foreground))", fontVariantNumeric: "tabular-nums" }}
+                                formatter={(v: number) => v.toLocaleString()} />
+                            </Bar>
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    )}
                   </div>
                 </div>
               );
