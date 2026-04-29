@@ -307,40 +307,44 @@ function ComparisonContent() {
     : 0;
 
   return (
-    <div className="space-y-4 p-6">
+    <div className="space-y-5 p-6">
 
       {/* ══ TOOLBAR ══════════════════════════════════════════════════════════ */}
-      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-card px-4 py-3">
-        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mr-1">Period</span>
-        <div className="flex items-center gap-1">
+      <div className="flex flex-wrap items-center gap-2.5 rounded-2xl border border-border bg-card px-5 py-3.5 shadow-sm">
+
+        {/* Period pills */}
+        <div className="flex items-center gap-1 bg-muted/40 rounded-xl p-1">
           {PERIOD_OPTIONS.map(({ label, days, full }) => (
             <button key={days} title={full} onClick={() => setSelectedDays(days)}
               className={cn(
-                "rounded-lg px-3 py-1.5 text-xs font-semibold cursor-pointer transition-all duration-150",
+                "rounded-lg px-3.5 py-1.5 text-xs font-bold cursor-pointer transition-all duration-150",
                 selectedDays === days
-                  ? "bg-foreground text-background shadow-sm"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                  ? "bg-[#3B82F6] text-white shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
               )}>
               {label}
             </button>
           ))}
         </div>
 
-        <div className="h-5 w-px bg-border mx-1" />
+        <div className="h-5 w-px bg-border" />
 
-        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mr-1">Brands</span>
+        {/* Brand toggles */}
         <div className="flex flex-wrap items-center gap-1.5">
           {SECONDARY_BRANDS.map((brand) => {
             const active = selectedBrands.includes(brand);
+            const { solid, bg } = BRAND_PALETTE[brand];
             return (
               <button key={brand} onClick={() => toggleBrand(brand)}
                 className={cn(
-                  "flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold cursor-pointer transition-all duration-150",
-                  active ? "border-transparent text-white shadow-sm" : "border-border text-muted-foreground hover:text-foreground",
+                  "flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-semibold cursor-pointer transition-all duration-200",
+                  active ? "border-transparent text-white shadow-sm" : "border-border bg-background text-muted-foreground hover:text-foreground hover:border-muted-foreground/40",
                 )}
-                style={active ? { background: BRAND_PALETTE[brand].solid } : {}}>
-                {active && <Check className="h-3 w-3" />}
+                style={active ? { background: solid } : {}}>
+                <span className="h-2 w-2 rounded-full shrink-0 transition-all"
+                  style={{ background: active ? "rgba(255,255,255,0.7)" : solid }} />
                 {brand}
+                {active && <Check className="h-3 w-3 ml-0.5" />}
               </button>
             );
           })}
@@ -351,39 +355,25 @@ function ComparisonContent() {
         <button
           onClick={() => runReport(selectedDays, selectedBrands)}
           disabled={loading || !canRun}
-          className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-xs font-bold text-accent-foreground cursor-pointer hover:bg-accent/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-150">
+          className="flex items-center gap-2 rounded-xl bg-[#3B82F6] px-5 py-2 text-xs font-bold text-white cursor-pointer hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-150 shadow-sm">
           <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
           {loading ? "Loading…" : "Run Report"}
         </button>
       </div>
 
-      {/* Period range labels */}
-      {selectedDays && currLabel && (
-        <div className="flex flex-wrap items-center gap-4 px-1 text-[11px] text-muted-foreground">
-          <span className="flex items-center gap-2">
-            <span className="inline-block h-2.5 w-4 rounded-sm bg-[#3B82F6]/40" />
-            <span className="font-semibold text-foreground">Current</span> {currLabel}
-          </span>
-          <span className="text-muted-foreground/30">vs</span>
-          <span className="flex items-center gap-2">
-            <span className="inline-block h-2.5 w-4 rounded-sm bg-[#F97316]/40" />
-            <span className="font-semibold text-foreground">Previous</span> {prevLabel}
-          </span>
-        </div>
-      )}
-
       {/* ══ EMPTY STATE ══════════════════════════════════════════════════════ */}
       {!loading && !results && !error && (
-        <div className="rounded-2xl border border-dashed border-border bg-muted/20 py-20 text-center">
-          <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-muted">
-            <Users className="h-5 w-5 text-muted-foreground" />
+        <div className="rounded-2xl border border-dashed border-border bg-muted/10 py-24 text-center">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#3B82F6]/10">
+            <Users className="h-6 w-6 text-[#3B82F6]" />
           </div>
-          <p className="text-sm font-semibold text-foreground">No data yet</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {!selectedDays && !selectedBrands.length ? "Pick a period and at least one brand, then click Run Report"
-              : !selectedDays ? "Pick a period, then click Run Report"
-              : !selectedBrands.length ? "Pick at least one brand, then click Run Report"
-              : "Click Run Report to load data"}
+          <p className="text-base font-bold text-foreground">Select a period and brand to start</p>
+          <p className="mt-1.5 text-sm text-muted-foreground max-w-sm mx-auto">
+            {!selectedDays && !selectedBrands.length
+              ? "Choose a time range and at least one brand above, then click Run Report"
+              : !selectedDays ? "Choose a time range, then click Run Report"
+              : !selectedBrands.length ? "Select at least one brand above, then click Run Report"
+              : "Click Run Report to load the comparison data"}
           </p>
         </div>
       )}
@@ -397,120 +387,176 @@ function ComparisonContent() {
       {!loading && results && (() => {
         const activeBrands = selectedBrands.filter(b => results[b]);
 
-        /* ── KPI cards ─────────────────────────────────────────────────────── */
+        // ── period context banner ──────────────────────────────────────────
+        const periodBanner = (
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-xl border border-border bg-muted/20 px-5 py-3">
+            <div className="flex items-center gap-2.5">
+              <span className="h-3 w-3 rounded-sm bg-[#3B82F6] shrink-0" />
+              <span className="text-[11px] text-muted-foreground">
+                <span className="font-bold text-foreground">Current period</span>&nbsp; {currLabel}
+              </span>
+            </div>
+            <span className="text-muted-foreground/40 text-xs font-bold">vs</span>
+            <div className="flex items-center gap-2.5">
+              <span className="h-3 w-3 rounded-sm bg-slate-300 shrink-0" />
+              <span className="text-[11px] text-muted-foreground">
+                <span className="font-bold text-foreground">Previous period</span>&nbsp; {prevLabel}
+              </span>
+            </div>
+          </div>
+        );
+
+        // ── KPI hero cards ─────────────────────────────────────────────────
         const kpiSection = (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             {METRICS.map(({ key, label, Icon, color }) => {
               const grandCurr = activeBrands.reduce((s, b) => s + results[b].curr[key], 0);
               const grandPrev = activeBrands.reduce((s, b) => s + results[b].prev[key], 0);
+              const d = grandPrev > 0 ? ((grandCurr - grandPrev) / grandPrev) * 100 : null;
+              const up = d !== null && d > 0.4;
+              const dn = d !== null && d < -0.4;
+              // Visual ratio bar: how much of (max of curr/prev) is curr?
+              const maxVal = Math.max(grandCurr, grandPrev, 1);
+              const currPct = (grandCurr / maxVal) * 100;
+              const prevPct = (grandPrev / maxVal) * 100;
               return (
-                <div key={key} className="rounded-2xl border border-border bg-card p-5 space-y-4">
-                  <div className="flex items-center gap-2.5">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg shrink-0" style={{ background: `${color}18` }}>
-                      <Icon className="h-4 w-4" style={{ color }} />
+                <div key={key} className="rounded-2xl border border-border bg-card overflow-hidden">
+                  {/* colored top accent */}
+                  <div className="h-1 w-full" style={{ background: color }} />
+                  <div className="p-5 space-y-4">
+                    {/* header row */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-xl shrink-0"
+                          style={{ background: `${color}15` }}>
+                          <Icon className="h-4.5 w-4.5" style={{ color }} />
+                        </div>
+                        <p className="text-sm font-bold text-foreground">{label}</p>
+                      </div>
+                      {d !== null && (
+                        <span className={cn(
+                          "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold",
+                          up  ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400" :
+                          dn  ? "bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400" :
+                                "bg-muted text-muted-foreground",
+                        )}>
+                          {up ? <TrendingUp className="h-3 w-3" /> : dn ? <TrendingDown className="h-3 w-3" /> : <Minus className="h-3 w-3" />}
+                          {up ? "+" : ""}{d.toFixed(1)}%
+                        </span>
+                      )}
                     </div>
+
+                    {/* big numbers */}
                     <div>
-                      <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground leading-none">{label}</p>
-                      <p className="mt-1 text-[10px] text-muted-foreground/60">All selected brands</p>
+                      <p className="text-5xl font-black tabular-nums text-foreground leading-none">
+                        {grandCurr.toLocaleString()}
+                      </p>
+                      <p className="mt-2 text-xs text-muted-foreground tabular-nums">
+                        vs&nbsp;
+                        <span className="font-semibold text-foreground">{grandPrev.toLocaleString()}</span>
+                        &nbsp;previous period
+                      </p>
                     </div>
-                  </div>
-                  <div className="flex items-baseline gap-2.5">
-                    <span className="text-3xl font-black tabular-nums text-foreground leading-none">{grandCurr.toLocaleString()}</span>
-                    <Delta curr={grandCurr} prev={grandPrev} />
-                  </div>
-                  <p className="text-[11px] text-muted-foreground -mt-2 tabular-nums">prev {grandPrev.toLocaleString()}</p>
-                  {activeBrands.length > 1 && (
-                    <div className="space-y-2.5 pt-1 border-t border-border">
-                      {activeBrands.map(brand => {
-                        const curr  = results[brand].curr[key];
-                        const prev  = results[brand].prev[key];
-                        const share = grandCurr > 0 ? (curr / grandCurr) * 100 : 0;
-                        const { solid, bg } = BRAND_PALETTE[brand];
-                        return (
-                          <div key={brand}>
-                            <div className="flex items-center justify-between gap-2 mb-1">
-                              <div className="flex items-center gap-1.5 min-w-0">
-                                <span className="h-2 w-2 rounded-full shrink-0" style={{ background: solid }} />
-                                <span className="text-[11px] text-muted-foreground truncate">{brand}</span>
-                              </div>
-                              <div className="flex items-center gap-2 shrink-0">
-                                <span className="text-xs font-bold tabular-nums text-foreground">{curr.toLocaleString()}</span>
+
+                    {/* visual comparison bars */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className="w-14 text-[10px] font-semibold text-muted-foreground shrink-0">Current</span>
+                        <div className="flex-1 h-2.5 rounded-full bg-muted overflow-hidden">
+                          <div className="h-full rounded-full transition-all duration-700"
+                            style={{ width: `${currPct}%`, background: color }} />
+                        </div>
+                        <span className="w-10 text-right text-[10px] font-bold tabular-nums text-foreground shrink-0">
+                          {grandCurr.toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="w-14 text-[10px] font-semibold text-muted-foreground shrink-0">Previous</span>
+                        <div className="flex-1 h-2.5 rounded-full bg-muted overflow-hidden">
+                          <div className="h-full rounded-full bg-slate-300 dark:bg-slate-600 transition-all duration-700"
+                            style={{ width: `${prevPct}%` }} />
+                        </div>
+                        <span className="w-10 text-right text-[10px] tabular-nums text-muted-foreground shrink-0">
+                          {grandPrev.toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* per-brand breakdown */}
+                    {activeBrands.length > 1 && (
+                      <div className="pt-3 border-t border-border space-y-2">
+                        {activeBrands.map(brand => {
+                          const curr  = results[brand].curr[key];
+                          const prev  = results[brand].prev[key];
+                          const share = grandCurr > 0 ? (curr / grandCurr) * 100 : 0;
+                          const { solid, bg } = BRAND_PALETTE[brand];
+                          return (
+                            <div key={brand} className="flex items-center gap-2">
+                              <span className="h-2 w-2 rounded-full shrink-0" style={{ background: solid }} />
+                              <span className="flex-1 text-[11px] text-muted-foreground truncate min-w-0">{brand}</span>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <span className="text-[11px] font-bold tabular-nums text-foreground">{curr.toLocaleString()}</span>
                                 <Delta curr={curr} prev={prev} size="sm" />
                               </div>
                             </div>
-                            <div className="h-1.5 w-full rounded-full overflow-hidden" style={{ background: bg }}>
-                              <div className="h-full rounded-full transition-all duration-700" style={{ width: `${share}%`, background: solid }} />
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
               );
             })}
           </div>
         );
 
-        /* ── Contact Trends: grouped bars (current=blue, previous=gray) ─────── */
+        // ── trend chart ────────────────────────────────────────────────────
         const totalCurr  = trendRows.reduce((s, r) => s + r.curr, 0);
         const totalPrev  = trendRows.reduce((s, r) => s + r.prev, 0);
         const trendDelta = totalPrev > 0 ? ((totalCurr - totalPrev) / totalPrev) * 100 : null;
-
-        // Show value labels when bar count is manageable
-        const showTrendLabels = trendRows.length <= 24;
-        // Max bar size scales with granularity
-        const maxTrendBar = granularity === "month" ? 64 : granularity === "week" ? 36 : 12;
-
-        // Best/worst week for annotation
-        const peakRow  = trendRows.reduce((a, b) => b.curr > a.curr ? b : a, trendRows[0]);
-        const peakIdx  = trendRows.indexOf(peakRow);
+        const showTrendLabels = trendRows.length <= 20;
+        const maxTrendBar = granularity === "month" ? 72 : granularity === "week" ? 40 : 12;
 
         const trendSection = trendRows.length > 0 && (
-          <div className="rounded-2xl border border-border bg-card overflow-hidden">
-
-            {/* ── header ── */}
+          <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-4 px-6 pt-5 pb-4 border-b border-border">
               <div>
-                <h3 className="text-sm font-bold text-foreground">Contact Trends</h3>
+                <h3 className="text-sm font-bold text-foreground">New Contacts Over Time</h3>
                 <p className="mt-0.5 text-[11px] text-muted-foreground">
-                  New contacts per {granularity} · {currLabel} vs {prevLabel}
+                  How many contacts were created per {granularity} — current vs previous period
                 </p>
               </div>
               <div className="flex items-center gap-3 flex-wrap">
-                {/* Summary pills */}
-                <div className="flex items-center gap-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/30 px-3 py-1.5">
-                  <span className="h-2.5 w-2.5 rounded-sm bg-[#3B82F6] shrink-0" />
-                  <span className="text-[11px] font-semibold text-blue-700 dark:text-blue-400 tabular-nums">
-                    {totalCurr.toLocaleString()}
-                  </span>
-                  <span className="text-[10px] text-blue-500/70 dark:text-blue-500">current</span>
+                {/* Totals */}
+                <div className="hidden sm:flex items-center gap-3">
+                  <div className="text-center">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Current total</p>
+                    <p className="text-lg font-black tabular-nums text-[#3B82F6]">{totalCurr.toLocaleString()}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Previous total</p>
+                    <p className="text-lg font-black tabular-nums text-slate-400">{totalPrev.toLocaleString()}</p>
+                  </div>
+                  {trendDelta !== null && (
+                    <span className={cn(
+                      "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold",
+                      trendDelta > 0.4  ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400" :
+                      trendDelta < -0.4 ? "bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400" :
+                      "bg-muted text-muted-foreground"
+                    )}>
+                      {trendDelta > 0.4 ? <TrendingUp className="h-3 w-3" /> : trendDelta < -0.4 ? <TrendingDown className="h-3 w-3" /> : <Minus className="h-3 w-3" />}
+                      {trendDelta > 0 ? "+" : ""}{trendDelta.toFixed(1)}%
+                    </span>
+                  )}
                 </div>
-                <div className="flex items-center gap-1.5 rounded-xl bg-muted/60 px-3 py-1.5">
-                  <span className="h-2.5 w-2.5 rounded-sm bg-[#94A3B8] shrink-0" />
-                  <span className="text-[11px] font-semibold text-muted-foreground tabular-nums">
-                    {totalPrev.toLocaleString()}
-                  </span>
-                  <span className="text-[10px] text-muted-foreground/60">previous</span>
-                </div>
-                {trendDelta !== null && (
-                  <span className={cn(
-                    "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold",
-                    trendDelta > 0.4  ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400" :
-                    trendDelta < -0.4 ? "bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400" :
-                    "bg-muted text-muted-foreground"
-                  )}>
-                    {trendDelta > 0.4 ? <TrendingUp className="h-3 w-3" /> : trendDelta < -0.4 ? <TrendingDown className="h-3 w-3" /> : <Minus className="h-3 w-3" />}
-                    {trendDelta > 0 ? "+" : ""}{trendDelta.toFixed(1)}%
-                  </span>
-                )}
+                <div className="h-5 w-px bg-border hidden sm:block" />
                 {/* Granularity toggle */}
-                <div className="flex items-center gap-0.5 rounded-lg border border-border p-0.5 bg-muted/30">
+                <div className="flex items-center gap-0.5 rounded-xl border border-border p-0.5 bg-muted/30">
                   {(["day", "week", "month"] as Granularity[]).map(g => (
                     <button key={g} onClick={() => setGranularity(g)}
                       className={cn(
-                        "rounded-md px-3 py-1 text-[11px] font-semibold cursor-pointer transition-all duration-150",
-                        granularity === g ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+                        "rounded-lg px-3 py-1.5 text-xs font-semibold cursor-pointer transition-all duration-150",
+                        granularity === g ? "bg-[#3B82F6] text-white shadow-sm" : "text-muted-foreground hover:text-foreground",
                       )}>
                       {g === "day" ? "Day" : g === "week" ? "Week" : "Month"}
                     </button>
@@ -519,236 +565,133 @@ function ComparisonContent() {
               </div>
             </div>
 
-            {/* ── chart ── */}
-            <div className="px-4 pt-6 pb-2">
-              <ResponsiveContainer width="100%" height={280}>
+            <div className="px-4 pt-6 pb-4">
+              <ResponsiveContainer width="100%" height={300}>
                 <BarChart
                   data={trendRows}
-                  margin={{ top: showTrendLabels ? 24 : 8, right: 16, bottom: 4, left: 0 }}
-                  barCategoryGap={trendRows.length > 20 ? "20%" : "32%"}
-                  barGap={3}
+                  margin={{ top: showTrendLabels ? 26 : 10, right: 16, bottom: 4, left: 0 }}
+                  barCategoryGap={trendRows.length > 20 ? "18%" : "30%"}
+                  barGap={4}
                 >
-                  <CartesianGrid strokeDasharray="2 4" vertical={false} stroke="hsl(var(--border))" strokeOpacity={0.7} />
-                  <XAxis
-                    dataKey="label"
-                    tick={axisStyle}
-                    tickLine={false}
-                    axisLine={false}
-                    interval={tickInterval}
-                    dy={4}
-                  />
-                  <YAxis
-                    tick={axisStyle}
-                    tickLine={false}
-                    axisLine={false}
-                    width={36}
+                  <CartesianGrid strokeDasharray="2 4" vertical={false} stroke="hsl(var(--border))" strokeOpacity={0.6} />
+                  <XAxis dataKey="label" tick={axisStyle} tickLine={false} axisLine={false} interval={tickInterval} dy={6} />
+                  <YAxis tick={axisStyle} tickLine={false} axisLine={false} width={36}
                     tickFormatter={v => v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(v)}
-                    allowDecimals={false}
-                  />
-                  <Tooltip
-                    content={<TrendTooltip />}
-                    cursor={{ fill: "hsl(var(--muted))", opacity: 0.4, radius: [4, 4, 0, 0] } as any}
-                  />
-                  {/* Peak reference line */}
-                  {peakRow.curr > 0 && (
-                    <ReferenceLine
-                      y={peakRow.curr}
-                      stroke="#3B82F6"
-                      strokeDasharray="3 4"
-                      strokeOpacity={0.2}
-                      strokeWidth={1}
-                    />
-                  )}
-                  {/* Previous period — neutral gray (clearly secondary) */}
-                  <Bar dataKey="prev" name="Previous" fill="#CBD5E1" radius={[3, 3, 0, 0]} maxBarSize={maxTrendBar}>
+                    allowDecimals={false} />
+                  <Tooltip content={<TrendTooltip />}
+                    cursor={{ fill: "hsl(var(--muted))", opacity: 0.35, radius: [4, 4, 0, 0] } as any} />
+                  {/* Previous period — slate gray */}
+                  <Bar dataKey="prev" name="Previous" fill="#CBD5E1" radius={[4, 4, 0, 0]} maxBarSize={maxTrendBar}>
                     {showTrendLabels && (
                       <LabelList dataKey="prev" position="top"
-                        style={{ fontSize: 10, fill: "hsl(var(--muted-foreground))", fontWeight: 500 }}
-                        formatter={(v: number) => v > 0 ? v : ""}
-                      />
+                        style={{ fontSize: 10, fill: "#94A3B8", fontWeight: 600 }}
+                        formatter={(v: number) => v > 0 ? v : ""} />
                     )}
                   </Bar>
-                  {/* Current period — blue (primary) */}
-                  <Bar dataKey="curr" name="Current" fill="#3B82F6" radius={[3, 3, 0, 0]} maxBarSize={maxTrendBar}>
+                  {/* Current period — blue */}
+                  <Bar dataKey="curr" name="Current" fill="#3B82F6" radius={[4, 4, 0, 0]} maxBarSize={maxTrendBar}>
                     {showTrendLabels && (
                       <LabelList dataKey="curr" position="top"
-                        style={{ fontSize: 11, fill: "#1D4ED8", fontWeight: 700 }}
-                        formatter={(v: number) => v > 0 ? v : ""}
-                      />
+                        style={{ fontSize: 11, fill: "#1E40AF", fontWeight: 800 }}
+                        formatter={(v: number) => v > 0 ? v : ""} />
                     )}
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
 
-            {/* ── legend footer ── */}
-            <div className="px-6 pb-4 pt-1 flex items-center gap-5 text-[11px] text-muted-foreground">
-              <span className="flex items-center gap-1.5">
+            <div className="px-6 pb-5 flex items-center gap-6 text-xs text-muted-foreground border-t border-border pt-3">
+              <span className="flex items-center gap-2">
                 <span className="h-3 w-3 rounded-sm bg-[#3B82F6] shrink-0" />
                 <span className="font-semibold text-foreground">Current</span> {currLabel}
               </span>
-              <span className="flex items-center gap-1.5">
-                <span className="h-3 w-3 rounded-sm bg-[#CBD5E1] shrink-0" />
+              <span className="flex items-center gap-2">
+                <span className="h-3 w-3 rounded-sm bg-slate-300 shrink-0" />
                 <span className="font-semibold text-foreground">Previous</span> {prevLabel}
               </span>
             </div>
           </div>
         );
 
-        /* ── Grouped bar charts ─────────────────────────────────────────────── */
-        const buildRows = (metricKey: keyof PeriodData) =>
-          activeBrands.map(b => ({
-            name:  BRAND_SHORT[b],
-            curr:  results[b].curr[metricKey],
-            prev:  results[b].prev[metricKey],
-            solid: BRAND_PALETTE[b].solid,
-            faded: BRAND_PALETTE[b].faded,
-          }));
-
-        const barCharts = (
-          <div className="rounded-2xl border border-border bg-card overflow-hidden">
-            <div className="flex flex-wrap items-center justify-between gap-4 px-6 pt-5 pb-4 border-b border-border">
-              <div>
-                <h3 className="text-sm font-bold text-foreground">Period Comparison</h3>
-                <p className="mt-0.5 text-[11px] text-muted-foreground">Current (solid) vs previous (faded) — hover for detail</p>
-              </div>
-              <div className="flex items-center gap-5 text-[11px] text-muted-foreground">
-                <span className="flex items-center gap-2">
-                  <span className="h-3 w-3 rounded-sm bg-foreground/25 shrink-0" />
-                  <span className="font-semibold text-foreground">Current</span> {currLabel}
-                </span>
-                <span className="flex items-center gap-2">
-                  <span className="h-3 w-3 rounded-sm border border-dashed border-muted-foreground/50 bg-muted-foreground/15 shrink-0" />
-                  <span className="font-semibold text-foreground">Previous</span> {prevLabel}
-                </span>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 divide-y divide-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
-              {METRICS.map(({ key, label, Icon, color }) => {
-                const rows   = buildRows(key);
-                const maxVal = Math.max(...rows.flatMap(r => [r.curr, r.prev]), 1);
-                const prevAvg = rows.length > 0 ? Math.round(rows.reduce((s, r) => s + r.prev, 0) / rows.length) : 0;
-                return (
-                  <div key={key} className="px-5 pt-5 pb-6">
-                    <div className="flex items-center gap-2 mb-5">
-                      <div className="flex h-7 w-7 items-center justify-center rounded-lg shrink-0" style={{ background: `${color}18` }}>
-                        <Icon className="h-3.5 w-3.5" style={{ color }} />
-                      </div>
-                      <div>
-                        <p className="text-[11px] font-bold text-foreground leading-none">{label}</p>
-                        <p className="mt-0.5 text-[10px] text-muted-foreground">
-                          {rows.reduce((s, r) => s + r.curr, 0).toLocaleString()} total
-                        </p>
-                      </div>
-                    </div>
-                    <ResponsiveContainer width="100%" height={240}>
-                      <BarChart data={rows} margin={{ top: 22, right: 6, bottom: 0, left: -8 }}
-                        barGap={4} barCategoryGap={activeBrands.length === 1 ? "60%" : "28%"}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                        <XAxis dataKey="name" tick={axisStyle} tickLine={false} axisLine={false} interval={0} />
-                        <YAxis tick={axisStyle} tickLine={false} axisLine={false} width={38}
-                          tickFormatter={v => v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(v)}
-                          domain={[0, Math.ceil(maxVal * 1.2)]} />
-                        <Tooltip
-                          content={<BarTooltip currLabel={currLabel} prevLabel={prevLabel} />}
-                          cursor={{ fill: "hsl(var(--muted))", opacity: 0.5, radius: 4 } as any}
-                        />
-                        {prevAvg > 0 && (
-                          <ReferenceLine y={prevAvg} stroke="hsl(var(--muted-foreground))"
-                            strokeDasharray="4 3" strokeOpacity={0.35} />
-                        )}
-                        <Bar dataKey="curr" name="Current" radius={[5, 5, 0, 0]} maxBarSize={56}>
-                          {rows.map((r, i) => <Cell key={i} fill={r.solid} />)}
-                          <LabelList dataKey="curr" position="top"
-                            style={{ fontSize: 11, fontWeight: 700, fill: "hsl(var(--foreground))" }}
-                            formatter={(v: number) => v > 0 ? v.toLocaleString() : ""} />
-                        </Bar>
-                        <Bar dataKey="prev" name="Previous" radius={[5, 5, 0, 0]} maxBarSize={56}>
-                          {rows.map((r, i) => <Cell key={i} fill={r.faded} />)}
-                          <LabelList dataKey="prev" position="top"
-                            style={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
-                            formatter={(v: number) => v > 0 ? v.toLocaleString() : ""} />
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
+        // ── brand scorecards ──────────────────────────────────────────────
+        const brandScorecard = activeBrands.length > 0 && (
+          <div className="space-y-3">
+            <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground px-1">Brand Breakdown</p>
+            {activeBrands.map(brand => {
+              const { solid, faded, bg } = BRAND_PALETTE[brand];
+              return (
+                <div key={brand} className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+                  {/* brand header */}
+                  <div className="flex items-center gap-3 px-5 py-3.5 border-b border-border"
+                    style={{ background: bg }}>
+                    <span className="h-3.5 w-3.5 rounded-full shrink-0 shadow-sm" style={{ background: solid }} />
+                    <span className="text-sm font-bold text-foreground">{brand}</span>
+                    <span className="ml-auto text-[11px] text-muted-foreground">{currLabel}</span>
                   </div>
-                );
-              })}
-            </div>
-          </div>
-        );
-
-        /* ── Detail table ──────────────────────────────────────────────────── */
-        const detailTable = (
-          <div className="rounded-2xl border border-border bg-card overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-border bg-muted/20">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Detailed Breakdown</p>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="border-b border-border">
-                    <th className="px-4 py-3 text-left text-[11px] font-semibold text-muted-foreground w-36">Metric</th>
-                    {activeBrands.map(brand => (
-                      <th key={brand} colSpan={2} className="px-4 py-3 text-center text-[11px] font-semibold text-foreground border-l border-border">
-                        <div className="flex items-center justify-center gap-1.5">
-                          <span className="h-2 w-2 rounded-full shrink-0" style={{ background: BRAND_PALETTE[brand].solid }} />
-                          {brand}
+                  {/* metrics row */}
+                  <div className="grid grid-cols-3 divide-x divide-border">
+                    {METRICS.map(({ key, label, Icon, color }) => {
+                      const curr = results[brand].curr[key];
+                      const prev = results[brand].prev[key];
+                      const d2   = prev > 0 ? ((curr - prev) / prev) * 100 : null;
+                      const up2  = d2 !== null && d2 > 0.4;
+                      const dn2  = d2 !== null && d2 < -0.4;
+                      const maxV = Math.max(curr, prev, 1);
+                      return (
+                        <div key={key} className="px-5 py-4 space-y-3">
+                          <div className="flex items-center gap-2">
+                            <div className="flex h-7 w-7 items-center justify-center rounded-lg shrink-0"
+                              style={{ background: `${color}15` }}>
+                              <Icon className="h-3.5 w-3.5" style={{ color }} />
+                            </div>
+                            <p className="text-[11px] font-semibold text-muted-foreground leading-none">{label}</p>
+                          </div>
+                          <div className="flex items-baseline gap-2">
+                            <span className="text-3xl font-black tabular-nums text-foreground leading-none">
+                              {curr.toLocaleString()}
+                            </span>
+                            {d2 !== null && (
+                              <span className={cn(
+                                "inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold",
+                                up2 ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400" :
+                                dn2 ? "bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400" :
+                                      "bg-muted text-muted-foreground",
+                              )}>
+                                {up2 ? <TrendingUp className="h-2.5 w-2.5" /> : dn2 ? <TrendingDown className="h-2.5 w-2.5" /> : <Minus className="h-2.5 w-2.5" />}
+                                {up2 ? "+" : ""}{d2.toFixed(1)}%
+                              </span>
+                            )}
+                          </div>
+                          {/* mini comparison bars */}
+                          <div className="space-y-1">
+                            <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                              <div className="h-full rounded-full transition-all duration-700"
+                                style={{ width: `${(curr / maxV) * 100}%`, background: color }} />
+                            </div>
+                            <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                              <div className="h-full rounded-full bg-slate-300 dark:bg-slate-600 transition-all duration-700"
+                                style={{ width: `${(prev / maxV) * 100}%` }} />
+                            </div>
+                            <p className="text-[10px] text-muted-foreground tabular-nums">
+                              prev&nbsp;<span className="font-semibold">{prev.toLocaleString()}</span>
+                            </p>
+                          </div>
                         </div>
-                      </th>
-                    ))}
-                  </tr>
-                  <tr className="border-b border-border bg-muted/10">
-                    <th className="px-4 py-2" />
-                    {activeBrands.map(brand => (
-                      <>
-                        <th key={`${brand}-c`} className="px-4 py-2 text-center text-[10px] font-semibold text-foreground border-l border-border">Current</th>
-                        <th key={`${brand}-p`} className="px-4 py-2 text-center text-[10px] font-medium text-muted-foreground">Previous</th>
-                      </>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {METRICS.map(({ key, label, color }, ri) => (
-                    <tr key={key} className={cn("border-b border-border last:border-0 transition-colors hover:bg-muted/20", ri % 2 === 1 && "bg-muted/5")}>
-                      <td className="px-4 py-3.5">
-                        <div className="flex items-center gap-2">
-                          <span className="h-2 w-2 rounded-full shrink-0" style={{ background: color }} />
-                          <span className="font-semibold text-foreground">{label}</span>
-                        </div>
-                      </td>
-                      {activeBrands.map(brand => {
-                        const r    = results[brand];
-                        const curr = r.curr[key];
-                        const prev = r.prev[key];
-                        return (
-                          <>
-                            <td key={`${brand}-c`} className="px-4 py-3.5 text-center border-l border-border">
-                              <div className="flex flex-col items-center gap-1">
-                                <span className="font-bold tabular-nums text-foreground text-sm">{curr.toLocaleString()}</span>
-                                <Delta curr={curr} prev={prev} size="sm" />
-                              </div>
-                            </td>
-                            <td key={`${brand}-p`} className="px-4 py-3.5 text-center">
-                              <span className="tabular-nums text-muted-foreground">{prev.toLocaleString()}</span>
-                            </td>
-                          </>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         );
 
         return (
-          <div className="space-y-4">
+          <div className="space-y-5">
+            {periodBanner}
             {kpiSection}
             {trendSection}
-            {barCharts}
-            {detailTable}
+            {brandScorecard}
           </div>
         );
       })()}
