@@ -73,9 +73,15 @@ function getPeriods(days: number) {
   };
 }
 
+type BrandSeriesMap = Partial<Record<SecondaryBrand, TimeSeries>>;
+
 async function fetchAllBrandsForPeriod(
   brands: SecondaryBrand[], from: Date, to: Date,
-): Promise<{ periodData: Record<SecondaryBrand, PeriodData>; timeSeries: TimeSeries }> {
+): Promise<{
+  periodData:  Record<SecondaryBrand, PeriodData>;
+  timeSeries:  TimeSeries;       // aggregate across all brands
+  brandSeries: BrandSeriesMap;   // per-brand series (for individual PDF pages)
+}> {
   const data = await callFunction("hubspot-contacts", {
     brandNames: brands,
     startDate: dateStr(from),
@@ -83,8 +89,9 @@ async function fetchAllBrandsForPeriod(
   });
   if (data?.error) throw new Error(data.error);
 
-  const periodData = {} as Record<SecondaryBrand, PeriodData>;
-  const timeSeries: TimeSeries = {};
+  const periodData  = {} as Record<SecondaryBrand, PeriodData>;
+  const timeSeries: TimeSeries    = {};
+  const brandSeries: BrandSeriesMap = {};
 
   for (const brand of brands) {
     const s = data?.brandData?.[brand];
@@ -93,13 +100,13 @@ async function fetchAllBrandsForPeriod(
       dealerAssigned:   s?.dealerAssignedTotal   ?? 0,
       dealerUnassigned: s?.dealerUnassignedTotal ?? 0,
     };
-    // Combine daily series across all brands into one aggregate
     const ts: TimeSeries = data?.brandTimeSeries?.[brand] ?? {};
+    brandSeries[brand] = ts;                       // store per-brand
     for (const [date, count] of Object.entries(ts)) {
       timeSeries[date] = (timeSeries[date] || 0) + (count as number);
     }
   }
-  return { periodData, timeSeries };
+  return { periodData, timeSeries, brandSeries };
 }
 
 /** Build chart rows: align current + previous by day-offset so they overlay */
@@ -161,9 +168,11 @@ function downloadPDF(opts: {
   trendRows: TrendRow[]; granularity: Granularity;
   currSeries: TimeSeries; prevSeries: TimeSeries;
   currStart: Date; prevStart: Date;
+  currBrandSeries: BrandSeriesMap; prevBrandSeries: BrandSeriesMap;
 }) {
-  const { currLabel, prevLabel, activeBrands, results, granularity,
-          currSeries, prevSeries, currStart, prevStart } = opts;
+  const { currLabel, prevLabel, activeBrands, results,
+          currSeries, prevSeries, currStart, prevStart,
+          currBrandSeries, prevBrandSeries } = opts;
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const PW = 210;
   const ML = 13;
@@ -468,10 +477,186 @@ function downloadPDF(opts: {
     "American Bath Group  |  CRM Lead Comparison Report  |  Confidential",
     ML + 2, FY + 6.5,
   );
+  // Total pages: page 1 (totals) + one page per brand (only when >1 brand selected)
+  const totalPages = activeBrands.length > 1 ? activeBrands.length + 1 : 1;
+
   doc.setFont("helvetica", "bold");
   doc.setFontSize(7);
   doc.setTextColor(255, 255, 255);
-  doc.text("Page 1 of 1", PW - MR, FY + 6.5, { align: "right" });
+  doc.text(`Page 1 of ${totalPages}`, PW - MR, FY + 6.5, { align: "right" });
+
+  // ══ PER-BRAND PAGES (page 2, 3, … — only when multiple brands selected) ═════
+  if (activeBrands.length > 1) {
+
+    // Helpers reused across brand pages
+    const drawBrandHeader = (brand: SecondaryBrand) => {
+      doc.setFillColor(...rgb(NAVY));
+      doc.rect(0, 0, PW, 22, "F");
+      // Brand-colored left sidebar instead of generic blue
+      const bColor = BRAND_PALETTE[brand].solid;
+      doc.setFillColor(...rgb(bColor));
+      doc.rect(0, 0, 5, 22, "F");
+      doc.setFillColor(255, 196, 0);
+      doc.rect(0, 21.4, PW, 0.6, "F");
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(6.5);
+      doc.setTextColor(148, 173, 209);
+      doc.text("AMERICAN BATH GROUP  |  BRAND PERFORMANCE HUB", ML + 2, 6);
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(13);
+      doc.setTextColor(255, 255, 255);
+      doc.text("CRM Lead Comparison Report", ML + 2, 15.5);
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(6.5);
+      doc.setTextColor(148, 173, 209);
+      doc.text("GENERATED", PW - MR, 6.5, { align: "right" });
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7.5);
+      doc.setTextColor(255, 255, 255);
+      doc.text(format(new Date(), "MMM d, yyyy  |  h:mm a"), PW - MR, 12, { align: "right" });
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7);
+      doc.setTextColor(148, 173, 209);
+      doc.text(`${opts.selectedDays}-day comparison`, PW - MR, 17.5, { align: "right" });
+    };
+
+    const drawBrandPeriodStrip = (brand: SecondaryBrand, y: number) => {
+      const bColor = BRAND_PALETTE[brand].solid;
+      doc.setFillColor(...rgb(WHITE));
+      doc.rect(ML, y, CW, 12, "F");
+      doc.setDrawColor(...rgb(BORDER));
+      doc.setLineWidth(0.3);
+      doc.rect(ML, y, CW, 12, "S");
+
+      const c1 = ML + 5; const c2 = ML + 66; const c3 = ML + 128;
+
+      doc.setFont("helvetica", "bold"); doc.setFontSize(6); doc.setTextColor(...rgb(GRAY));
+      doc.text("CURRENT PERIOD", c1, y + 4.5);
+      doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(...rgb(DARK));
+      doc.text(currLabel, c1, y + 9.5);
+
+      doc.setDrawColor(...rgb(BORDER)); doc.setLineWidth(0.35);
+      doc.line(c2 - 3, y + 2, c2 - 3, y + 10);
+
+      doc.setFont("helvetica", "bold"); doc.setFontSize(6); doc.setTextColor(...rgb(GRAY));
+      doc.text("PREVIOUS PERIOD", c2, y + 4.5);
+      doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(...rgb(DARK));
+      doc.text(prevLabel, c2, y + 9.5);
+
+      doc.line(c3 - 3, y + 2, c3 - 3, y + 10);
+
+      doc.setFont("helvetica", "bold"); doc.setFontSize(6); doc.setTextColor(...rgb(GRAY));
+      doc.text("BRAND", c3, y + 4.5);
+      doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(...rgb(bColor));
+      doc.text(brand, c3, y + 9.5);
+
+      return y + 16;
+    };
+
+    const drawBrandFooter = (brand: SecondaryBrand, pageNum: number) => {
+      const bColor = BRAND_PALETTE[brand].solid;
+      doc.setFillColor(...rgb(NAVY));
+      doc.rect(0, FY, PW, 10, "F");
+      doc.setFillColor(...rgb(bColor));
+      doc.rect(0, FY, 5, 10, "F");
+      doc.setFont("helvetica", "normal"); doc.setFontSize(6.5); doc.setTextColor(148, 173, 209);
+      doc.text(`American Bath Group  |  ${brand}  |  Confidential`, ML + 2, FY + 6.5);
+      doc.setFont("helvetica", "bold"); doc.setFontSize(7); doc.setTextColor(255, 255, 255);
+      doc.text(`Page ${pageNum} of ${totalPages}`, PW - MR, FY + 6.5, { align: "right" });
+    };
+
+    activeBrands.forEach((brand, idx) => {
+      doc.addPage();
+      const pageNum = idx + 2;
+
+      // ── Header
+      drawBrandHeader(brand);
+      let by = drawBrandPeriodStrip(brand, 26);
+
+      // ── Key Metrics for this brand
+      by = section("Key Metrics", by);
+
+      METRICS.forEach(({ key, label }, i) => {
+        const gc = results[brand].curr[key];
+        const gp = results[brand].prev[key];
+        const d  = gp > 0 ? ((gc - gp) / gp) * 100 : null;
+        const bx = ML + i * (cardW + cardGap);
+        const mc = MCOL[key] ?? ACCENT;
+
+        doc.setFillColor(...rgb(WHITE));
+        doc.rect(bx, by, cardW, cardH, "F");
+        doc.setDrawColor(...rgb(BORDER)); doc.setLineWidth(0.3);
+        doc.rect(bx, by, cardW, cardH, "S");
+        doc.setFillColor(...rgb(mc));
+        doc.rect(bx, by, 3.5, cardH, "F");
+
+        doc.setFont("helvetica", "bold"); doc.setFontSize(6.5); doc.setTextColor(...rgb(GRAY));
+        doc.text(label.toUpperCase(), bx + 7, by + 6.5);
+
+        doc.setFont("helvetica", "bold"); doc.setFontSize(20); doc.setTextColor(...rgb(DARK));
+        doc.text(gc.toLocaleString(), bx + 7, by + 18);
+
+        if (d !== null) {
+          doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(...dColor(d));
+          doc.text(dLabel(d), bx + cardW - 5, by + 18, { align: "right" });
+        }
+
+        doc.setFont("helvetica", "normal"); doc.setFontSize(6.5); doc.setTextColor(...rgb(GRAY));
+        doc.text(`Compare: ${gp.toLocaleString()}`, bx + 7, by + 23.5);
+      });
+
+      by += cardH + 8;
+
+      // ── Lead Trend for this brand
+      const bCurr = currBrandSeries[brand] ?? {};
+      const bPrev = prevBrandSeries[brand] ?? {};
+      const brandTrendRows = buildTrendRows(bCurr, bPrev, currStart, prevStart, opts.selectedDays, pdfGran);
+
+      if (brandTrendRows.length > 0) {
+        by = section(`Lead Trend  |  By ${pdfGran.charAt(0).toUpperCase() + pdfGran.slice(1)}`, by);
+
+        const brandTrendBody = brandTrendRows.map(({ label, prevLabel: pLbl, curr, prev }) => {
+          const d = prev > 0 ? ((curr - prev) / prev) * 100 : null;
+          return [label, curr.toLocaleString(), prev.toLocaleString(),
+                  d !== null ? dLabel(d) : "--", pLbl];
+        });
+
+        autoTable(doc, {
+          ...AT,
+          startY: by,
+          head: [["Period (Current)", "Leads", "Leads (Prev)", "Change", "Period (Prev)"]],
+          body: brandTrendBody,
+          styles: { ...AT.styles, fontSize: 7, cellPadding: { top: 2.2, bottom: 2.2, left: 4, right: 4 } },
+          headStyles: { ...AT.headStyles, cellPadding: { top: 3, bottom: 3, left: 4, right: 4 } },
+          columnStyles: {
+            0: { cellWidth: 42, fontStyle: "bold" },
+            1: { cellWidth: 26, halign: "center" as const, fontStyle: "bold" as const,
+                 textColor: rgb(BRAND_PALETTE[brand].solid) as [number,number,number] },
+            2: { cellWidth: 26, halign: "center" as const, textColor: rgb(GRAY) as [number,number,number] },
+            3: { cellWidth: 28, halign: "center" as const, fontStyle: "bold" as const },
+            4: { cellWidth: 60, textColor: rgb(GRAY) as [number,number,number] },
+          },
+          didParseCell: (data) => {
+            if (data.section === "body" && data.column.index === 3) {
+              const v = String(data.cell.raw ?? "");
+              if (v.startsWith("+")) data.cell.styles.textColor = rgb(GREEN) as [number,number,number];
+              else if (v.startsWith("-")) data.cell.styles.textColor = rgb(RED) as [number,number,number];
+            }
+            // Brand-colored header row
+            if (data.section === "head") {
+              data.cell.styles.fillColor = HEX2RGB(BRAND_PALETTE[brand].solid) as [number,number,number];
+            }
+          },
+        });
+      }
+
+      // ── Footer
+      drawBrandFooter(brand, pageNum);
+    });
+  }
 
   doc.save(`ABG-CRM-Lead-Report-${format(new Date(), "yyyy-MM-dd")}.pdf`);
 }
@@ -590,9 +775,11 @@ function ComparisonContent() {
   const [results,        setResults]        = useState<BrandResults | null>(null);
   const [currSeries,     setCurrSeries]     = useState<TimeSeries | null>(null);
   const [prevSeries,     setPrevSeries]     = useState<TimeSeries | null>(null);
-  const [granularity,    setGranularity]    = useState<Granularity>("week");
-  const [loading,        setLoading]        = useState(false);
-  const [error,          setError]          = useState<string | null>(null);
+  const [granularity,      setGranularity]      = useState<Granularity>("week");
+  const [loading,          setLoading]          = useState(false);
+  const [error,            setError]            = useState<string | null>(null);
+  const [currBrandSeries,  setCurrBrandSeries]  = useState<BrandSeriesMap>({});
+  const [prevBrandSeries,  setPrevBrandSeries]  = useState<BrandSeriesMap>({});
   const reqRef = useRef(0);
 
   function toggleBrand(b: SecondaryBrand) {
@@ -614,6 +801,8 @@ function ComparisonContent() {
       setResults(map);
       setCurrSeries(cRes.timeSeries);
       setPrevSeries(pRes.timeSeries);
+      setCurrBrandSeries(cRes.brandSeries);
+      setPrevBrandSeries(pRes.brandSeries);
       setLoading(false);
     }).catch(e => {
       if (reqRef.current !== id) return;
@@ -701,6 +890,8 @@ function ComparisonContent() {
                 prevSeries: prevSeries!,
                 currStart: periods!.currStart,
                 prevStart: periods!.prevStart,
+                currBrandSeries,
+                prevBrandSeries,
               });
             }}
             className="flex items-center gap-2 rounded-xl border border-border bg-background px-4 py-2 text-xs font-semibold text-foreground cursor-pointer hover:bg-muted transition-all duration-150 shadow-sm">
