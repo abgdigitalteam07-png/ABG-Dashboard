@@ -7,7 +7,6 @@ import { cn } from "@/lib/utils";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell, LabelList, ReferenceLine,
-  ComposedChart, Line,
 } from "recharts";
 
 // ─── access control ───────────────────────────────────────────────────────────
@@ -258,7 +257,7 @@ function ComparisonContent() {
   const [results,        setResults]        = useState<BrandResults | null>(null);
   const [currSeries,     setCurrSeries]     = useState<TimeSeries | null>(null);
   const [prevSeries,     setPrevSeries]     = useState<TimeSeries | null>(null);
-  const [granularity,    setGranularity]    = useState<Granularity>("day");
+  const [granularity,    setGranularity]    = useState<Granularity>("week");
   const [loading,        setLoading]        = useState(false);
   const [error,          setError]          = useState<string | null>(null);
   const reqRef = useRef(0);
@@ -453,79 +452,65 @@ function ComparisonContent() {
           </div>
         );
 
-        /* ── Trend chart (bars = current, dashed line = previous) ───────────── */
-        // Summary stats for the trend header
-        const totalCurr = trendRows.reduce((s, r) => s + r.curr, 0);
-        const totalPrev = trendRows.reduce((s, r) => s + r.prev, 0);
+        /* ── Contact Trends: grouped bars (current=blue, previous=gray) ─────── */
+        const totalCurr  = trendRows.reduce((s, r) => s + r.curr, 0);
+        const totalPrev  = trendRows.reduce((s, r) => s + r.prev, 0);
         const trendDelta = totalPrev > 0 ? ((totalCurr - totalPrev) / totalPrev) * 100 : null;
 
-        // For "day" with many points, add value labels only when few bars
-        const showBarLabels = granularity !== "day" && trendRows.length <= 16;
+        // Show value labels when bar count is manageable
+        const showTrendLabels = trendRows.length <= 24;
+        // Max bar size scales with granularity
+        const maxTrendBar = granularity === "month" ? 64 : granularity === "week" ? 36 : 12;
 
-        // Prev avg line
-        const prevAvgTrend = trendRows.length > 0
-          ? Math.round(trendRows.reduce((s, r) => s + r.prev, 0) / trendRows.length)
-          : 0;
+        // Best/worst week for annotation
+        const peakRow  = trendRows.reduce((a, b) => b.curr > a.curr ? b : a, trendRows[0]);
+        const peakIdx  = trendRows.indexOf(peakRow);
 
         const trendSection = trendRows.length > 0 && (
           <div className="rounded-2xl border border-border bg-card overflow-hidden">
-            {/* header */}
+
+            {/* ── header ── */}
             <div className="flex flex-wrap items-center justify-between gap-4 px-6 pt-5 pb-4 border-b border-border">
-              <div className="flex items-center gap-4">
-                <div>
-                  <h3 className="text-sm font-bold text-foreground">Contact Trends</h3>
-                  <p className="mt-0.5 text-[11px] text-muted-foreground">
-                    New contacts created per {granularity} — bars = current · dashed line = previous
-                  </p>
-                </div>
-                {/* inline summary */}
-                <div className="hidden sm:flex items-center gap-3 pl-4 border-l border-border">
-                  <div className="text-center">
-                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Total (curr)</p>
-                    <p className="text-base font-black tabular-nums text-foreground">{totalCurr.toLocaleString()}</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Total (prev)</p>
-                    <p className="text-base font-black tabular-nums text-muted-foreground">{totalPrev.toLocaleString()}</p>
-                  </div>
-                  {trendDelta !== null && (
-                    <span className={cn(
-                      "inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[11px] font-bold",
-                      trendDelta > 0.4  ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400" :
-                      trendDelta < -0.4 ? "bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400" :
-                      "bg-muted text-muted-foreground"
-                    )}>
-                      {trendDelta > 0.4 ? <TrendingUp className="h-3 w-3" /> : trendDelta < -0.4 ? <TrendingDown className="h-3 w-3" /> : <Minus className="h-3 w-3" />}
-                      {Math.abs(trendDelta).toFixed(1)}%
-                    </span>
-                  )}
-                </div>
+              <div>
+                <h3 className="text-sm font-bold text-foreground">Contact Trends</h3>
+                <p className="mt-0.5 text-[11px] text-muted-foreground">
+                  New contacts per {granularity} · {currLabel} vs {prevLabel}
+                </p>
               </div>
-              <div className="flex items-center gap-4">
-                {/* Legend */}
-                <div className="flex items-center gap-4 text-[11px] text-muted-foreground">
-                  <span className="flex items-center gap-1.5">
-                    <span className="inline-block h-3 w-3 rounded-sm bg-[#3B82F6]" />
-                    <span className="font-semibold text-foreground">Current</span>
+              <div className="flex items-center gap-3 flex-wrap">
+                {/* Summary pills */}
+                <div className="flex items-center gap-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/30 px-3 py-1.5">
+                  <span className="h-2.5 w-2.5 rounded-sm bg-[#3B82F6] shrink-0" />
+                  <span className="text-[11px] font-semibold text-blue-700 dark:text-blue-400 tabular-nums">
+                    {totalCurr.toLocaleString()}
                   </span>
-                  <span className="flex items-center gap-1.5">
-                    <svg width="18" height="10" className="shrink-0">
-                      <line x1="0" y1="5" x2="18" y2="5" stroke="#F97316" strokeWidth="2" strokeDasharray="4 2" />
-                    </svg>
-                    <span className="font-semibold text-foreground">Previous</span>
-                  </span>
+                  <span className="text-[10px] text-blue-500/70 dark:text-blue-500">current</span>
                 </div>
+                <div className="flex items-center gap-1.5 rounded-xl bg-muted/60 px-3 py-1.5">
+                  <span className="h-2.5 w-2.5 rounded-sm bg-[#94A3B8] shrink-0" />
+                  <span className="text-[11px] font-semibold text-muted-foreground tabular-nums">
+                    {totalPrev.toLocaleString()}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground/60">previous</span>
+                </div>
+                {trendDelta !== null && (
+                  <span className={cn(
+                    "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold",
+                    trendDelta > 0.4  ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400" :
+                    trendDelta < -0.4 ? "bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400" :
+                    "bg-muted text-muted-foreground"
+                  )}>
+                    {trendDelta > 0.4 ? <TrendingUp className="h-3 w-3" /> : trendDelta < -0.4 ? <TrendingDown className="h-3 w-3" /> : <Minus className="h-3 w-3" />}
+                    {trendDelta > 0 ? "+" : ""}{trendDelta.toFixed(1)}%
+                  </span>
+                )}
                 {/* Granularity toggle */}
                 <div className="flex items-center gap-0.5 rounded-lg border border-border p-0.5 bg-muted/30">
                   {(["day", "week", "month"] as Granularity[]).map(g => (
-                    <button
-                      key={g}
-                      onClick={() => setGranularity(g)}
+                    <button key={g} onClick={() => setGranularity(g)}
                       className={cn(
                         "rounded-md px-3 py-1 text-[11px] font-semibold cursor-pointer transition-all duration-150",
-                        granularity === g
-                          ? "bg-background text-foreground shadow-sm"
-                          : "text-muted-foreground hover:text-foreground",
+                        granularity === g ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
                       )}>
                       {g === "day" ? "Day" : g === "week" ? "Week" : "Month"}
                     </button>
@@ -534,17 +519,23 @@ function ComparisonContent() {
               </div>
             </div>
 
-            {/* chart */}
-            <div className="px-4 pt-5 pb-3">
-              <ResponsiveContainer width="100%" height={260}>
-                <ComposedChart data={trendRows} margin={{ top: showBarLabels ? 22 : 10, right: 16, bottom: 0, left: 0 }} barGap={2}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+            {/* ── chart ── */}
+            <div className="px-4 pt-6 pb-2">
+              <ResponsiveContainer width="100%" height={280}>
+                <BarChart
+                  data={trendRows}
+                  margin={{ top: showTrendLabels ? 24 : 8, right: 16, bottom: 4, left: 0 }}
+                  barCategoryGap={trendRows.length > 20 ? "20%" : "32%"}
+                  barGap={3}
+                >
+                  <CartesianGrid strokeDasharray="2 4" vertical={false} stroke="hsl(var(--border))" strokeOpacity={0.7} />
                   <XAxis
                     dataKey="label"
                     tick={axisStyle}
                     tickLine={false}
                     axisLine={false}
                     interval={tickInterval}
+                    dy={4}
                   />
                   <YAxis
                     tick={axisStyle}
@@ -556,61 +547,50 @@ function ComparisonContent() {
                   />
                   <Tooltip
                     content={<TrendTooltip />}
-                    cursor={{ fill: "hsl(var(--muted))", opacity: 0.45, radius: 4 } as any}
+                    cursor={{ fill: "hsl(var(--muted))", opacity: 0.4, radius: [4, 4, 0, 0] } as any}
                   />
-                  {/* Prev average reference */}
-                  {prevAvgTrend > 0 && (
+                  {/* Peak reference line */}
+                  {peakRow.curr > 0 && (
                     <ReferenceLine
-                      y={prevAvgTrend}
-                      stroke="#F97316"
+                      y={peakRow.curr}
+                      stroke="#3B82F6"
                       strokeDasharray="3 4"
-                      strokeOpacity={0.3}
+                      strokeOpacity={0.2}
                       strokeWidth={1}
                     />
                   )}
-                  {/* Current period: bars */}
-                  <Bar
-                    dataKey="curr"
-                    name="Current"
-                    fill="#3B82F6"
-                    radius={[4, 4, 0, 0]}
-                    maxBarSize={granularity === "month" ? 72 : granularity === "week" ? 40 : 18}
-                    opacity={0.9}
-                  >
-                    {showBarLabels && (
-                      <LabelList
-                        dataKey="curr"
-                        position="top"
-                        style={{ fontSize: 11, fontWeight: 700, fill: "hsl(var(--foreground))" }}
-                        formatter={(v: number) => v > 0 ? v.toLocaleString() : ""}
+                  {/* Previous period — neutral gray (clearly secondary) */}
+                  <Bar dataKey="prev" name="Previous" fill="#CBD5E1" radius={[3, 3, 0, 0]} maxBarSize={maxTrendBar}>
+                    {showTrendLabels && (
+                      <LabelList dataKey="prev" position="top"
+                        style={{ fontSize: 10, fill: "hsl(var(--muted-foreground))", fontWeight: 500 }}
+                        formatter={(v: number) => v > 0 ? v : ""}
                       />
                     )}
                   </Bar>
-                  {/* Previous period: dashed line with dots */}
-                  <Line
-                    type="linear"
-                    dataKey="prev"
-                    name="Previous"
-                    stroke="#F97316"
-                    strokeWidth={2}
-                    strokeDasharray="5 3"
-                    dot={granularity !== "day" ? { r: 4, fill: "#F97316", stroke: "#fff", strokeWidth: 1.5 } : false}
-                    activeDot={{ r: 5, fill: "#F97316", stroke: "#fff", strokeWidth: 1.5 }}
-                  />
-                </ComposedChart>
+                  {/* Current period — blue (primary) */}
+                  <Bar dataKey="curr" name="Current" fill="#3B82F6" radius={[3, 3, 0, 0]} maxBarSize={maxTrendBar}>
+                    {showTrendLabels && (
+                      <LabelList dataKey="curr" position="top"
+                        style={{ fontSize: 11, fill: "#1D4ED8", fontWeight: 700 }}
+                        formatter={(v: number) => v > 0 ? v : ""}
+                      />
+                    )}
+                  </Bar>
+                </BarChart>
               </ResponsiveContainer>
             </div>
 
-            {/* footer hint */}
-            <div className="px-6 pb-4 flex items-center gap-2 text-[10px] text-muted-foreground/60">
-              <svg width="14" height="8" className="shrink-0">
-                <rect width="14" height="8" rx="2" fill="#3B82F6" opacity="0.7" />
-              </svg>
-              Bars show new contacts in current period ·
-              <svg width="18" height="8" className="shrink-0 mx-0.5">
-                <line x1="0" y1="4" x2="18" y2="4" stroke="#F97316" strokeWidth="1.5" strokeDasharray="4 2" />
-              </svg>
-              Line shows same {granularity}s in previous period
+            {/* ── legend footer ── */}
+            <div className="px-6 pb-4 pt-1 flex items-center gap-5 text-[11px] text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                <span className="h-3 w-3 rounded-sm bg-[#3B82F6] shrink-0" />
+                <span className="font-semibold text-foreground">Current</span> {currLabel}
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="h-3 w-3 rounded-sm bg-[#CBD5E1] shrink-0" />
+                <span className="font-semibold text-foreground">Previous</span> {prevLabel}
+              </span>
             </div>
           </div>
         );
