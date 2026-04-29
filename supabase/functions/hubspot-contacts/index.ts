@@ -85,38 +85,37 @@ Deno.serve(async (req) => {
 
     console.log(`Fetching contacts for brand="${brandName}" account=${isSecondary ? "secondary" : "primary"} buId="${buId}" from ${startDate} to ${endDate}`);
 
-    // Resolve the correct internal option value for the "brands" property (secondary account only).
-    // CONTAINS_TOKEN matches the internal value, not the display label — these can differ.
-    let brandTokenValue = brandName;
+    // For secondary brands, the "brands" multi-select property is NOT reliably
+    // filterable via CONTAINS_TOKEN in this HubSpot account — it either returns a
+    // 400 error or silently returns 0 results when the token format doesn't match.
+    // Always fetch by date range only and filter in-code using multiple token variants.
+    // This is the same approach hubspot-data uses and gives consistent results.
+    const brandMatchTokens = new Set([
+      brandName.toLowerCase(),
+      brandName.toLowerCase().replace(/\s+/g, "_"),
+      brandName.toLowerCase().replace(/\s+/g, ""),
+    ]);
+
+    // Try to also add the resolved internal option value to the match set.
     if (isSecondary) {
       try {
         const propDef = await fetch(`https://api.hubapi.com/crm/v3/properties/contacts/brands`, {
           headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         }).then(r => r.json());
         const options: any[] = propDef.options || [];
-        const match = options.find((opt: any) =>
-          (opt.label || "").toLowerCase() === brandName.toLowerCase() ||
-          (opt.value || "").toLowerCase() === brandName.toLowerCase()
-        );
-        if (match) {
-          brandTokenValue = match.value;
-          console.log(`Resolved brand token for "${brandName}": "${brandTokenValue}"`);
-        } else {
-          console.warn(`No option match for "${brandName}". Available: ${options.map((o: any) => `${o.label}=${o.value}`).join(", ")}`);
+        for (const opt of options) {
+          const lbl = (opt.label || "").toLowerCase();
+          const val = (opt.value || "").toLowerCase();
+          if (lbl === brandName.toLowerCase() || val === brandName.toLowerCase()) {
+            if (val) brandMatchTokens.add(val);
+            if (lbl) brandMatchTokens.add(lbl);
+          }
         }
+        console.log(`Brand match tokens for "${brandName}": ${[...brandMatchTokens].join(", ")}`);
       } catch (e) {
         console.warn("Could not fetch brands property definition:", e);
       }
     }
-
-    // Build a robust set of possible brand token values for in-code fallback matching.
-    // HubSpot stores option values in various formats (spaces, underscores, no-spaces).
-    const brandMatchTokens = new Set([
-      brandName.toLowerCase(),
-      brandName.toLowerCase().replace(/\s+/g, "_"),
-      brandName.toLowerCase().replace(/\s+/g, ""),
-      brandTokenValue.toLowerCase(),
-    ]);
 
     function matchesBrandInCode(props: Record<string, any>): boolean {
       const raw = (props.brands || "").toLowerCase();
@@ -133,10 +132,7 @@ Deno.serve(async (req) => {
 
     let after: string | undefined;
     let totalFetched = 0;
-    const maxPages = 30;
-    // When CONTAINS_TOKEN fails for secondary brands, fall back to fetching all
-    // contacts in the date range and filtering by brands property in code.
-    let secondaryFallbackMode = false;
+    const maxPages = 100; // up to 10,000 contacts — matches HubSpot search API max
 
     for (let page = 0; page < maxPages; page++) {
       const filters: any[] = [
@@ -144,14 +140,11 @@ Deno.serve(async (req) => {
         { propertyName: "createdate", operator: "LTE", value: String(endMs) },
       ];
 
-      if (isSecondary && !secondaryFallbackMode) {
-        // Secondary account: filter by "brands" multi-select property server-side
-        filters.push({ propertyName: "brands", operator: "CONTAINS_TOKEN", value: brandTokenValue });
-      } else if (!isSecondary && buId && buId !== "0") {
-        // Primary account: filter by business unit ID
+      // Primary account: server-side filter by business unit (reliable).
+      // Secondary account: date-only filter — brand filtering happens in code below.
+      if (!isSecondary && buId && buId !== "0") {
         filters.push({ propertyName: "hs_all_assigned_business_unit_ids", operator: "CONTAINS_TOKEN", value: buId });
       }
-      // secondaryFallbackMode: only date filters — brand filtering happens in code below
 
       const searchBody: any = {
         filterGroups: [{ filters }],
@@ -172,7 +165,6 @@ Deno.serve(async (req) => {
       };
       if (after) searchBody.after = after;
 
-      // Add delay between pages to avoid rate limits
       if (page > 0) {
         await new Promise((r) => setTimeout(r, 150));
       }
@@ -181,14 +173,6 @@ Deno.serve(async (req) => {
       try {
         res = await hubspotPostWithRetry("/crm/v3/objects/contacts/search", token, searchBody);
       } catch (e: unknown) {
-        if (page === 0 && isSecondary && !secondaryFallbackMode) {
-          // CONTAINS_TOKEN filter rejected — fall back to fetching all and filtering in code.
-          console.warn(`[hubspot-contacts] CONTAINS_TOKEN failed for "${brandName}", switching to in-code brand filtering: ${(e as Error).message}`);
-          secondaryFallbackMode = true;
-          after = undefined;
-          page = -1; // incremented to 0 by for-loop before next iteration
-          continue;
-        }
         if (page === 0) {
           console.warn(`[hubspot-contacts] Search failed for "${brandName}": ${(e as Error).message}`);
           return new Response(JSON.stringify({
@@ -205,8 +189,8 @@ Deno.serve(async (req) => {
       for (const contact of results) {
         const props = contact.properties || {};
 
-        // In fallback mode: filter by brands property in code instead of server-side
-        if (secondaryFallbackMode && !matchesBrandInCode(props)) continue;
+        // Secondary brand: filter by brands property in code
+        if (isSecondary && !matchesBrandInCode(props)) continue;
 
         totalFetched++;
 

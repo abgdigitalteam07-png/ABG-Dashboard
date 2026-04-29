@@ -41,7 +41,13 @@ interface PeriodData {
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 function dateStr(d: Date) {
-  return d.toISOString().split("T")[0];
+  // Use local date components — toISOString() converts to UTC and can shift the
+  // date by up to ±14 hours, causing wrong date ranges and numbers that change
+  // depending on the time of day the report is run.
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 function getPeriods(days: number) {
