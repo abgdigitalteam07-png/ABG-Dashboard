@@ -118,6 +118,12 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo, userEmail = "" }: HubSp
   const showComparison = ALLOWED_COMPARISON_EMAILS.has(userEmail);
   const [crmSubTab, setCrmSubTab] = useState<"overview" | "comparison">("overview");
 
+  // If the user loses access (or email isn't loaded yet), force back to overview so
+  // the comparison view is never rendered for non-allowed users.
+  useEffect(() => {
+    if (!showComparison && crmSubTab === "comparison") setCrmSubTab("overview");
+  }, [showComparison, crmSubTab]);
+
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

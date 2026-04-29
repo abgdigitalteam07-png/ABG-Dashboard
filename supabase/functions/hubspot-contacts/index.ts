@@ -109,6 +109,21 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Build a robust set of possible brand token values for in-code fallback matching.
+    // HubSpot stores option values in various formats (spaces, underscores, no-spaces).
+    const brandMatchTokens = new Set([
+      brandName.toLowerCase(),
+      brandName.toLowerCase().replace(/\s+/g, "_"),
+      brandName.toLowerCase().replace(/\s+/g, ""),
+      brandTokenValue.toLowerCase(),
+    ]);
+
+    function matchesBrandInCode(props: Record<string, any>): boolean {
+      const raw = (props.brands || "").toLowerCase();
+      const tokens = raw.split(";").map((t: string) => t.trim()).filter(Boolean);
+      return tokens.some((t: string) => brandMatchTokens.has(t));
+    }
+
     // ── 1. New contacts over time ──
     const contactsByDate: Record<string, { total: number; hubspot: number; salesforce: number }> = {};
     const jobTitleCounts: Record<string, number> = {};
@@ -119,6 +134,9 @@ Deno.serve(async (req) => {
     let after: string | undefined;
     let totalFetched = 0;
     const maxPages = 30;
+    // When CONTAINS_TOKEN fails for secondary brands, fall back to fetching all
+    // contacts in the date range and filtering by brands property in code.
+    let secondaryFallbackMode = false;
 
     for (let page = 0; page < maxPages; page++) {
       const filters: any[] = [
@@ -126,13 +144,14 @@ Deno.serve(async (req) => {
         { propertyName: "createdate", operator: "LTE", value: String(endMs) },
       ];
 
-      if (isSecondary) {
+      if (isSecondary && !secondaryFallbackMode) {
         // Secondary account: filter by "brands" multi-select property server-side
         filters.push({ propertyName: "brands", operator: "CONTAINS_TOKEN", value: brandTokenValue });
-      } else if (buId && buId !== "0") {
+      } else if (!isSecondary && buId && buId !== "0") {
         // Primary account: filter by business unit ID
         filters.push({ propertyName: "hs_all_assigned_business_unit_ids", operator: "CONTAINS_TOKEN", value: buId });
       }
+      // secondaryFallbackMode: only date filters — brand filtering happens in code below
 
       const searchBody: any = {
         filterGroups: [{ filters }],
@@ -162,11 +181,20 @@ Deno.serve(async (req) => {
       try {
         res = await hubspotPostWithRetry("/crm/v3/objects/contacts/search", token, searchBody);
       } catch (e: unknown) {
-        // If the very first page fails (e.g. "brands" property doesn't exist in this account),
-        // return empty data gracefully instead of a 500.
+        if (page === 0 && isSecondary && !secondaryFallbackMode) {
+          // CONTAINS_TOKEN filter rejected — fall back to fetching all and filtering in code.
+          console.warn(`[hubspot-contacts] CONTAINS_TOKEN failed for "${brandName}", switching to in-code brand filtering: ${(e as Error).message}`);
+          secondaryFallbackMode = true;
+          after = undefined;
+          page = -1; // incremented to 0 by for-loop before next iteration
+          continue;
+        }
         if (page === 0) {
-          console.warn(`[hubspot-contacts] Search failed for "${brandName}", returning empty: ${(e as Error).message}`);
-          return new Response(JSON.stringify({ totalContacts: 0, contactsOverTime: [], jobTitles: [] }), {
+          console.warn(`[hubspot-contacts] Search failed for "${brandName}": ${(e as Error).message}`);
+          return new Response(JSON.stringify({
+            totalContacts: 0, contactsOverTime: [], jobTitles: [], stateDistribution: [],
+            dealerAssignedTotal: 0, dealerUnassignedTotal: 0,
+          }), {
             headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
         }
@@ -176,6 +204,9 @@ Deno.serve(async (req) => {
 
       for (const contact of results) {
         const props = contact.properties || {};
+
+        // In fallback mode: filter by brands property in code instead of server-side
+        if (secondaryFallbackMode && !matchesBrandInCode(props)) continue;
 
         totalFetched++;
 
