@@ -2,12 +2,13 @@ import { useState, useRef } from "react";
 import { subDays, format, addDays, parseISO, startOfWeek, startOfMonth } from "date-fns";
 import { callFunction } from "@/lib/api-client";
 import { WaterFillLoader } from "@/components/WaterFillLoader";
-import { TrendingUp, TrendingDown, Minus, RefreshCw, Check, Users, UserCheck, UserX } from "lucide-react";
+import { TrendingUp, TrendingDown, Minus, RefreshCw, Check, Users, UserCheck, UserX, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell, LabelList, ReferenceLine,
 } from "recharts";
+import jsPDF from "jspdf";
 
 // ─── access control ───────────────────────────────────────────────────────────
 const ALLOWED_EMAILS = new Set([
@@ -141,6 +142,279 @@ function buildTrendRows(
     buckets.get(key)!.prev += prevSeries[pDate] || 0;
   }
   return [...buckets.values()];
+}
+
+// ─── pdf export ───────────────────────────────────────────────────────────────
+type TrendRow = { label: string; prevLabel: string; curr: number; prev: number };
+
+function downloadPDF(opts: {
+  currLabel: string; prevLabel: string; selectedDays: number;
+  activeBrands: SecondaryBrand[]; results: BrandResults;
+  trendRows: TrendRow[]; granularity: Granularity;
+}) {
+  const { currLabel, prevLabel, activeBrands, results, trendRows, granularity } = opts;
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+
+  const PW = 210, PH = 297;
+  const ML = 14, MR = 14;
+  const CW = PW - ML - MR;
+  let y = 0;
+
+  // ── colour helpers ──────────────────────────────────────────────────────────
+  type RGB = [number, number, number];
+  const C_BLUE:  RGB = [59, 130, 246];
+  const C_DARK:  RGB = [30,  41,  59];
+  const C_GRAY:  RGB = [100, 116, 139];
+  const C_LGRAY: RGB = [241, 245, 249];
+  const C_WHITE: RGB = [255, 255, 255];
+  const C_GREEN: RGB = [16,  185, 129];
+  const C_RED:   RGB = [239,  68,  68];
+  const C_SLATE: RGB = [203, 213, 225];
+  const C_LINE:  RGB = [226, 232, 240];
+  const hex2rgb = (h: string): RGB => [
+    parseInt(h.slice(1, 3), 16),
+    parseInt(h.slice(3, 5), 16),
+    parseInt(h.slice(5, 7), 16),
+  ];
+  const setFill  = (...c: RGB) => doc.setFillColor(c[0], c[1], c[2]);
+  const setStroke= (...c: RGB) => doc.setDrawColor(c[0], c[1], c[2]);
+  const setTxt   = (...c: RGB) => doc.setTextColor(c[0], c[1], c[2]);
+  const deltaClr = (d: number): RGB => d > 0.4 ? C_GREEN : d < -0.4 ? C_RED : C_GRAY;
+
+  // ── page helpers ────────────────────────────────────────────────────────────
+  const addFooter = () => {
+    const pg = doc.getCurrentPageInfo().pageNumber;
+    const total = doc.getNumberOfPages();
+    setStroke(...C_LINE); doc.setLineWidth(0.3);
+    doc.line(ML, 285, PW - MR, 285);
+    setTxt(...C_GRAY); doc.setFontSize(7.5); doc.setFont("helvetica", "normal");
+    doc.text("American Bath Group — CRM Comparison Report — Confidential", ML, 290);
+    doc.text(`Page ${pg} of ${total}`, PW - MR, 290, { align: "right" });
+  };
+  const ensureSpace = (need: number) => {
+    if (y + need > 278) {
+      addFooter();
+      doc.addPage();
+      y = 22;
+    }
+  };
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 1 ── COVER HEADER
+  // ═══════════════════════════════════════════════════════════════════════════
+  setFill(...C_BLUE); doc.rect(0, 0, PW, 32, "F");
+  // white accent stripe
+  setFill(255, 255, 255); doc.setGState(new (doc as any).GState({ opacity: 0.07 }));
+  doc.rect(0, 0, PW, 32, "F");
+  doc.setGState(new (doc as any).GState({ opacity: 1 }));
+
+  setTxt(...C_WHITE);
+  doc.setFontSize(17); doc.setFont("helvetica", "bold");
+  doc.text("CRM Contact Comparison Report", ML, 13);
+  doc.setFontSize(8.5); doc.setFont("helvetica", "normal");
+  doc.text("American Bath Group — Brand Performance Hub", ML, 20);
+  doc.text(`Generated: ${format(new Date(), "MMM d, yyyy · h:mm a")}`, PW - MR, 13, { align: "right" });
+
+  y = 42;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 2 ── PERIOD CONTEXT BOX
+  // ═══════════════════════════════════════════════════════════════════════════
+  setFill(...C_LGRAY); doc.roundedRect(ML, y, CW, 22, 3, 3, "F");
+  setStroke(...C_LINE); doc.setLineWidth(0.3); doc.roundedRect(ML, y, CW, 22, 3, 3, "S");
+
+  // current period
+  setFill(...C_BLUE); doc.rect(ML + 4, y + 5, 3, 4, "F");
+  setTxt(...C_DARK); doc.setFontSize(8.5); doc.setFont("helvetica", "bold");
+  doc.text("Current Period", ML + 10, y + 8.2);
+  doc.setFont("helvetica", "normal"); setTxt(...C_GRAY);
+  doc.text(currLabel, ML + 10 + doc.getTextWidth("Current Period  "), y + 8.2);
+
+  // previous period
+  setFill(...C_SLATE); doc.rect(ML + 4, y + 13, 3, 4, "F");
+  setTxt(...C_DARK); doc.setFont("helvetica", "bold");
+  doc.text("Previous Period", ML + 10, y + 16.2);
+  doc.setFont("helvetica", "normal"); setTxt(...C_GRAY);
+  doc.text(prevLabel, ML + 10 + doc.getTextWidth("Previous Period  "), y + 16.2);
+
+  // brands (right side)
+  setTxt(...C_BLUE); doc.setFont("helvetica", "bold"); doc.setFontSize(7.5);
+  doc.text("BRANDS ANALYZED", PW - MR, y + 6, { align: "right" });
+  setTxt(...C_DARK); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
+  activeBrands.forEach((b, i) => doc.text(b, PW - MR, y + 10.5 + i * 4.5, { align: "right" }));
+
+  y += 30;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 3 ── PERFORMANCE SUMMARY TABLE
+  // ═══════════════════════════════════════════════════════════════════════════
+  // section title
+  setTxt(...C_BLUE); doc.setFont("helvetica", "bold"); doc.setFontSize(9);
+  doc.text("▌ PERFORMANCE SUMMARY", ML, y); y += 6;
+
+  const COL = [ML, ML + 68, ML + 100, ML + 130, ML + 158];
+  const ROW_H = 8;
+
+  // thead
+  setFill(...C_DARK); doc.rect(ML, y, CW, ROW_H, "F");
+  setTxt(...C_WHITE); doc.setFontSize(7.5); doc.setFont("helvetica", "bold");
+  ["Metric", "Current", "Previous", "Change", "Trend"].forEach((h, i) =>
+    doc.text(h, COL[i] + 2, y + 5.5)
+  );
+  y += ROW_H;
+
+  METRICS.forEach(({ key, label }, ri) => {
+    const gCurr = activeBrands.reduce((s, b) => s + results[b].curr[key], 0);
+    const gPrev = activeBrands.reduce((s, b) => s + results[b].prev[key], 0);
+    const d     = gPrev > 0 ? ((gCurr - gPrev) / gPrev) * 100 : null;
+    const up    = d !== null && d > 0.4;
+    const dn    = d !== null && d < -0.4;
+
+    setFill(...(ri % 2 === 0 ? C_LGRAY : C_WHITE)); doc.rect(ML, y, CW, ROW_H, "F");
+
+    setTxt(...C_DARK); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
+    doc.text(label, COL[0] + 2, y + 5.5);
+    doc.setFont("helvetica", "bold"); setTxt(...C_BLUE);
+    doc.text(gCurr.toLocaleString(), COL[1] + 2, y + 5.5);
+    doc.setFont("helvetica", "normal"); setTxt(...C_GRAY);
+    doc.text(gPrev.toLocaleString(), COL[2] + 2, y + 5.5);
+
+    if (d !== null) {
+      setTxt(...deltaClr(d));
+      doc.setFont("helvetica", "bold");
+      doc.text(`${up ? "+" : ""}${d.toFixed(1)}%`, COL[3] + 2, y + 5.5);
+    }
+    // mini trend bar
+    const maxV = Math.max(gCurr, gPrev, 1);
+    const barW = 24;
+    setFill(...C_LGRAY); doc.rect(COL[4] + 2, y + 2.5, barW, 3, "F");
+    setFill(...C_BLUE); doc.rect(COL[4] + 2, y + 2.5, (gCurr / maxV) * barW, 3, "F");
+    setFill(...C_SLATE); doc.rect(COL[4] + 2, y + 6, (gPrev / maxV) * barW, 2, "F");
+
+    y += ROW_H;
+  });
+  // border
+  setStroke(...C_LINE); doc.setLineWidth(0.3);
+  doc.rect(ML, y - METRICS.length * ROW_H - ROW_H, CW, METRICS.length * ROW_H + ROW_H, "S");
+  y += 10;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 4 ── BRAND BREAKDOWN
+  // ═══════════════════════════════════════════════════════════════════════════
+  ensureSpace(20);
+  setTxt(...C_BLUE); doc.setFont("helvetica", "bold"); doc.setFontSize(9);
+  doc.text("▌ BRAND BREAKDOWN", ML, y); y += 7;
+
+  activeBrands.forEach((brand) => {
+    ensureSpace(METRICS.length * ROW_H + 24);
+    const [br, bg2, bb] = hex2rgb(BRAND_PALETTE[brand].solid);
+
+    // brand header row
+    setFill(br, bg2, bb); doc.rect(ML, y, CW, 9, "F");
+    setTxt(...C_WHITE); doc.setFont("helvetica", "bold"); doc.setFontSize(9);
+    doc.text(brand, ML + 4, y + 6.2);
+    setTxt(255, 255, 255); doc.setFont("helvetica", "normal"); doc.setFontSize(7.5);
+    doc.text(`${currLabel}  vs  ${prevLabel}`, PW - MR, y + 6.2, { align: "right" });
+    y += 9;
+
+    // col headers
+    setFill(...C_LGRAY); doc.rect(ML, y, CW, 6.5, "F");
+    setTxt(...C_GRAY); doc.setFont("helvetica", "bold"); doc.setFontSize(7.5);
+    ["Metric", "Current", "Previous", "Change", "Visual"].forEach((h, i) =>
+      doc.text(h, COL[i] + 2, y + 4.5)
+    );
+    y += 6.5;
+
+    METRICS.forEach(({ key, label }, ri) => {
+      const curr = results[brand].curr[key];
+      const prev = results[brand].prev[key];
+      const d    = prev > 0 ? ((curr - prev) / prev) * 100 : null;
+      const up   = d !== null && d > 0.4;
+
+      setFill(...(ri % 2 === 0 ? C_LGRAY : C_WHITE)); doc.rect(ML, y, CW, ROW_H, "F");
+      setTxt(...C_DARK); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
+      doc.text(label, COL[0] + 2, y + 5.5);
+      doc.setFont("helvetica", "bold"); doc.setTextColor(br, bg2, bb);
+      doc.text(curr.toLocaleString(), COL[1] + 2, y + 5.5);
+      doc.setFont("helvetica", "normal"); setTxt(...C_GRAY);
+      doc.text(prev.toLocaleString(), COL[2] + 2, y + 5.5);
+      if (d !== null) {
+        setTxt(...deltaClr(d)); doc.setFont("helvetica", "bold");
+        doc.text(`${up ? "+" : ""}${d.toFixed(1)}%`, COL[3] + 2, y + 5.5);
+      }
+      const maxV = Math.max(curr, prev, 1);
+      const bW = 24;
+      setFill(235, 248, 255); doc.rect(COL[4] + 2, y + 2, bW, 2.5, "F");
+      setFill(br, bg2, bb);   doc.rect(COL[4] + 2, y + 2, (curr / maxV) * bW, 2.5, "F");
+      setFill(...C_SLATE);    doc.rect(COL[4] + 2, y + 5.5, (prev / maxV) * bW, 1.8, "F");
+      y += ROW_H;
+    });
+
+    setStroke(...C_LINE); doc.setLineWidth(0.3);
+    doc.rect(ML, y - METRICS.length * ROW_H - 6.5, CW, METRICS.length * ROW_H + 6.5, "S");
+    y += 8;
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 5 ── TREND DATA TABLE
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (trendRows.length > 0) {
+    ensureSpace(30);
+    setTxt(...C_BLUE); doc.setFont("helvetica", "bold"); doc.setFontSize(9);
+    doc.text(`▌ CONTACT TREND — BY ${granularity.toUpperCase()}`, ML, y); y += 7;
+
+    const TC = [ML, ML + 48, ML + 90, ML + 128, ML + 158];
+    const TH = 6.5;
+
+    // thead
+    setFill(...C_DARK); doc.rect(ML, y, CW, TH + 1, "F");
+    setTxt(...C_WHITE); doc.setFont("helvetica", "bold"); doc.setFontSize(7.5);
+    ["Period", "Current", "Previous period", "Change", "Bar"].forEach((h, i) =>
+      doc.text(h, TC[i] + 2, y + 4.8)
+    );
+    y += TH + 1;
+
+    trendRows.forEach(({ label, prevLabel: pLbl, curr, prev }, ri) => {
+      ensureSpace(TH + 2);
+      const d  = prev > 0 ? ((curr - prev) / prev) * 100 : null;
+      const up = d !== null && d > 0.4;
+
+      setFill(...(ri % 2 === 0 ? C_LGRAY : C_WHITE)); doc.rect(ML, y, CW, TH, "F");
+      setTxt(...C_GRAY); doc.setFont("helvetica", "normal"); doc.setFontSize(7.5);
+      doc.text(label, TC[0] + 2, y + 4.4);
+      setTxt(...C_BLUE); doc.setFont("helvetica", "bold");
+      doc.text(String(curr), TC[1] + 2, y + 4.4);
+      doc.setFont("helvetica", "normal"); setTxt(...C_GRAY);
+      doc.text(`${String(prev)}  (${pLbl})`, TC[2] + 2, y + 4.4);
+      if (d !== null) {
+        setTxt(...deltaClr(d)); doc.setFont("helvetica", "bold");
+        doc.text(`${up ? "+" : ""}${d.toFixed(1)}%`, TC[3] + 2, y + 4.4);
+      }
+      // mini bar
+      const maxV = Math.max(curr, prev, 1);
+      const bW   = 24;
+      setFill(235, 248, 255); doc.rect(TC[4] + 2, y + 1.2, bW, 2.2, "F");
+      setFill(...C_BLUE);    doc.rect(TC[4] + 2, y + 1.2, (curr / maxV) * bW, 2.2, "F");
+      setFill(...C_SLATE);   doc.rect(TC[4] + 2, y + 4,   (prev / maxV) * bW, 1.5, "F");
+      y += TH;
+    });
+
+    setStroke(...C_LINE); doc.setLineWidth(0.3);
+    doc.rect(ML, y - trendRows.length * TH - TH - 1, CW, trendRows.length * TH + TH + 1, "S");
+  }
+
+  // ── footers on all pages ────────────────────────────────────────────────────
+  const total = doc.getNumberOfPages();
+  for (let pg = 1; pg <= total; pg++) {
+    doc.setPage(pg);
+    setStroke(...C_LINE); doc.setLineWidth(0.3);
+    doc.line(ML, 285, PW - MR, 285);
+    setTxt(...C_GRAY); doc.setFontSize(7.5); doc.setFont("helvetica", "normal");
+    doc.text("American Bath Group — CRM Comparison Report — Confidential", ML, 290);
+    doc.text(`Page ${pg} of ${total}`, PW - MR, 290, { align: "right" });
+  }
+
+  doc.save(`ABG-CRM-Comparison-${format(new Date(), "yyyy-MM-dd")}.pdf`);
 }
 
 // ─── sub-components ───────────────────────────────────────────────────────────
@@ -351,6 +625,26 @@ function ComparisonContent() {
         </div>
 
         <div className="flex-1" />
+
+        {/* Download PDF — visible only when results are loaded */}
+        {results && !loading && (
+          <button
+            onClick={() => {
+              const activeBrands = selectedBrands.filter(b => results[b]);
+              downloadPDF({
+                currLabel, prevLabel,
+                selectedDays: selectedDays!,
+                activeBrands,
+                results,
+                trendRows,
+                granularity,
+              });
+            }}
+            className="flex items-center gap-2 rounded-xl border border-border bg-background px-4 py-2 text-xs font-semibold text-foreground cursor-pointer hover:bg-muted transition-all duration-150 shadow-sm">
+            <Download className="h-3.5 w-3.5" />
+            Download PDF
+          </button>
+        )}
 
         <button
           onClick={() => runReport(selectedDays, selectedBrands)}
