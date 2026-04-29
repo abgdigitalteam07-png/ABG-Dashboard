@@ -189,10 +189,11 @@ function downloadPDF(opts: {
   };
 
   const rgb    = (hex: string) => HEX2RGB(hex);
+  // jsPDF helvetica does not support unicode arrows — use plain ASCII signs only
   const dSign  = (d: number)   => d > 0.4 ? "+" : "";
+  const dLabel = (d: number)   => `${dSign(d)}${d.toFixed(1)}%`;   // e.g. "+13.5%"  "-33.9%"
   const dColor = (d: number): [number,number,number] =>
     d > 0.4 ? rgb(GREEN) : d < -0.4 ? rgb(RED) : rgb(GRAY);
-  const arrow  = (d: number)   => d > 0.4 ? "▲" : d < -0.4 ? "▼" : "→";
 
   // smart PDF granularity
   const pdfGran: Granularity = opts.selectedDays > 90 ? "month" : "week";
@@ -223,20 +224,20 @@ function downloadPDF(opts: {
     alternateRowStyles: { fillColor: rgb(LGRAY) as [number,number,number] },
   };
 
-  // section heading helper — light band + accent left strip + uppercase title
+  // section heading — LGRAY band + ACCENT left strip + NAVY uppercase label
   const section = (title: string, y: number) => {
     doc.setFillColor(...rgb(LGRAY));
-    doc.rect(ML, y, CW, 7.5, "F");
+    doc.rect(ML, y, CW, 7, "F");
     doc.setDrawColor(...rgb(BORDER));
     doc.setLineWidth(0.25);
-    doc.rect(ML, y, CW, 7.5, "S");
+    doc.rect(ML, y, CW, 7, "S");
     doc.setFillColor(...rgb(ACCENT));
-    doc.rect(ML, y, 3, 7.5, "F");
+    doc.rect(ML, y, 3, 7, "F");
     doc.setFont("helvetica", "bold");
     doc.setFontSize(7.5);
     doc.setTextColor(...rgb(NAVY));
-    doc.text(title.toUpperCase(), ML + 7, y + 5.2);
-    return y + 12;  // heading + gap below
+    doc.text(title.toUpperCase(), ML + 7, y + 5);
+    return y + 10;  // band 7mm + 3mm gap
   };
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -245,99 +246,78 @@ function downloadPDF(opts: {
 
   // ── 1. HEADER (0–24mm) ─────────────────────────────────────────────────────
   doc.setFillColor(...rgb(NAVY));
-  doc.rect(0, 0, PW, 24, "F");
-  // accent left sidebar
+  doc.rect(0, 0, PW, 22, "F");
   doc.setFillColor(...rgb(ACCENT));
-  doc.rect(0, 0, 5, 24, "F");
-  // gold bottom accent line
-  doc.setFillColor(255, 196, 0);
-  doc.rect(0, 23.3, PW, 0.7, "F");
+  doc.rect(0, 0, 5, 22, "F");
+  doc.setFillColor(255, 196, 0);        // gold accent line
+  doc.rect(0, 21.4, PW, 0.6, "F");
 
   // company name (small, muted)
   doc.setFont("helvetica", "normal");
   doc.setFontSize(6.5);
   doc.setTextColor(148, 173, 209);
-  doc.text("AMERICAN BATH GROUP  ·  BRAND PERFORMANCE HUB", ML + 2, 6.5);
+  doc.text("AMERICAN BATH GROUP  |  BRAND PERFORMANCE HUB", ML + 2, 6);
 
   // report title (large, white)
   doc.setFont("helvetica", "bold");
   doc.setFontSize(14);
   doc.setTextColor(255, 255, 255);
-  doc.text("CRM Lead Comparison Report", ML + 2, 17);
+  doc.text("CRM Lead Comparison Report", ML + 2, 15.5);
 
-  // right side meta
   doc.setFont("helvetica", "bold");
   doc.setFontSize(6.5);
   doc.setTextColor(148, 173, 209);
-  doc.text("GENERATED", PW - MR, 7, { align: "right" });
+  doc.text("GENERATED", PW - MR, 6.5, { align: "right" });
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
+  doc.setFontSize(7.5);
   doc.setTextColor(255, 255, 255);
-  doc.text(format(new Date(), "MMM d, yyyy  ·  h:mm a"), PW - MR, 13, { align: "right" });
+  doc.text(format(new Date(), "MMM d, yyyy  |  h:mm a"), PW - MR, 12, { align: "right" });
   doc.setFont("helvetica", "normal");
   doc.setFontSize(7);
   doc.setTextColor(148, 173, 209);
-  doc.text(`${opts.selectedDays}-day comparison`, PW - MR, 19.5, { align: "right" });
+  doc.text(`${opts.selectedDays}-day comparison`, PW - MR, 17.5, { align: "right" });
 
-  let y = 28;  // start below header + 4mm gap
+  let y = 26;
 
-  // ── 2. PERIOD & BRANDS STRIP (14mm) ─────────────────────────────────────────
+  // ── 2. PERIOD & BRANDS STRIP (12mm) ──────────────────────────────────────
   doc.setFillColor(...rgb(WHITE));
-  doc.rect(ML, y, CW, 14, "F");
+  doc.rect(ML, y, CW, 12, "F");
   doc.setDrawColor(...rgb(BORDER));
   doc.setLineWidth(0.3);
-  doc.rect(ML, y, CW, 14, "S");
+  doc.rect(ML, y, CW, 12, "S");
 
-  const col1 = ML + 6;
-  const col2 = ML + 68;
-  const col3 = ML + 130;
+  const col1 = ML + 5;
+  const col2 = ML + 66;
+  const col3 = ML + 128;
 
-  // Current Period
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(6);
-  doc.setTextColor(...rgb(GRAY));
-  doc.text("CURRENT PERIOD", col1, y + 5);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(8.5);
-  doc.setTextColor(...rgb(DARK));
-  doc.text(currLabel, col1, y + 11);
+  doc.setFont("helvetica", "bold"); doc.setFontSize(6); doc.setTextColor(...rgb(GRAY));
+  doc.text("CURRENT PERIOD", col1, y + 4.5);
+  doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(...rgb(DARK));
+  doc.text(currLabel, col1, y + 9.5);
 
-  // vertical divider
-  doc.setDrawColor(...rgb(BORDER));
-  doc.setLineWidth(0.4);
-  doc.line(col2 - 4, y + 2.5, col2 - 4, y + 11.5);
+  doc.setDrawColor(...rgb(BORDER)); doc.setLineWidth(0.35);
+  doc.line(col2 - 3, y + 2, col2 - 3, y + 10);
 
-  // Previous Period
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(6);
-  doc.setTextColor(...rgb(GRAY));
-  doc.text("PREVIOUS PERIOD", col2, y + 5);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(8.5);
-  doc.setTextColor(...rgb(DARK));
-  doc.text(prevLabel, col2, y + 11);
+  doc.setFont("helvetica", "bold"); doc.setFontSize(6); doc.setTextColor(...rgb(GRAY));
+  doc.text("PREVIOUS PERIOD", col2, y + 4.5);
+  doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(...rgb(DARK));
+  doc.text(prevLabel, col2, y + 9.5);
 
-  // vertical divider
-  doc.line(col3 - 4, y + 2.5, col3 - 4, y + 11.5);
+  doc.line(col3 - 3, y + 2, col3 - 3, y + 10);
 
-  // Brands
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(6);
-  doc.setTextColor(...rgb(GRAY));
-  doc.text("BRAND(S)", col3, y + 5);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(8);
-  doc.setTextColor(...rgb(ACCENT));
-  doc.text(activeBrands.join("  ·  "), col3, y + 11);
+  doc.setFont("helvetica", "bold"); doc.setFontSize(6); doc.setTextColor(...rgb(GRAY));
+  doc.text("BRAND(S)", col3, y + 4.5);
+  doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(...rgb(ACCENT));
+  doc.text(activeBrands.join("  |  "), col3, y + 9.5);
 
-  y += 18;
+  y += 16;
 
   // ── 3. KEY METRICS CARDS (32mm) ─────────────────────────────────────────────
   y = section("Key Metrics", y);
 
-  const cardH   = 32;
+  const cardH = 27;
   const cardGap = 4;
-  const cardW   = (CW - cardGap * 2) / 3;
+  const cardW = (CW - cardGap * 2) / 3;
 
   METRICS.forEach(({ key, label }, i) => {
     const gc = activeBrands.reduce((s, b) => s + results[b].curr[key], 0);
@@ -364,26 +344,26 @@ function downloadPDF(opts: {
 
     // big current number
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(22);
+    doc.setFontSize(20);
     doc.setTextColor(...rgb(DARK));
-    doc.text(gc.toLocaleString(), bx + 7, y + 21);
+    doc.text(gc.toLocaleString(), bx + 7, y + 18);
 
-    // arrow + delta (right side)
+    // delta — plain +/-% only (no unicode arrows; they corrupt in helvetica)
     if (d !== null) {
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(8.5);
+      doc.setFontSize(8);
       doc.setTextColor(...dColor(d));
-      doc.text(`${arrow(d)} ${dSign(d)}${d.toFixed(1)}%`, bx + cardW - 5, y + 21, { align: "right" });
+      doc.text(dLabel(d), bx + cardW - 5, y + 18, { align: "right" });
     }
 
-    // "Compare: prev" small text
+    // compare value
     doc.setFont("helvetica", "normal");
     doc.setFontSize(6.5);
     doc.setTextColor(...rgb(GRAY));
-    doc.text(`Compare: ${gp.toLocaleString()}`, bx + 7, y + 28);
+    doc.text(`Compare: ${gp.toLocaleString()}`, bx + 7, y + 23.5);
   });
 
-  y += cardH + 9;
+  y += cardH + 8;
 
   // ── 4. BRAND BREAKDOWN TABLE ─────────────────────────────────────────────────
   y = section("Brand Breakdown", y);
@@ -396,7 +376,7 @@ function downloadPDF(opts: {
       const prev = results[b].prev[key];
       const d    = prev > 0 ? ((curr - prev) / prev) * 100 : null;
       return d !== null
-        ? `${curr.toLocaleString()}  (${dSign(d)}${d.toFixed(1)}%)`
+        ? `${curr.toLocaleString()}  (${dLabel(d)})`
         : curr.toLocaleString();
     }),
   ]);
@@ -428,11 +408,11 @@ function downloadPDF(opts: {
     },
   });
 
-  y = (doc as any).lastAutoTable.finalY + 9;
+  y = (doc as any).lastAutoTable.finalY + 8;
 
   // ── 5. LEAD TREND TABLE ──────────────────────────────────────────────────────
   if (pdfTrendRows.length > 0) {
-    y = section(`Lead Trend  ·  By ${pdfGran.charAt(0).toUpperCase() + pdfGran.slice(1)}`, y);
+    y = section(`Lead Trend  |  By ${pdfGran.charAt(0).toUpperCase() + pdfGran.slice(1)}`, y);
 
     const trendBody = pdfTrendRows.map(({ label, prevLabel: pLbl, curr, prev }) => {
       const d = prev > 0 ? ((curr - prev) / prev) * 100 : null;
@@ -440,7 +420,7 @@ function downloadPDF(opts: {
         label,
         curr.toLocaleString(),
         prev.toLocaleString(),
-        d !== null ? `${arrow(d)} ${dSign(d)}${d.toFixed(1)}%` : "—",
+        d !== null ? dLabel(d) : "--",   // plain +/-% only — no unicode
         pLbl,
       ];
     });
@@ -448,31 +428,34 @@ function downloadPDF(opts: {
     autoTable(doc, {
       ...AT,
       startY: y,
-      // 42+26+26+30+58 = 182 = CW
+      // 42+26+26+28+60 = 182 = CW
       head: [["Period (Current)", "Leads", "Leads (Prev)", "Change", "Period (Prev)"]],
       body: trendBody,
+      // tight rows so 13 weekly rows + header fit before footer
+      styles: { ...AT.styles, fontSize: 7, cellPadding: { top: 2.2, bottom: 2.2, left: 4, right: 4 } },
+      headStyles: { ...AT.headStyles, cellPadding: { top: 3, bottom: 3, left: 4, right: 4 } },
       columnStyles: {
         0: { cellWidth: 42, fontStyle: "bold" },
         1: { cellWidth: 26, halign: "center" as const, fontStyle: "bold" as const,
              textColor: rgb(ACCENT) as [number,number,number] },
         2: { cellWidth: 26, halign: "center" as const,
              textColor: rgb(GRAY) as [number,number,number] },
-        3: { cellWidth: 30, halign: "center" as const, fontStyle: "bold" as const },
-        4: { cellWidth: 58, textColor: rgb(GRAY) as [number,number,number] },
+        3: { cellWidth: 28, halign: "center" as const, fontStyle: "bold" as const },
+        4: { cellWidth: 60, textColor: rgb(GRAY) as [number,number,number] },
       },
       didParseCell: (data) => {
         if (data.section === "body" && data.column.index === 3) {
           const v = String(data.cell.raw ?? "");
-          if (v.startsWith("▲") || v.startsWith("+"))
+          if (v.startsWith("+"))
             data.cell.styles.textColor = rgb(GREEN) as [number,number,number];
-          else if (v.startsWith("▼") || v.startsWith("-"))
+          else if (v.startsWith("-"))
             data.cell.styles.textColor = rgb(RED) as [number,number,number];
         }
       },
     });
   }
 
-  // ── 6. FOOTER BAR ────────────────────────────────────────────────────────────
+  // ── 6. FOOTER BAR ─────────────────────────────────────────────────────────
   const FY = 287;
   doc.setFillColor(...rgb(NAVY));
   doc.rect(0, FY, PW, 10, "F");
@@ -482,7 +465,7 @@ function downloadPDF(opts: {
   doc.setFontSize(6.5);
   doc.setTextColor(148, 173, 209);
   doc.text(
-    "American Bath Group  ·  CRM Lead Comparison Report  ·  Confidential",
+    "American Bath Group  |  CRM Lead Comparison Report  |  Confidential",
     ML + 2, FY + 6.5,
   );
   doc.setFont("helvetica", "bold");
