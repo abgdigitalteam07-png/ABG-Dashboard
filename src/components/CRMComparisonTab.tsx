@@ -1,8 +1,8 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo } from "react";
 import { subDays, format, addDays, parseISO, startOfWeek, startOfMonth } from "date-fns";
 import { callFunction } from "@/lib/api-client";
 import { WaterFillLoader } from "@/components/WaterFillLoader";
-import { TrendingUp, TrendingDown, Minus, RefreshCw, Check, Users, UserCheck, UserX, Download } from "lucide-react";
+import { TrendingUp, TrendingDown, Minus, RefreshCw, Check, Users, UserCheck, UserX, Download, CalendarX2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -74,6 +74,16 @@ function getPeriods(days: number) {
 }
 
 type BrandSeriesMap = Partial<Record<SecondaryBrand, TimeSeries>>;
+
+/** Zero-out excluded dates in a TimeSeries so they don't count in KPIs or trends */
+function filterSeries(series: TimeSeries, excluded: string[]): TimeSeries {
+  if (!excluded.length) return series;
+  const out: TimeSeries = {};
+  for (const [date, count] of Object.entries(series)) {
+    out[date] = excluded.includes(date) ? 0 : count;
+  }
+  return out;
+}
 
 async function fetchAllBrandsForPeriod(
   brands: SecondaryBrand[], from: Date, to: Date,
@@ -169,6 +179,7 @@ function downloadPDF(opts: {
   currSeries: TimeSeries; prevSeries: TimeSeries;
   currStart: Date; prevStart: Date;
   currBrandSeries: BrandSeriesMap; prevBrandSeries: BrandSeriesMap;
+  excludedDates: string[];
 }) {
   const { currLabel, prevLabel, activeBrands, results,
           currSeries, prevSeries, currStart, prevStart,
@@ -320,6 +331,23 @@ function downloadPDF(opts: {
   doc.text(activeBrands.join("  |  "), col3, y + 9.5);
 
   y += 16;
+
+  // ── Excluded dates note (renders only when exclusions are active) ────────────
+  if (opts.excludedDates.length > 0) {
+    doc.setFillColor(...rgb("#FFF7ED"));
+    doc.rect(ML, y, CW, 7, "F");
+    doc.setDrawColor(...rgb("#FB923C"));
+    doc.setLineWidth(0.25);
+    doc.rect(ML, y, CW, 7, "S");
+    doc.setFillColor(...rgb("#EA580C"));
+    doc.rect(ML, y, 3, 7, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(6.5);
+    doc.setTextColor(...rgb("#7C2D12"));
+    const excNote = `Excluded from totals: ${opts.excludedDates.join("  |  ")}`;
+    doc.text(excNote, ML + 7, y + 5);
+    y += 11;
+  }
 
   // ── 3. KEY METRICS CARDS (32mm) ─────────────────────────────────────────────
   y = section("Key Metrics", y);
@@ -780,6 +808,9 @@ function ComparisonContent() {
   const [error,            setError]            = useState<string | null>(null);
   const [currBrandSeries,  setCurrBrandSeries]  = useState<BrandSeriesMap>({});
   const [prevBrandSeries,  setPrevBrandSeries]  = useState<BrandSeriesMap>({});
+  const [excludedDates,    setExcludedDates]    = useState<string[]>([]);
+  const [showExclPanel,    setShowExclPanel]    = useState(false);
+  const [exclInput,        setExclInput]        = useState("");
   const reqRef = useRef(0);
 
   function toggleBrand(b: SecondaryBrand) {
@@ -817,9 +848,46 @@ function ComparisonContent() {
   const axisStyle = { fontSize: 11, fill: "hsl(var(--muted-foreground))" };
   const canRun    = !!selectedDays && selectedBrands.length > 0;
 
-  // Build trend rows whenever we have series data
-  const trendRows = (currSeries && prevSeries && selectedDays && periods)
-    ? buildTrendRows(currSeries, prevSeries, periods.currStart, periods.prevStart, selectedDays, granularity)
+  // ── Filtered series (zeros out excluded dates) ─────────────────────────────
+  const filtCurrSeries = useMemo(
+    () => currSeries ? filterSeries(currSeries, excludedDates) : null,
+    [currSeries, excludedDates],
+  );
+  const filtPrevSeries = useMemo(
+    () => prevSeries ? filterSeries(prevSeries, excludedDates) : null,
+    [prevSeries, excludedDates],
+  );
+  const filtCurrBrandSeries = useMemo((): BrandSeriesMap => {
+    if (!excludedDates.length) return currBrandSeries;
+    const out: BrandSeriesMap = {};
+    for (const [brand, series] of Object.entries(currBrandSeries) as [SecondaryBrand, TimeSeries][]) {
+      out[brand] = filterSeries(series, excludedDates);
+    }
+    return out;
+  }, [currBrandSeries, excludedDates]);
+
+  // Adjusted results — replace totalContacts with sum of filtered brand series
+  const adjustedResults = useMemo((): BrandResults | null => {
+    if (!results) return null;
+    if (!excludedDates.length) return results;
+    const out = {} as BrandResults;
+    for (const brand of SECONDARY_BRANDS) {
+      if (!results[brand]) continue;
+      const filtSeries = filtCurrBrandSeries[brand];
+      const adjTotal = filtSeries
+        ? Object.values(filtSeries).reduce((s, v) => s + (v as number), 0)
+        : results[brand].curr.totalContacts;
+      out[brand] = {
+        curr: { ...results[brand].curr, totalContacts: adjTotal },
+        prev: results[brand].prev,
+      };
+    }
+    return out;
+  }, [results, excludedDates, filtCurrBrandSeries]);
+
+  // Build trend rows using filtered series
+  const trendRows = (filtCurrSeries && filtPrevSeries && selectedDays && periods)
+    ? buildTrendRows(filtCurrSeries, filtPrevSeries, periods.currStart, periods.prevStart, selectedDays, granularity)
     : [];
 
   // x-axis tick interval — show fewer labels when many points
@@ -874,6 +942,24 @@ function ComparisonContent() {
 
         <div className="flex-1" />
 
+        {/* Exclude Dates toggle */}
+        <button
+          onClick={() => setShowExclPanel(p => !p)}
+          className={cn(
+            "flex items-center gap-2 rounded-xl border px-3.5 py-2 text-xs font-semibold cursor-pointer transition-all duration-150",
+            showExclPanel
+              ? "bg-orange-50 dark:bg-orange-950/30 border-orange-300 dark:border-orange-700 text-orange-700 dark:text-orange-400"
+              : "border-border bg-background text-muted-foreground hover:text-foreground hover:border-muted-foreground/40",
+          )}>
+          <CalendarX2 className="h-3.5 w-3.5" />
+          Exclude Dates
+          {excludedDates.length > 0 && (
+            <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-orange-500 text-white text-[10px] font-bold px-1">
+              {excludedDates.length}
+            </span>
+          )}
+        </button>
+
         {/* Download PDF — visible only when results are loaded */}
         {results && !loading && (
           <button
@@ -883,15 +969,16 @@ function ComparisonContent() {
                 currLabel, prevLabel,
                 selectedDays: selectedDays!,
                 activeBrands,
-                results,
+                results: adjustedResults ?? results,
                 trendRows,
                 granularity,
-                currSeries: currSeries!,
-                prevSeries: prevSeries!,
+                currSeries: filtCurrSeries ?? currSeries!,
+                prevSeries: filtPrevSeries ?? prevSeries!,
                 currStart: periods!.currStart,
                 prevStart: periods!.prevStart,
-                currBrandSeries,
+                currBrandSeries: filtCurrBrandSeries,
                 prevBrandSeries,
+                excludedDates,
               });
             }}
             className="flex items-center gap-2 rounded-xl border border-border bg-background px-4 py-2 text-xs font-semibold text-foreground cursor-pointer hover:bg-muted transition-all duration-150 shadow-sm">
@@ -908,6 +995,61 @@ function ComparisonContent() {
           {loading ? "Loading…" : "Run Report"}
         </button>
       </div>
+
+      {/* ══ EXCLUDE DATES PANEL ═════════════════════════════════════════════ */}
+      {showExclPanel && (
+        <div className="rounded-2xl border border-orange-200 dark:border-orange-800 bg-orange-50/60 dark:bg-orange-950/20 px-5 py-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <CalendarX2 className="h-4 w-4 text-orange-600 dark:text-orange-400 shrink-0" />
+            <p className="text-xs font-bold text-orange-800 dark:text-orange-300">Exclude Dates from Report</p>
+            <p className="text-[11px] text-orange-600/70 dark:text-orange-400/60">
+              Excluded dates are zeroed out in Total Created KPI and the trend chart. Dealer assignment metrics are unaffected (no per-day data available).
+            </p>
+          </div>
+          {/* Input row */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <input
+              type="date"
+              value={exclInput}
+              onChange={e => setExclInput(e.target.value)}
+              className="rounded-lg border border-orange-300 dark:border-orange-700 bg-white dark:bg-background px-3 py-1.5 text-xs font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-orange-400 cursor-pointer"
+            />
+            <button
+              onClick={() => {
+                if (!exclInput || excludedDates.includes(exclInput)) return;
+                setExcludedDates(p => [...p, exclInput].sort());
+                setExclInput("");
+              }}
+              disabled={!exclInput || excludedDates.includes(exclInput)}
+              className="rounded-lg bg-orange-500 hover:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed px-3.5 py-1.5 text-xs font-bold text-white cursor-pointer transition-all duration-150">
+              Add Date
+            </button>
+            {excludedDates.length > 0 && (
+              <button
+                onClick={() => setExcludedDates([])}
+                className="rounded-lg border border-orange-300 dark:border-orange-700 bg-white dark:bg-background px-3.5 py-1.5 text-xs font-semibold text-orange-700 dark:text-orange-400 cursor-pointer hover:bg-orange-100 dark:hover:bg-orange-900/30 transition-all duration-150">
+                Clear all
+              </button>
+            )}
+          </div>
+          {/* Date chips */}
+          {excludedDates.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {excludedDates.map(d => (
+                <span key={d}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-orange-100 dark:bg-orange-900/40 border border-orange-200 dark:border-orange-700 px-3 py-1 text-xs font-semibold text-orange-800 dark:text-orange-300">
+                  {format(parseISO(d), "MMM d, yyyy")}
+                  <button
+                    onClick={() => setExcludedDates(p => p.filter(x => x !== d))}
+                    className="ml-0.5 rounded-full hover:bg-orange-200 dark:hover:bg-orange-800 p-0.5 cursor-pointer transition-colors">
+                    <X className="h-2.5 w-2.5" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ══ EMPTY STATE ══════════════════════════════════════════════════════ */}
       {!loading && !results && !error && (
@@ -933,12 +1075,13 @@ function ComparisonContent() {
 
       {/* ══ RESULTS ══════════════════════════════════════════════════════════ */}
       {!loading && results && (() => {
-        const activeBrands = selectedBrands.filter(b => results[b]);
+        const displayResults = adjustedResults ?? results;
+        const activeBrands = selectedBrands.filter(b => displayResults[b]);
 
         // Aggregate totals per metric
         const grandTotals = METRICS.map(({ key, label, Icon, color }) => {
-          const grandCurr = activeBrands.reduce((s, b) => s + results[b].curr[key], 0);
-          const grandPrev = activeBrands.reduce((s, b) => s + results[b].prev[key], 0);
+          const grandCurr = activeBrands.reduce((s, b) => s + displayResults[b].curr[key], 0);
+          const grandPrev = activeBrands.reduce((s, b) => s + displayResults[b].prev[key], 0);
           const d = grandPrev > 0 ? ((grandCurr - grandPrev) / grandPrev) * 100 : null;
           return { key, label, Icon, color, grandCurr, grandPrev, d };
         });
@@ -1037,8 +1180,8 @@ function ComparisonContent() {
                       {activeBrands.length > 1 && (
                         <div className="pt-3 border-t border-border/60 space-y-2.5">
                           {activeBrands.map(brand => {
-                            const curr = results[brand].curr[key];
-                            const prev = results[brand].prev[key];
+                            const curr = displayResults[brand].curr[key];
+                            const prev = displayResults[brand].prev[key];
                             return (
                               <div key={brand} className="flex items-center justify-between gap-2">
                                 <div className="flex items-center gap-1.5 min-w-0">
@@ -1203,8 +1346,8 @@ function ComparisonContent() {
                             </div>
                           </td>
                           {activeBrands.map(brand => {
-                            const curr = results[brand].curr[key];
-                            const prev = results[brand].prev[key];
+                            const curr = displayResults[brand].curr[key];
+                            const prev = displayResults[brand].prev[key];
                             const d = prev > 0 ? ((curr - prev) / prev) * 100 : null;
                             const up = d !== null && d > 0.4;
                             const dn = d !== null && d < -0.4;
