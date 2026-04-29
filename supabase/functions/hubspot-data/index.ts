@@ -489,6 +489,7 @@ Deno.serve(async (req) => {
     const dealerWithoutDealStateCounts: Record<string, number> = {};
     let dealerAssignedTotal = 0;
     let dealerUnassignedTotal = 0;
+    const dealerCounts: Record<string, { name: string; state: string; zip: string; count: number }> = {};
 
     // Use HubSpot's exact internal lifecycle stage values so the frontend key mapping works.
     // Frontend ALL_LIFECYCLE_ORDER uses: subscriber, lead, marketingqualifiedlead, salesqualifiedlead, opportunity, customer
@@ -591,6 +592,7 @@ Deno.serve(async (req) => {
                 "hs_object_source", "hs_object_source_detail_1",
                 "hs_analytics_source", "hs_analytics_source_data_1",
                 "jobtitle", profileProperty, "nearest_dealer_email",
+                "closest_dealer_name", "closest_dealer_state", "closest_dealer_zip",
               ],
               sorts: [{ propertyName: "createdate", direction: "ASCENDING" }],
               limit: 100,
@@ -612,10 +614,20 @@ Deno.serve(async (req) => {
               if (stateCode) {
                 stateCounts[stateCode] = (stateCounts[stateCode] || 0) + 1;
                 // Split by nearest_dealer_email for the gap analysis map
-                const hasDealer = !!(props.nearest_dealer_email || "").trim();
+                const dealerEmail = (props.nearest_dealer_email || "").trim();
+                const hasDealer = !!dealerEmail;
                 if (hasDealer) {
                   dealerWithDealStateCounts[stateCode] = (dealerWithDealStateCounts[stateCode] || 0) + 1;
                   dealerAssignedTotal++;
+                  if (!dealerCounts[dealerEmail]) {
+                    dealerCounts[dealerEmail] = {
+                      name:  (props.closest_dealer_name  || "").trim(),
+                      state: (props.closest_dealer_state || "").trim().toUpperCase() || stateCode,
+                      zip:   (props.closest_dealer_zip   || "").trim(),
+                      count: 0,
+                    };
+                  }
+                  dealerCounts[dealerEmail].count++;
                 } else {
                   dealerWithoutDealStateCounts[stateCode] = (dealerWithoutDealStateCounts[stateCode] || 0) + 1;
                   dealerUnassignedTotal++;
@@ -623,9 +635,20 @@ Deno.serve(async (req) => {
               } else {
                 unknownStateCount++;
                 // Still count dealer status even for unknown-state contacts
-                const hasDealer = !!(props.nearest_dealer_email || "").trim();
-                if (hasDealer) dealerAssignedTotal++;
-                else dealerUnassignedTotal++;
+                const dealerEmail2 = (props.nearest_dealer_email || "").trim();
+                const hasDealer = !!dealerEmail2;
+                if (hasDealer) {
+                  dealerAssignedTotal++;
+                  if (!dealerCounts[dealerEmail2]) {
+                    dealerCounts[dealerEmail2] = {
+                      name:  (props.closest_dealer_name  || "").trim(),
+                      state: (props.closest_dealer_state || "").trim().toUpperCase(),
+                      zip:   (props.closest_dealer_zip   || "").trim(),
+                      count: 0,
+                    };
+                  }
+                  dealerCounts[dealerEmail2].count++;
+                } else dealerUnassignedTotal++;
               }
             }
             if (res.paging?.next?.after) after = res.paging.next.after;
@@ -1066,6 +1089,9 @@ Deno.serve(async (req) => {
       dealerWithoutDealStateDistribution: Object.entries(dealerWithoutDealStateCounts).sort(([,a],[,b]) => b-a).map(([state, count]) => ({ state, count })),
       dealerAssignedTotal,
       dealerUnassignedTotal,
+      dealerBreakdown: Object.entries(dealerCounts)
+        .map(([email, d]) => ({ email, ...d }))
+        .sort((a, b) => b.count - a.count),
       emails: current.emails,
       deliveryOverTime,
       stateDistribution: Object.entries(stateDistribution).map(([name, value]) => ({ name, value })),
