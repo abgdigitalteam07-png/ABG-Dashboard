@@ -169,192 +169,238 @@ function downloadPDF(opts: {
   const ML = 13;
   const MR = 13;
 
-  // ── colors & helpers ────────────────────────────────────────────────────────
-  const BLUE  = "#3B82F6";
-  const DARK  = "#1E293B";
-  const GRAY  = "#64748B";
-  const LGRAY = "#F1F5F9";
-  const GREEN = "#059669";
-  const RED   = "#DC2626";
-  const CW    = PW - ML - MR;
+  // ── Enterprise color palette (Tesla/analytics dashboard inspired) ───────────
+  const NAVY   = "#0B1E3D";   // deep navy  — header bg, table headers, footer
+  const ACCENT = "#0052CC";   // corp blue  — accent strips, section markers
+  const DARK   = "#172B4D";   // charcoal   — primary body text
+  const GRAY   = "#5E7291";   // steel-gray — secondary / muted text
+  const LGRAY  = "#F4F5F7";   // near-white — card fills, alternating rows
+  const BORDER = "#DDE3ED";   // line color — table borders, separators
+  const GREEN  = "#006644";   // teal-green — positive delta
+  const RED    = "#BF2600";   // brick-red  — negative delta
+  const WHITE  = "#FFFFFF";
+  const CW     = PW - ML - MR;  // 182mm usable width
 
-  const dSign  = (d: number) => d > 0.4 ? "+" : "";
-  const dColor = (d: number): [number, number, number] =>
-    d > 0.4 ? HEX2RGB(GREEN) : d < -0.4 ? HEX2RGB(RED) : HEX2RGB(GRAY);
-
-  // compact autoTable base
-  const AT = {
-    margin: { left: ML, right: MR },
-    tableLineColor: [226, 232, 240] as [number, number, number],
-    tableLineWidth: 0.25,
-    styles: {
-      font: "helvetica" as const,
-      fontSize: 7.5,
-      cellPadding: { top: 2.5, bottom: 2.5, left: 3, right: 3 },
-      textColor: HEX2RGB(DARK),
-      lineColor: [226, 232, 240] as [number, number, number],
-      lineWidth: 0.2,
-    },
-    headStyles: {
-      fillColor: HEX2RGB(DARK) as [number, number, number],
-      textColor: [255, 255, 255] as [number, number, number],
-      fontStyle: "bold" as const,
-      fontSize: 7.5,
-      cellPadding: { top: 3, bottom: 3, left: 3, right: 3 },
-    },
-    alternateRowStyles: { fillColor: HEX2RGB(LGRAY) as [number, number, number] },
+  // Per-metric left-strip colors for KPI cards
+  const MCOL: Record<string, string> = {
+    totalContacts:    "#0052CC",   // deep corporate blue
+    dealerAssigned:   "#006644",   // deep teal-green
+    dealerUnassigned: "#974F0C",   // deep amber
   };
 
-  // section label with blue left bar
-  const secLabel = (title: string, y: number) => {
-    doc.setFillColor(...HEX2RGB(BLUE));
-    doc.rect(ML, y, 2.5, 4.5, "F");
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(8.5);
-    doc.setTextColor(...HEX2RGB(DARK));
-    doc.text(title, ML + 5, y + 3.8);
-    return y + 8;
-  };
+  const rgb    = (hex: string) => HEX2RGB(hex);
+  const dSign  = (d: number)   => d > 0.4 ? "+" : "";
+  const dColor = (d: number): [number,number,number] =>
+    d > 0.4 ? rgb(GREEN) : d < -0.4 ? rgb(RED) : rgb(GRAY);
+  const arrow  = (d: number)   => d > 0.4 ? "▲" : d < -0.4 ? "▼" : "→";
 
-  // ── smart trend rows for PDF: always weekly (or monthly if >90 days) ───────
+  // smart PDF granularity
   const pdfGran: Granularity = opts.selectedDays > 90 ? "month" : "week";
   const pdfTrendRows = buildTrendRows(
     currSeries, prevSeries, currStart, prevStart, opts.selectedDays, pdfGran,
   );
 
+  // base autoTable config — clean enterprise style
+  const AT = {
+    margin: { left: ML, right: MR },
+    tableLineColor: rgb(BORDER) as [number,number,number],
+    tableLineWidth: 0.25,
+    styles: {
+      font: "helvetica" as const,
+      fontSize: 7.5,
+      cellPadding: { top: 3.2, bottom: 3.2, left: 4, right: 4 },
+      textColor: rgb(DARK),
+      lineColor: rgb(BORDER) as [number,number,number],
+      lineWidth: 0.2,
+    },
+    headStyles: {
+      fillColor: rgb(NAVY) as [number,number,number],
+      textColor: [255, 255, 255] as [number,number,number],
+      fontStyle: "bold" as const,
+      fontSize: 7.5,
+      cellPadding: { top: 4, bottom: 4, left: 4, right: 4 },
+    },
+    alternateRowStyles: { fillColor: rgb(LGRAY) as [number,number,number] },
+  };
+
+  // section heading helper — light band + accent left strip + uppercase title
+  const section = (title: string, y: number) => {
+    doc.setFillColor(...rgb(LGRAY));
+    doc.rect(ML, y, CW, 7.5, "F");
+    doc.setDrawColor(...rgb(BORDER));
+    doc.setLineWidth(0.25);
+    doc.rect(ML, y, CW, 7.5, "S");
+    doc.setFillColor(...rgb(ACCENT));
+    doc.rect(ML, y, 3, 7.5, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7.5);
+    doc.setTextColor(...rgb(NAVY));
+    doc.text(title.toUpperCase(), ML + 7, y + 5.2);
+    return y + 12;  // heading + gap below
+  };
+
   // ══════════════════════════════════════════════════════════════════════════
-  // SINGLE PAGE LAYOUT
+  // LAYOUT  (A4 portrait 210×297mm, margins 14mm)
   // ══════════════════════════════════════════════════════════════════════════
 
-  // ── 1. HEADER BAR (14mm) ─────────────────────────────────────────────────
-  doc.setFillColor(...HEX2RGB(DARK));
-  doc.rect(0, 0, PW, 14, "F");
-  doc.setFillColor(...HEX2RGB(BLUE));
-  doc.rect(0, 0, 4, 14, "F");
+  // ── 1. HEADER (0–24mm) ─────────────────────────────────────────────────────
+  doc.setFillColor(...rgb(NAVY));
+  doc.rect(0, 0, PW, 24, "F");
+  // accent left sidebar
+  doc.setFillColor(...rgb(ACCENT));
+  doc.rect(0, 0, 5, 24, "F");
+  // gold bottom accent line
+  doc.setFillColor(255, 196, 0);
+  doc.rect(0, 23.3, PW, 0.7, "F");
 
+  // company name (small, muted)
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(6.5);
+  doc.setTextColor(148, 173, 209);
+  doc.text("AMERICAN BATH GROUP  ·  BRAND PERFORMANCE HUB", ML + 2, 6.5);
+
+  // report title (large, white)
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(14);
   doc.setTextColor(255, 255, 255);
+  doc.text("CRM Lead Comparison Report", ML + 2, 17);
+
+  // right side meta
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(12);
-  doc.text("CRM Contact Comparison Report", ML + 3, 9);
-
+  doc.setFontSize(6.5);
+  doc.setTextColor(148, 173, 209);
+  doc.text("GENERATED", PW - MR, 7, { align: "right" });
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(7.5);
-  doc.setTextColor(148, 163, 184);
-  doc.text(`American Bath Group  —  Brand Performance Hub`, ML + 3, 13.5);  // will be cut – just fills space
-
+  doc.setFontSize(8);
   doc.setTextColor(255, 255, 255);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(7.5);
-  doc.text(`Generated: ${format(new Date(), "MMM d, yyyy  h:mm a")}`, PW - MR, 6.5, { align: "right" });
+  doc.text(format(new Date(), "MMM d, yyyy  ·  h:mm a"), PW - MR, 13, { align: "right" });
   doc.setFont("helvetica", "normal");
-  doc.setTextColor(148, 163, 184);
-  doc.text(`${opts.selectedDays}-day comparison`, PW - MR, 11.5, { align: "right" });
-
-  let y = 18;
-
-  // ── 2. PERIOD + BRANDS STRIP (10mm) ──────────────────────────────────────
-  doc.setFillColor(...HEX2RGB(LGRAY));
-  doc.rect(ML, y, CW, 10, "F");
-  doc.setDrawColor(226, 232, 240);
-  doc.setLineWidth(0.25);
-  doc.rect(ML, y, CW, 10, "S");
-
-  // Blue dot + current
-  doc.setFillColor(...HEX2RGB(BLUE));
-  doc.circle(ML + 4, y + 3.8, 1.2, "F");
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(7.5);
-  doc.setTextColor(...HEX2RGB(DARK));
-  doc.text("Current:", ML + 7, y + 4.3);
-  doc.setFont("helvetica", "normal");
-  doc.setTextColor(...HEX2RGB(GRAY));
-  doc.text(currLabel, ML + 22, y + 4.3);
-
-  // Gray dot + previous
-  doc.setFillColor(203, 213, 225);
-  doc.circle(ML + 4, y + 7.5, 1.2, "F");
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(7.5);
-  doc.setTextColor(...HEX2RGB(DARK));
-  doc.text("Previous:", ML + 7, y + 8);
-  doc.setFont("helvetica", "normal");
-  doc.setTextColor(...HEX2RGB(GRAY));
-  doc.text(prevLabel, ML + 22, y + 8);
-
-  // Brands (right)
-  doc.setFont("helvetica", "bold");
   doc.setFontSize(7);
-  doc.setTextColor(...HEX2RGB(BLUE));
-  doc.text("BRANDS:", PW - MR - doc.getTextWidth(activeBrands.join("  |  ")) - 16, y + 6);
+  doc.setTextColor(148, 173, 209);
+  doc.text(`${opts.selectedDays}-day comparison`, PW - MR, 19.5, { align: "right" });
+
+  let y = 28;  // start below header + 4mm gap
+
+  // ── 2. PERIOD & BRANDS STRIP (14mm) ─────────────────────────────────────────
+  doc.setFillColor(...rgb(WHITE));
+  doc.rect(ML, y, CW, 14, "F");
+  doc.setDrawColor(...rgb(BORDER));
+  doc.setLineWidth(0.3);
+  doc.rect(ML, y, CW, 14, "S");
+
+  const col1 = ML + 6;
+  const col2 = ML + 68;
+  const col3 = ML + 130;
+
+  // Current Period
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(6);
+  doc.setTextColor(...rgb(GRAY));
+  doc.text("CURRENT PERIOD", col1, y + 5);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...rgb(DARK));
+  doc.text(currLabel, col1, y + 11);
+
+  // vertical divider
+  doc.setDrawColor(...rgb(BORDER));
+  doc.setLineWidth(0.4);
+  doc.line(col2 - 4, y + 2.5, col2 - 4, y + 11.5);
+
+  // Previous Period
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(6);
+  doc.setTextColor(...rgb(GRAY));
+  doc.text("PREVIOUS PERIOD", col2, y + 5);
   doc.setFont("helvetica", "normal");
-  doc.setTextColor(...HEX2RGB(DARK));
-  doc.text(activeBrands.join("  |  "), PW - MR, y + 6, { align: "right" });
+  doc.setFontSize(8.5);
+  doc.setTextColor(...rgb(DARK));
+  doc.text(prevLabel, col2, y + 11);
 
-  y += 14;
+  // vertical divider
+  doc.line(col3 - 4, y + 2.5, col3 - 4, y + 11.5);
 
-  // ── 3. KPI BOXES (21mm) ──────────────────────────────────────────────────
-  const boxW = (CW - 6) / 3;
-  METRICS.forEach(({ key, label, color }, i) => {
+  // Brands
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(6);
+  doc.setTextColor(...rgb(GRAY));
+  doc.text("BRAND(S)", col3, y + 5);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8);
+  doc.setTextColor(...rgb(ACCENT));
+  doc.text(activeBrands.join("  ·  "), col3, y + 11);
+
+  y += 18;
+
+  // ── 3. KEY METRICS CARDS (32mm) ─────────────────────────────────────────────
+  y = section("Key Metrics", y);
+
+  const cardH   = 32;
+  const cardGap = 4;
+  const cardW   = (CW - cardGap * 2) / 3;
+
+  METRICS.forEach(({ key, label }, i) => {
     const gc = activeBrands.reduce((s, b) => s + results[b].curr[key], 0);
     const gp = activeBrands.reduce((s, b) => s + results[b].prev[key], 0);
     const d  = gp > 0 ? ((gc - gp) / gp) * 100 : null;
-    const bx = ML + i * (boxW + 3);
+    const bx = ML + i * (cardW + cardGap);
+    const mc = MCOL[key] ?? ACCENT;
 
-    doc.setFillColor(...HEX2RGB(LGRAY));
-    doc.rect(bx, y, boxW, 21, "F");
-    doc.setDrawColor(226, 232, 240);
-    doc.setLineWidth(0.25);
-    doc.rect(bx, y, boxW, 21, "S");
-    // color top bar
-    doc.setFillColor(...HEX2RGB(color));
-    doc.rect(bx, y, boxW, 2, "F");
+    // white card with border
+    doc.setFillColor(...rgb(WHITE));
+    doc.rect(bx, y, cardW, cardH, "F");
+    doc.setDrawColor(...rgb(BORDER));
+    doc.setLineWidth(0.3);
+    doc.rect(bx, y, cardW, cardH, "S");
+    // colored left accent strip
+    doc.setFillColor(...rgb(mc));
+    doc.rect(bx, y, 3.5, cardH, "F");
 
-    // label
+    // metric label
     doc.setFont("helvetica", "bold");
     doc.setFontSize(6.5);
-    doc.setTextColor(...HEX2RGB(GRAY));
-    doc.text(label.toUpperCase(), bx + 3, y + 6.5);
+    doc.setTextColor(...rgb(GRAY));
+    doc.text(label.toUpperCase(), bx + 7, y + 7);
 
-    // big number
+    // big current number
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(16);
-    doc.setTextColor(...HEX2RGB(DARK));
-    doc.text(gc.toLocaleString(), bx + 3, y + 15.5);
+    doc.setFontSize(22);
+    doc.setTextColor(...rgb(DARK));
+    doc.text(gc.toLocaleString(), bx + 7, y + 21);
 
-    // delta top-right
+    // arrow + delta (right side)
     if (d !== null) {
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(7.5);
+      doc.setFontSize(8.5);
       doc.setTextColor(...dColor(d));
-      doc.text(`${dSign(d)}${d.toFixed(1)}%`, bx + boxW - 3, y + 15.5, { align: "right" });
+      doc.text(`${arrow(d)} ${dSign(d)}${d.toFixed(1)}%`, bx + cardW - 5, y + 21, { align: "right" });
     }
-    // prev small
+
+    // "Compare: prev" small text
     doc.setFont("helvetica", "normal");
     doc.setFontSize(6.5);
-    doc.setTextColor(...HEX2RGB(GRAY));
-    doc.text(`prev ${gp.toLocaleString()}`, bx + 3, y + 19.5);
+    doc.setTextColor(...rgb(GRAY));
+    doc.text(`Compare: ${gp.toLocaleString()}`, bx + 7, y + 28);
   });
 
-  y += 25;
+  y += cardH + 9;
 
-  // ── 4. BRAND BREAKDOWN TABLE ──────────────────────────────────────────────
-  y = secLabel("Brand Breakdown", y);
+  // ── 4. BRAND BREAKDOWN TABLE ─────────────────────────────────────────────────
+  y = section("Brand Breakdown", y);
 
-  // Build cross-tab: rows = metrics, cols = brands (curr + delta combined)
   const brandHead = ["Metric", ...activeBrands.map(b => BRAND_SHORT[b])];
-  const brandBody = METRICS.map(({ key, label }) =>
-    [
-      label,
-      ...activeBrands.map(b => {
-        const curr = results[b].curr[key];
-        const prev = results[b].prev[key];
-        const d    = prev > 0 ? ((curr - prev) / prev) * 100 : null;
-        return d !== null ? `${curr.toLocaleString()}  (${dSign(d)}${d.toFixed(1)}%)` : curr.toLocaleString();
-      }),
-    ]
-  );
+  const brandBody = METRICS.map(({ key, label }) => [
+    label,
+    ...activeBrands.map(b => {
+      const curr = results[b].curr[key];
+      const prev = results[b].prev[key];
+      const d    = prev > 0 ? ((curr - prev) / prev) * 100 : null;
+      return d !== null
+        ? `${curr.toLocaleString()}  (${dSign(d)}${d.toFixed(1)}%)`
+        : curr.toLocaleString();
+    }),
+  ]);
 
-  // fill full content width: CW=184mm minus Metric col (52mm) split across brand cols
   const brandColW = Math.floor((CW - 52) / activeBrands.length);
 
   autoTable(doc, {
@@ -366,33 +412,35 @@ function downloadPDF(opts: {
       0: { cellWidth: 52, fontStyle: "bold" },
       ...Object.fromEntries(activeBrands.map((b, i) => {
         const [br, bg2, bb] = HEX2RGB(BRAND_PALETTE[b].solid);
-        return [i + 1, { cellWidth: brandColW, halign: "center" as const,
-          textColor: [br, bg2, bb] as [number,number,number], fontStyle: "bold" as const }];
+        return [i + 1, {
+          cellWidth: brandColW,
+          halign: "center" as const,
+          textColor: [br, bg2, bb] as [number,number,number],
+          fontStyle: "bold" as const,
+        }];
       })),
     },
     didParseCell: (data) => {
-      if (data.section === "head") {
-        if (data.column.index > 0) {
-          const brand = activeBrands[data.column.index - 1];
-          if (brand) data.cell.styles.fillColor = HEX2RGB(BRAND_PALETTE[brand].solid) as [number,number,number];
-        }
+      if (data.section === "head" && data.column.index > 0) {
+        const brand = activeBrands[data.column.index - 1];
+        if (brand) data.cell.styles.fillColor = HEX2RGB(BRAND_PALETTE[brand].solid) as [number,number,number];
       }
     },
   });
 
-  y = (doc as any).lastAutoTable.finalY + 5;
+  y = (doc as any).lastAutoTable.finalY + 9;
 
-  // ── 5. TREND TABLE ───────────────────────────────────────────────────────
+  // ── 5. LEAD TREND TABLE ──────────────────────────────────────────────────────
   if (pdfTrendRows.length > 0) {
-    y = secLabel(`Contact Trend  —  by ${pdfGran.charAt(0).toUpperCase() + pdfGran.slice(1)}`, y);
+    y = section(`Lead Trend  ·  By ${pdfGran.charAt(0).toUpperCase() + pdfGran.slice(1)}`, y);
 
     const trendBody = pdfTrendRows.map(({ label, prevLabel: pLbl, curr, prev }) => {
       const d = prev > 0 ? ((curr - prev) / prev) * 100 : null;
       return [
         label,
         curr.toLocaleString(),
-        `${prev.toLocaleString()}`,
-        d !== null ? `${dSign(d)}${d.toFixed(1)}%` : "—",
+        prev.toLocaleString(),
+        d !== null ? `${arrow(d)} ${dSign(d)}${d.toFixed(1)}%` : "—",
         pLbl,
       ];
     });
@@ -400,38 +448,49 @@ function downloadPDF(opts: {
     autoTable(doc, {
       ...AT,
       startY: y,
-      head: [["Period (Current)", "Contacts", "Contacts (Prev)", "Change", "Period (Prev)"]],
+      // 42+26+26+30+58 = 182 = CW
+      head: [["Period (Current)", "Leads", "Leads (Prev)", "Change", "Period (Prev)"]],
       body: trendBody,
-      styles: { ...AT.styles, fontSize: 7 },
       columnStyles: {
-        // 38+28+28+24+66 = 184 = CW — fills full page width
-        0: { cellWidth: 38, fontStyle: "bold" },
-        1: { cellWidth: 28, halign: "center" as const, fontStyle: "bold" as const, textColor: HEX2RGB(BLUE) as [number,number,number] },
-        2: { cellWidth: 28, halign: "center" as const, textColor: HEX2RGB(GRAY) as [number,number,number] },
-        3: { cellWidth: 24, halign: "center" as const, fontStyle: "bold" as const },
-        4: { cellWidth: 66, textColor: HEX2RGB(GRAY) as [number,number,number] },
+        0: { cellWidth: 42, fontStyle: "bold" },
+        1: { cellWidth: 26, halign: "center" as const, fontStyle: "bold" as const,
+             textColor: rgb(ACCENT) as [number,number,number] },
+        2: { cellWidth: 26, halign: "center" as const,
+             textColor: rgb(GRAY) as [number,number,number] },
+        3: { cellWidth: 30, halign: "center" as const, fontStyle: "bold" as const },
+        4: { cellWidth: 58, textColor: rgb(GRAY) as [number,number,number] },
       },
       didParseCell: (data) => {
         if (data.section === "body" && data.column.index === 3) {
           const v = String(data.cell.raw ?? "");
-          if (v.startsWith("+")) data.cell.styles.textColor = HEX2RGB(GREEN) as [number,number,number];
-          else if (v.startsWith("-")) data.cell.styles.textColor = HEX2RGB(RED) as [number,number,number];
+          if (v.startsWith("▲") || v.startsWith("+"))
+            data.cell.styles.textColor = rgb(GREEN) as [number,number,number];
+          else if (v.startsWith("▼") || v.startsWith("-"))
+            data.cell.styles.textColor = rgb(RED) as [number,number,number];
         }
       },
     });
   }
 
-  // ── footer ────────────────────────────────────────────────────────────────
-  doc.setDrawColor(226, 232, 240);
-  doc.setLineWidth(0.25);
-  doc.line(ML, 286, PW - MR, 286);
+  // ── 6. FOOTER BAR ────────────────────────────────────────────────────────────
+  const FY = 287;
+  doc.setFillColor(...rgb(NAVY));
+  doc.rect(0, FY, PW, 10, "F");
+  doc.setFillColor(...rgb(ACCENT));
+  doc.rect(0, FY, 5, 10, "F");
   doc.setFont("helvetica", "normal");
+  doc.setFontSize(6.5);
+  doc.setTextColor(148, 173, 209);
+  doc.text(
+    "American Bath Group  ·  CRM Lead Comparison Report  ·  Confidential",
+    ML + 2, FY + 6.5,
+  );
+  doc.setFont("helvetica", "bold");
   doc.setFontSize(7);
-  doc.setTextColor(...HEX2RGB(GRAY));
-  doc.text("American Bath Group  —  CRM Comparison Report  —  Confidential", ML, 291);
-  doc.text("Page 1 of 1", PW - MR, 291, { align: "right" });
+  doc.setTextColor(255, 255, 255);
+  doc.text("Page 1 of 1", PW - MR, FY + 6.5, { align: "right" });
 
-  doc.save(`ABG-CRM-Comparison-${format(new Date(), "yyyy-MM-dd")}.pdf`);
+  doc.save(`ABG-CRM-Lead-Report-${format(new Date(), "yyyy-MM-dd")}.pdf`);
 }
 
 // ─── sub-components ───────────────────────────────────────────────────────────
@@ -728,7 +787,7 @@ function ComparisonContent() {
             <div className="rounded-2xl border border-border bg-gradient-to-br from-[#3B82F6]/5 via-card to-card overflow-hidden">
               <div className="flex flex-wrap items-center gap-4 px-6 py-4">
                 <div className="flex-1 min-w-0 space-y-2">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-[#3B82F6]">CRM Comparison Report</p>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-[#3B82F6]">CRM Lead Comparison Report</p>
                   <div className="flex items-center gap-2 flex-wrap">
                     {activeBrands.map(brand => (
                       <span key={brand}
@@ -832,7 +891,7 @@ function ComparisonContent() {
               <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
                 <div className="flex flex-wrap items-center justify-between gap-4 px-6 pt-5 pb-4 border-b border-border bg-gradient-to-r from-muted/20 to-transparent">
                   <div>
-                    <h3 className="text-sm font-bold text-foreground">New Contacts Over Time</h3>
+                    <h3 className="text-sm font-bold text-foreground">New Leads Over Time</h3>
                     <p className="mt-0.5 text-[11px] text-muted-foreground">
                       Per {granularity} — current vs previous period
                     </p>
