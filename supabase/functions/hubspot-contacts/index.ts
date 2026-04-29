@@ -59,6 +59,18 @@ interface ContactsRequest {
   endDate: string;
 }
 
+// Returns the UTC timestamp for midnight Eastern Time on the given YYYY-MM-DD string.
+// Accounts for US DST: UTC-4 (EDT) from 2nd Sunday March to 1st Sunday November, UTC-5 (EST) otherwise.
+function easternMidnightMs(dateStr: string): number {
+  const [y, mo, d] = dateStr.split("-").map(Number);
+  const dateMs = Date.UTC(y, mo - 1, d);
+  const march1Day = new Date(Date.UTC(y, 2, 1)).getUTCDay();
+  const dstStartMs = Date.UTC(y, 2, 8 + (7 - march1Day) % 7, 7); // 2nd Sun Mar 07:00Z = 2am EST
+  const nov1Day = new Date(Date.UTC(y, 10, 1)).getUTCDay();
+  const dstEndMs = Date.UTC(y, 10, 1 + (7 - nov1Day) % 7, 6); // 1st Sun Nov 06:00Z = 2am EDT
+  return dateMs + (dateMs >= dstStartMs && dateMs < dstEndMs ? 4 : 5) * 3_600_000;
+}
+
 // Build a robust token set for matching the "brands" property value stored in HubSpot.
 function buildTokenSet(name: string): Set<string> {
   return new Set([
@@ -105,8 +117,8 @@ Deno.serve(async (req) => {
     if (!token) throw new Error(isSecondary ? "HUBSPOT_ACCESS_TOKEN_2 not configured" : "HUBSPOT_ACCESS_TOKEN not configured");
 
     const buId = isSecondary ? null : BRAND_TO_BU[brandName];
-    const startMs = new Date(startDate + "T00:00:00Z").getTime();
-    const endMs = new Date(endDate + "T23:59:59Z").getTime();
+    const startMs = easternMidnightMs(startDate);
+    const endMs = easternMidnightMs(endDate) + 24 * 3_600_000 - 1;
 
     console.log(`Fetching contacts for brands=[${brandNames.join(",")}] account=${isSecondary ? "secondary" : "primary"} from ${startDate} to ${endDate}`);
 
