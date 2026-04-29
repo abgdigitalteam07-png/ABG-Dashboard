@@ -866,24 +866,38 @@ function ComparisonContent() {
     return out;
   }, [currBrandSeries, excludedDates]);
 
-  // Adjusted results — replace totalContacts with sum of filtered brand series
+  // Filter previous brand series too — excluded dates apply to both periods
+  const filtPrevBrandSeries = useMemo((): BrandSeriesMap => {
+    if (!excludedDates.length) return prevBrandSeries;
+    const out: BrandSeriesMap = {};
+    for (const [brand, series] of Object.entries(prevBrandSeries) as [SecondaryBrand, TimeSeries][]) {
+      out[brand] = filterSeries(series, excludedDates);
+    }
+    return out;
+  }, [prevBrandSeries, excludedDates]);
+
+  // Adjusted results — recalculate totalContacts from filtered series for BOTH periods
   const adjustedResults = useMemo((): BrandResults | null => {
     if (!results) return null;
     if (!excludedDates.length) return results;
     const out = {} as BrandResults;
     for (const brand of SECONDARY_BRANDS) {
       if (!results[brand]) continue;
-      const filtSeries = filtCurrBrandSeries[brand];
-      const adjTotal = filtSeries
-        ? Object.values(filtSeries).reduce((s, v) => s + (v as number), 0)
+      const fCurr = filtCurrBrandSeries[brand];
+      const fPrev = filtPrevBrandSeries[brand];
+      const adjCurrTotal = fCurr
+        ? Object.values(fCurr).reduce((s, v) => s + (v as number), 0)
         : results[brand].curr.totalContacts;
+      const adjPrevTotal = fPrev
+        ? Object.values(fPrev).reduce((s, v) => s + (v as number), 0)
+        : results[brand].prev.totalContacts;
       out[brand] = {
-        curr: { ...results[brand].curr, totalContacts: adjTotal },
-        prev: results[brand].prev,
+        curr: { ...results[brand].curr, totalContacts: adjCurrTotal },
+        prev: { ...results[brand].prev, totalContacts: adjPrevTotal },
       };
     }
     return out;
-  }, [results, excludedDates, filtCurrBrandSeries]);
+  }, [results, excludedDates, filtCurrBrandSeries, filtPrevBrandSeries]);
 
   // Build trend rows using filtered series
   const trendRows = (filtCurrSeries && filtPrevSeries && selectedDays && periods)
@@ -977,7 +991,7 @@ function ComparisonContent() {
                 currStart: periods!.currStart,
                 prevStart: periods!.prevStart,
                 currBrandSeries: filtCurrBrandSeries,
-                prevBrandSeries,
+                prevBrandSeries: filtPrevBrandSeries,
                 excludedDates,
               });
             }}
