@@ -3,8 +3,9 @@
   "configurations": [
     {
       "name": "Vite Dev Server",
-      "runtimeExecutable": "/Users/mali/brand-performance-hub/.claude/worktrees/ecstatic-clarke/.claude/run-dev.sh",
-      "runtimeArgs": [],
+      "runtimeExecutable": "/Users/mali/.nvm/versions/node/v25.9.0/bin/node",
+      "runtimeArgs": ["/Users/mali/brand-performance-hub/node_modules/.bin/vite", "--port", "8080"],
+      "cwd": "/Users/mali/brand-performance-hub",
       "port": 8080
     },
     {
