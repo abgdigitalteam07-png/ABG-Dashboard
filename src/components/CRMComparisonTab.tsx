@@ -1397,6 +1397,92 @@ function ComparisonContent() {
               </div>
             )}
 
+            {/* ── Report Summary ───────────────────────────────────────── */}
+            {(() => {
+              const leadsM  = grandTotals.find(m => m.key === "totalContacts")!;
+              const assignM = grandTotals.find(m => m.key === "dealerAssigned")!;
+              const unassM  = grandTotals.find(m => m.key === "dealerUnassigned")!;
+
+              // Line 1 — overall lead volume
+              const overallDir = leadsM.d !== null
+                ? leadsM.d > 0.4 ? "up" : leadsM.d < -0.4 ? "down" : "flat"
+                : "flat";
+              const line1 = leadsM.d !== null
+                ? `Total new leads ${overallDir === "up" ? "increased" : overallDir === "down" ? "decreased" : "held steady"} by ${Math.abs(leadsM.d).toFixed(1)}% — from ${leadsM.grandPrev.toLocaleString()} to ${leadsM.grandCurr.toLocaleString()} across ${activeBrands.length} brand${activeBrands.length > 1 ? "s" : ""}.`
+                : `${leadsM.grandCurr.toLocaleString()} total new leads recorded across ${activeBrands.length} brand${activeBrands.length > 1 ? "s" : ""} in this period.`;
+
+              // Line 2 — best / worst brand by totalContacts delta (only when >1 brand)
+              const brandDeltas = activeBrands.map(b => {
+                const c = displayResults[b].curr.totalContacts;
+                const p = displayResults[b].prev.totalContacts;
+                return { brand: b, d: p > 0 ? ((c - p) / p) * 100 : null };
+              }).filter(x => x.d !== null) as { brand: SecondaryBrand; d: number }[];
+
+              const bestBrand  = brandDeltas.length ? [...brandDeltas].sort((a, b) => b.d - a.d)[0]  : null;
+              const worstBrand = brandDeltas.length ? [...brandDeltas].sort((a, b) => a.d - b.d)[0]  : null;
+
+              let line2 = "";
+              if (activeBrands.length > 1 && bestBrand && worstBrand && bestBrand.brand !== worstBrand.brand) {
+                line2 = `${BRAND_SHORT[bestBrand.brand]} led with ${bestBrand.d > 0 ? "+" : ""}${bestBrand.d.toFixed(1)}% new leads; ${BRAND_SHORT[worstBrand.brand]} lagged at ${worstBrand.d > 0 ? "+" : ""}${worstBrand.d.toFixed(1)}%.`;
+              } else if (activeBrands.length === 1 && assignM.d !== null) {
+                const aDir = assignM.d > 0.4 ? "up" : assignM.d < -0.4 ? "down" : "flat";
+                line2 = `Dealer-assigned leads ${aDir === "up" ? "grew" : aDir === "down" ? "dropped" : "held"} ${assignM.d > 0 ? "+" : ""}${assignM.d.toFixed(1)}%, with ${assignM.grandCurr.toLocaleString()} assigned out of ${leadsM.grandCurr.toLocaleString()} total.`;
+              }
+
+              // Line 3 — unassigned leads alert or dealer coverage rate
+              const coverageRate = leadsM.grandCurr > 0
+                ? Math.round((assignM.grandCurr / leadsM.grandCurr) * 100)
+                : null;
+              let line3 = "";
+              if (unassM.d !== null && unassM.d > 5) {
+                line3 = `Watch: unassigned leads rose ${unassM.d > 0 ? "+" : ""}${unassM.d.toFixed(1)}% (${unassM.grandCurr.toLocaleString()} leads) — follow-up coverage may need attention.`;
+              } else if (coverageRate !== null) {
+                line3 = `Dealer coverage rate: ${coverageRate}% of leads assigned this period${unassM.d !== null ? ` (unassigned ${unassM.d > 0 ? "+" : ""}${unassM.d.toFixed(1)}% vs previous)` : ""}.`;
+              }
+
+              const lines = [line1, line2, line3].filter(Boolean);
+              const accent = overallDir === "up" ? "#10B981" : overallDir === "down" ? "#EF4444" : "#6B7280";
+
+              return (
+                <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+                  <div className="flex items-center gap-3 px-6 py-4 border-b border-border bg-muted/20">
+                    <div className="flex h-7 w-7 items-center justify-center rounded-lg shrink-0"
+                      style={{ background: `${accent}18` }}>
+                      {overallDir === "up"
+                        ? <TrendingUp className="h-4 w-4" style={{ color: accent }} />
+                        : overallDir === "down"
+                        ? <TrendingDown className="h-4 w-4" style={{ color: accent }} />
+                        : <Minus className="h-4 w-4" style={{ color: accent }} />}
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-foreground">Report Summary</h3>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">{currLabel} vs {prevLabel}</p>
+                    </div>
+                    {excludedDates.length > 0 && (
+                      <span className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-orange-100 dark:bg-orange-900/30 border border-orange-200 dark:border-orange-700 px-2.5 py-1 text-[10px] font-semibold text-orange-700 dark:text-orange-400">
+                        <CalendarX2 className="h-3 w-3" />
+                        {excludedDates.length} date{excludedDates.length > 1 ? "s" : ""} excluded
+                      </span>
+                    )}
+                  </div>
+                  <div className="px-6 py-5 space-y-3">
+                    {lines.map((line, i) => (
+                      <div key={i} className="flex items-start gap-3">
+                        <span className="mt-1.5 h-1.5 w-1.5 rounded-full shrink-0"
+                          style={{ background: i === 0 ? accent : "hsl(var(--muted-foreground)/0.4)" }} />
+                        <p className={cn(
+                          "text-sm leading-relaxed",
+                          i === 0 ? "font-semibold text-foreground" : "text-muted-foreground",
+                        )}>
+                          {line}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
           </div>
         );
       })()}
