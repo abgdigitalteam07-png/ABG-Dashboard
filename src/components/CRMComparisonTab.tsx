@@ -9,6 +9,7 @@ import {
   ResponsiveContainer, Cell, LabelList, ReferenceLine,
 } from "recharts";
 import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 // ─── access control ───────────────────────────────────────────────────────────
 const ALLOWED_EMAILS = new Set([
@@ -147,6 +148,13 @@ function buildTrendRows(
 // ─── pdf export ───────────────────────────────────────────────────────────────
 type TrendRow = { label: string; prevLabel: string; curr: number; prev: number };
 
+type RGB = [number, number, number];
+const HEX2RGB = (h: string): RGB => [
+  parseInt(h.slice(1, 3), 16),
+  parseInt(h.slice(3, 5), 16),
+  parseInt(h.slice(5, 7), 16),
+];
+
 function downloadPDF(opts: {
   currLabel: string; prevLabel: string; selectedDays: number;
   activeBrands: SecondaryBrand[]; results: BrandResults;
@@ -154,264 +162,345 @@ function downloadPDF(opts: {
 }) {
   const { currLabel, prevLabel, activeBrands, results, trendRows, granularity } = opts;
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const PW = 210;
+  const ML = 14;
+  const MR = 14;
 
-  const PW = 210, PH = 297;
-  const ML = 14, MR = 14;
-  const CW = PW - ML - MR;
-  let y = 0;
+  // ── color palette ───────────────────────────────────────────────────────────
+  const BLUE   = "#3B82F6";
+  const DARK   = "#1E293B";
+  const GRAY   = "#64748B";
+  const LGRAY  = "#F1F5F9";
+  const GREEN  = "#059669";
+  const RED    = "#DC2626";
 
-  // ── colour helpers ──────────────────────────────────────────────────────────
-  type RGB = [number, number, number];
-  const C_BLUE:  RGB = [59, 130, 246];
-  const C_DARK:  RGB = [30,  41,  59];
-  const C_GRAY:  RGB = [100, 116, 139];
-  const C_LGRAY: RGB = [241, 245, 249];
-  const C_WHITE: RGB = [255, 255, 255];
-  const C_GREEN: RGB = [16,  185, 129];
-  const C_RED:   RGB = [239,  68,  68];
-  const C_SLATE: RGB = [203, 213, 225];
-  const C_LINE:  RGB = [226, 232, 240];
-  const hex2rgb = (h: string): RGB => [
-    parseInt(h.slice(1, 3), 16),
-    parseInt(h.slice(3, 5), 16),
-    parseInt(h.slice(5, 7), 16),
-  ];
-  const setFill  = (...c: RGB) => doc.setFillColor(c[0], c[1], c[2]);
-  const setStroke= (...c: RGB) => doc.setDrawColor(c[0], c[1], c[2]);
-  const setTxt   = (...c: RGB) => doc.setTextColor(c[0], c[1], c[2]);
-  const deltaClr = (d: number): RGB => d > 0.4 ? C_GREEN : d < -0.4 ? C_RED : C_GRAY;
+  const deltaColor = (d: number) => d > 0.4 ? GREEN : d < -0.4 ? RED : GRAY;
+  const deltaSign  = (d: number) => d > 0.4 ? "+" : "";
 
-  // ── page helpers ────────────────────────────────────────────────────────────
-  const addFooter = () => {
-    const pg = doc.getCurrentPageInfo().pageNumber;
-    const total = doc.getNumberOfPages();
-    setStroke(...C_LINE); doc.setLineWidth(0.3);
-    doc.line(ML, 285, PW - MR, 285);
-    setTxt(...C_GRAY); doc.setFontSize(7.5); doc.setFont("helvetica", "normal");
-    doc.text("American Bath Group — CRM Comparison Report — Confidential", ML, 290);
-    doc.text(`Page ${pg} of ${total}`, PW - MR, 290, { align: "right" });
-  };
-  const ensureSpace = (need: number) => {
-    if (y + need > 278) {
-      addFooter();
-      doc.addPage();
-      y = 22;
-    }
+  // ── autoTable defaults ──────────────────────────────────────────────────────
+  const tableDefaults = {
+    margin: { left: ML, right: MR },
+    tableLineColor: [226, 232, 240] as [number, number, number],
+    tableLineWidth: 0.3,
+    styles: {
+      font: "helvetica" as const,
+      fontSize: 8.5,
+      cellPadding: { top: 3.5, bottom: 3.5, left: 4, right: 4 },
+      textColor: HEX2RGB(DARK),
+      lineColor: [226, 232, 240] as [number, number, number],
+      lineWidth: 0.2,
+    },
+    headStyles: {
+      fillColor: HEX2RGB(DARK) as [number, number, number],
+      textColor: [255, 255, 255] as [number, number, number],
+      fontStyle: "bold" as const,
+      fontSize: 8,
+    },
+    alternateRowStyles: {
+      fillColor: HEX2RGB(LGRAY) as [number, number, number],
+    },
   };
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // 1 ── COVER HEADER
-  // ═══════════════════════════════════════════════════════════════════════════
-  setFill(...C_BLUE); doc.rect(0, 0, PW, 32, "F");
-  // white accent stripe
-  setFill(255, 255, 255); doc.setGState(new (doc as any).GState({ opacity: 0.07 }));
-  doc.rect(0, 0, PW, 32, "F");
-  doc.setGState(new (doc as any).GState({ opacity: 1 }));
+  // ── section title helper ────────────────────────────────────────────────────
+  const sectionTitle = (title: string, yPos: number): number => {
+    doc.setFillColor(...HEX2RGB(BLUE));
+    doc.rect(ML, yPos, 3, 5, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(...HEX2RGB(DARK));
+    doc.text(title, ML + 6, yPos + 4);
+    return yPos + 10;
+  };
 
-  setTxt(...C_WHITE);
-  doc.setFontSize(17); doc.setFont("helvetica", "bold");
-  doc.text("CRM Contact Comparison Report", ML, 13);
-  doc.setFontSize(8.5); doc.setFont("helvetica", "normal");
-  doc.text("American Bath Group — Brand Performance Hub", ML, 20);
-  doc.text(`Generated: ${format(new Date(), "MMM d, yyyy · h:mm a")}`, PW - MR, 13, { align: "right" });
+  // ══════════════════════════════════════════════════════════════════════════
+  // PAGE 1 — COVER + SUMMARY
+  // ══════════════════════════════════════════════════════════════════════════
 
-  y = 42;
+  // ── header banner ────────────────────────────────────────────────────────
+  doc.setFillColor(...HEX2RGB(DARK));
+  doc.rect(0, 0, PW, 38, "F");
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // 2 ── PERIOD CONTEXT BOX
-  // ═══════════════════════════════════════════════════════════════════════════
-  setFill(...C_LGRAY); doc.roundedRect(ML, y, CW, 22, 3, 3, "F");
-  setStroke(...C_LINE); doc.setLineWidth(0.3); doc.roundedRect(ML, y, CW, 22, 3, 3, "S");
+  // left accent bar
+  doc.setFillColor(...HEX2RGB(BLUE));
+  doc.rect(0, 0, 5, 38, "F");
 
-  // current period
-  setFill(...C_BLUE); doc.rect(ML + 4, y + 5, 3, 4, "F");
-  setTxt(...C_DARK); doc.setFontSize(8.5); doc.setFont("helvetica", "bold");
-  doc.text("Current Period", ML + 10, y + 8.2);
-  doc.setFont("helvetica", "normal"); setTxt(...C_GRAY);
-  doc.text(currLabel, ML + 10 + doc.getTextWidth("Current Period  "), y + 8.2);
+  doc.setTextColor(255, 255, 255);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(16);
+  doc.text("CRM Contact Comparison Report", ML + 4, 14);
 
-  // previous period
-  setFill(...C_SLATE); doc.rect(ML + 4, y + 13, 3, 4, "F");
-  setTxt(...C_DARK); doc.setFont("helvetica", "bold");
-  doc.text("Previous Period", ML + 10, y + 16.2);
-  doc.setFont("helvetica", "normal"); setTxt(...C_GRAY);
-  doc.text(prevLabel, ML + 10 + doc.getTextWidth("Previous Period  "), y + 16.2);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(148, 163, 184); // slate-400
+  doc.text("American Bath Group  —  Brand Performance Hub", ML + 4, 22);
+  doc.text(`Generated: ${format(new Date(), "MMMM d, yyyy  'at'  h:mm a")}`, ML + 4, 29);
 
-  // brands (right side)
-  setTxt(...C_BLUE); doc.setFont("helvetica", "bold"); doc.setFontSize(7.5);
-  doc.text("BRANDS ANALYZED", PW - MR, y + 6, { align: "right" });
-  setTxt(...C_DARK); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
-  activeBrands.forEach((b, i) => doc.text(b, PW - MR, y + 10.5 + i * 4.5, { align: "right" }));
+  // right side: period label
+  doc.setTextColor(255, 255, 255);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8);
+  doc.text("REPORTING PERIOD", PW - MR, 16, { align: "right" });
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(148, 163, 184);
+  doc.text(opts.selectedDays + " days", PW - MR, 22, { align: "right" });
 
-  y += 30;
+  let curY = 48;
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // 3 ── PERFORMANCE SUMMARY TABLE
-  // ═══════════════════════════════════════════════════════════════════════════
-  // section title
-  setTxt(...C_BLUE); doc.setFont("helvetica", "bold"); doc.setFontSize(9);
-  doc.text("▌ PERFORMANCE SUMMARY", ML, y); y += 6;
+  // ── period context ────────────────────────────────────────────────────────
+  doc.setFillColor(...HEX2RGB(LGRAY));
+  doc.roundedRect(ML, curY, PW - ML - MR, 24, 2, 2, "F");
+  doc.setDrawColor(226, 232, 240);
+  doc.setLineWidth(0.3);
+  doc.roundedRect(ML, curY, PW - ML - MR, 24, 2, 2, "S");
 
-  const COL = [ML, ML + 68, ML + 100, ML + 130, ML + 158];
-  const ROW_H = 8;
+  // current
+  doc.setFillColor(...HEX2RGB(BLUE));
+  doc.rect(ML + 5, curY + 5.5, 3, 3.5, "F");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...HEX2RGB(DARK));
+  doc.text("Current Period:", ML + 11, curY + 8.5);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(...HEX2RGB(GRAY));
+  doc.text(currLabel, ML + 42, curY + 8.5);
 
-  // thead
-  setFill(...C_DARK); doc.rect(ML, y, CW, ROW_H, "F");
-  setTxt(...C_WHITE); doc.setFontSize(7.5); doc.setFont("helvetica", "bold");
-  ["Metric", "Current", "Previous", "Change", "Trend"].forEach((h, i) =>
-    doc.text(h, COL[i] + 2, y + 5.5)
-  );
-  y += ROW_H;
+  // previous
+  doc.setFillColor(203, 213, 225);
+  doc.rect(ML + 5, curY + 14, 3, 3.5, "F");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8.5);
+  doc.setTextColor(...HEX2RGB(DARK));
+  doc.text("Previous Period:", ML + 11, curY + 17);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(...HEX2RGB(GRAY));
+  doc.text(prevLabel, ML + 42, curY + 17);
 
-  METRICS.forEach(({ key, label }, ri) => {
+  // brands on right
+  const brandStr = activeBrands.join("  |  ");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7.5);
+  doc.setTextColor(...HEX2RGB(BLUE));
+  doc.text("BRANDS", PW - MR, curY + 8, { align: "right" });
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(...HEX2RGB(DARK));
+  doc.text(brandStr, PW - MR, curY + 14, { align: "right" });
+
+  curY += 34;
+
+  // ── summary kpi boxes ────────────────────────────────────────────────────
+  curY = sectionTitle("Performance Summary", curY);
+
+  const boxW  = (PW - ML - MR - 8) / 3;
+  METRICS.forEach(({ key, label, color }, i) => {
     const gCurr = activeBrands.reduce((s, b) => s + results[b].curr[key], 0);
     const gPrev = activeBrands.reduce((s, b) => s + results[b].prev[key], 0);
     const d     = gPrev > 0 ? ((gCurr - gPrev) / gPrev) * 100 : null;
-    const up    = d !== null && d > 0.4;
-    const dn    = d !== null && d < -0.4;
+    const bx    = ML + i * (boxW + 4);
 
-    setFill(...(ri % 2 === 0 ? C_LGRAY : C_WHITE)); doc.rect(ML, y, CW, ROW_H, "F");
+    // box background
+    doc.setFillColor(...HEX2RGB(LGRAY));
+    doc.roundedRect(bx, curY, boxW, 30, 2, 2, "F");
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.3);
+    doc.roundedRect(bx, curY, boxW, 30, 2, 2, "S");
 
-    setTxt(...C_DARK); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
-    doc.text(label, COL[0] + 2, y + 5.5);
-    doc.setFont("helvetica", "bold"); setTxt(...C_BLUE);
-    doc.text(gCurr.toLocaleString(), COL[1] + 2, y + 5.5);
-    doc.setFont("helvetica", "normal"); setTxt(...C_GRAY);
-    doc.text(gPrev.toLocaleString(), COL[2] + 2, y + 5.5);
+    // color top accent
+    doc.setFillColor(...HEX2RGB(color));
+    doc.roundedRect(bx, curY, boxW, 2.5, 1, 1, "F");
 
+    // metric label
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(7.5);
+    doc.setTextColor(...HEX2RGB(GRAY));
+    doc.text(label.toUpperCase(), bx + 4, curY + 8);
+
+    // current value (big)
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(18);
+    doc.setTextColor(...HEX2RGB(DARK));
+    doc.text(gCurr.toLocaleString(), bx + 4, curY + 20);
+
+    // delta + prev
     if (d !== null) {
-      setTxt(...deltaClr(d));
+      const sign = deltaSign(d);
       doc.setFont("helvetica", "bold");
-      doc.text(`${up ? "+" : ""}${d.toFixed(1)}%`, COL[3] + 2, y + 5.5);
+      doc.setFontSize(8);
+      doc.setTextColor(...HEX2RGB(deltaColor(d)));
+      doc.text(`${sign}${d.toFixed(1)}%`, bx + boxW - 4, curY + 20, { align: "right" });
     }
-    // mini trend bar
-    const maxV = Math.max(gCurr, gPrev, 1);
-    const barW = 24;
-    setFill(...C_LGRAY); doc.rect(COL[4] + 2, y + 2.5, barW, 3, "F");
-    setFill(...C_BLUE); doc.rect(COL[4] + 2, y + 2.5, (gCurr / maxV) * barW, 3, "F");
-    setFill(...C_SLATE); doc.rect(COL[4] + 2, y + 6, (gPrev / maxV) * barW, 2, "F");
-
-    y += ROW_H;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7.5);
+    doc.setTextColor(...HEX2RGB(GRAY));
+    doc.text(`prev: ${gPrev.toLocaleString()}`, bx + 4, curY + 27);
   });
-  // border
-  setStroke(...C_LINE); doc.setLineWidth(0.3);
-  doc.rect(ML, y - METRICS.length * ROW_H - ROW_H, CW, METRICS.length * ROW_H + ROW_H, "S");
-  y += 10;
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // 4 ── BRAND BREAKDOWN
-  // ═══════════════════════════════════════════════════════════════════════════
-  ensureSpace(20);
-  setTxt(...C_BLUE); doc.setFont("helvetica", "bold"); doc.setFontSize(9);
-  doc.text("▌ BRAND BREAKDOWN", ML, y); y += 7;
+  curY += 38;
+
+  // ── performance summary table (all brands combined) ───────────────────────
+  const summaryRows = METRICS.map(({ key, label }) => {
+    const gCurr = activeBrands.reduce((s, b) => s + results[b].curr[key], 0);
+    const gPrev = activeBrands.reduce((s, b) => s + results[b].prev[key], 0);
+    const d     = gPrev > 0 ? ((gCurr - gPrev) / gPrev) * 100 : null;
+    return [
+      label,
+      gCurr.toLocaleString(),
+      gPrev.toLocaleString(),
+      d !== null ? `${deltaSign(d)}${d.toFixed(1)}%` : "—",
+    ];
+  });
+
+  autoTable(doc, {
+    ...tableDefaults,
+    startY: curY,
+    head: [["Metric", `Current  (${currLabel})`, `Previous  (${prevLabel})`, "Change"]],
+    body: summaryRows,
+    columnStyles: {
+      0: { cellWidth: 55, fontStyle: "bold" },
+      1: { cellWidth: 50, halign: "center", textColor: HEX2RGB(BLUE), fontStyle: "bold" },
+      2: { cellWidth: 50, halign: "center", textColor: HEX2RGB(GRAY) },
+      3: { cellWidth: 27, halign: "center", fontStyle: "bold" },
+    },
+    didParseCell: (data) => {
+      if (data.section === "body" && data.column.index === 3) {
+        const v = String(data.cell.raw ?? "");
+        if (v.startsWith("+")) data.cell.styles.textColor = HEX2RGB(GREEN) as [number,number,number];
+        else if (v.startsWith("-")) data.cell.styles.textColor = HEX2RGB(RED) as [number,number,number];
+      }
+    },
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // PAGE 2 — BRAND BREAKDOWN
+  // ══════════════════════════════════════════════════════════════════════════
+  doc.addPage();
+
+  // page header (lighter)
+  doc.setFillColor(...HEX2RGB(DARK));
+  doc.rect(0, 0, PW, 18, "F");
+  doc.setFillColor(...HEX2RGB(BLUE));
+  doc.rect(0, 0, 5, 18, "F");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.setTextColor(255, 255, 255);
+  doc.text("Brand Breakdown", ML + 4, 12);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(148, 163, 184);
+  doc.text(`${currLabel}  vs  ${prevLabel}`, PW - MR, 12, { align: "right" });
+
+  curY = 28;
 
   activeBrands.forEach((brand) => {
-    ensureSpace(METRICS.length * ROW_H + 24);
-    const [br, bg2, bb] = hex2rgb(BRAND_PALETTE[brand].solid);
+    const [br, bg2, bb] = HEX2RGB(BRAND_PALETTE[brand].solid);
+    curY = sectionTitle(brand, curY);
 
-    // brand header row
-    setFill(br, bg2, bb); doc.rect(ML, y, CW, 9, "F");
-    setTxt(...C_WHITE); doc.setFont("helvetica", "bold"); doc.setFontSize(9);
-    doc.text(brand, ML + 4, y + 6.2);
-    setTxt(255, 255, 255); doc.setFont("helvetica", "normal"); doc.setFontSize(7.5);
-    doc.text(`${currLabel}  vs  ${prevLabel}`, PW - MR, y + 6.2, { align: "right" });
-    y += 9;
-
-    // col headers
-    setFill(...C_LGRAY); doc.rect(ML, y, CW, 6.5, "F");
-    setTxt(...C_GRAY); doc.setFont("helvetica", "bold"); doc.setFontSize(7.5);
-    ["Metric", "Current", "Previous", "Change", "Visual"].forEach((h, i) =>
-      doc.text(h, COL[i] + 2, y + 4.5)
-    );
-    y += 6.5;
-
-    METRICS.forEach(({ key, label }, ri) => {
+    const brandRows = METRICS.map(({ key, label }) => {
       const curr = results[brand].curr[key];
       const prev = results[brand].prev[key];
       const d    = prev > 0 ? ((curr - prev) / prev) * 100 : null;
-      const up   = d !== null && d > 0.4;
-
-      setFill(...(ri % 2 === 0 ? C_LGRAY : C_WHITE)); doc.rect(ML, y, CW, ROW_H, "F");
-      setTxt(...C_DARK); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
-      doc.text(label, COL[0] + 2, y + 5.5);
-      doc.setFont("helvetica", "bold"); doc.setTextColor(br, bg2, bb);
-      doc.text(curr.toLocaleString(), COL[1] + 2, y + 5.5);
-      doc.setFont("helvetica", "normal"); setTxt(...C_GRAY);
-      doc.text(prev.toLocaleString(), COL[2] + 2, y + 5.5);
-      if (d !== null) {
-        setTxt(...deltaClr(d)); doc.setFont("helvetica", "bold");
-        doc.text(`${up ? "+" : ""}${d.toFixed(1)}%`, COL[3] + 2, y + 5.5);
-      }
-      const maxV = Math.max(curr, prev, 1);
-      const bW = 24;
-      setFill(235, 248, 255); doc.rect(COL[4] + 2, y + 2, bW, 2.5, "F");
-      setFill(br, bg2, bb);   doc.rect(COL[4] + 2, y + 2, (curr / maxV) * bW, 2.5, "F");
-      setFill(...C_SLATE);    doc.rect(COL[4] + 2, y + 5.5, (prev / maxV) * bW, 1.8, "F");
-      y += ROW_H;
+      return [
+        label,
+        curr.toLocaleString(),
+        prev.toLocaleString(),
+        d !== null ? `${deltaSign(d)}${d.toFixed(1)}%` : "—",
+      ];
     });
 
-    setStroke(...C_LINE); doc.setLineWidth(0.3);
-    doc.rect(ML, y - METRICS.length * ROW_H - 6.5, CW, METRICS.length * ROW_H + 6.5, "S");
-    y += 8;
+    autoTable(doc, {
+      ...tableDefaults,
+      startY: curY,
+      head: [["Metric", "Current", "Previous", "Change"]],
+      body: brandRows,
+      headStyles: {
+        ...tableDefaults.headStyles,
+        fillColor: [br, bg2, bb] as [number, number, number],
+      },
+      columnStyles: {
+        0: { cellWidth: 60, fontStyle: "bold" },
+        1: { cellWidth: 45, halign: "center", textColor: [br, bg2, bb], fontStyle: "bold" },
+        2: { cellWidth: 45, halign: "center", textColor: HEX2RGB(GRAY) },
+        3: { cellWidth: 32, halign: "center", fontStyle: "bold" },
+      },
+      didParseCell: (data) => {
+        if (data.section === "body" && data.column.index === 3) {
+          const v = String(data.cell.raw ?? "");
+          if (v.startsWith("+")) data.cell.styles.textColor = HEX2RGB(GREEN) as [number,number,number];
+          else if (v.startsWith("-")) data.cell.styles.textColor = HEX2RGB(RED) as [number,number,number];
+        }
+      },
+    });
+
+    curY = (doc as any).lastAutoTable.finalY + 12;
   });
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // 5 ── TREND DATA TABLE
-  // ═══════════════════════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════════════
+  // PAGE 3 — TREND DATA
+  // ══════════════════════════════════════════════════════════════════════════
   if (trendRows.length > 0) {
-    ensureSpace(30);
-    setTxt(...C_BLUE); doc.setFont("helvetica", "bold"); doc.setFontSize(9);
-    doc.text(`▌ CONTACT TREND — BY ${granularity.toUpperCase()}`, ML, y); y += 7;
+    doc.addPage();
 
-    const TC = [ML, ML + 48, ML + 90, ML + 128, ML + 158];
-    const TH = 6.5;
+    // page header
+    doc.setFillColor(...HEX2RGB(DARK));
+    doc.rect(0, 0, PW, 18, "F");
+    doc.setFillColor(...HEX2RGB(BLUE));
+    doc.rect(0, 0, 5, 18, "F");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.setTextColor(255, 255, 255);
+    doc.text(`Contact Trend  —  by ${granularity.charAt(0).toUpperCase() + granularity.slice(1)}`, ML + 4, 12);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(148, 163, 184);
+    doc.text(`${currLabel}  vs  ${prevLabel}`, PW - MR, 12, { align: "right" });
 
-    // thead
-    setFill(...C_DARK); doc.rect(ML, y, CW, TH + 1, "F");
-    setTxt(...C_WHITE); doc.setFont("helvetica", "bold"); doc.setFontSize(7.5);
-    ["Period", "Current", "Previous period", "Change", "Bar"].forEach((h, i) =>
-      doc.text(h, TC[i] + 2, y + 4.8)
-    );
-    y += TH + 1;
+    curY = 28;
 
-    trendRows.forEach(({ label, prevLabel: pLbl, curr, prev }, ri) => {
-      ensureSpace(TH + 2);
-      const d  = prev > 0 ? ((curr - prev) / prev) * 100 : null;
-      const up = d !== null && d > 0.4;
-
-      setFill(...(ri % 2 === 0 ? C_LGRAY : C_WHITE)); doc.rect(ML, y, CW, TH, "F");
-      setTxt(...C_GRAY); doc.setFont("helvetica", "normal"); doc.setFontSize(7.5);
-      doc.text(label, TC[0] + 2, y + 4.4);
-      setTxt(...C_BLUE); doc.setFont("helvetica", "bold");
-      doc.text(String(curr), TC[1] + 2, y + 4.4);
-      doc.setFont("helvetica", "normal"); setTxt(...C_GRAY);
-      doc.text(`${String(prev)}  (${pLbl})`, TC[2] + 2, y + 4.4);
-      if (d !== null) {
-        setTxt(...deltaClr(d)); doc.setFont("helvetica", "bold");
-        doc.text(`${up ? "+" : ""}${d.toFixed(1)}%`, TC[3] + 2, y + 4.4);
-      }
-      // mini bar
-      const maxV = Math.max(curr, prev, 1);
-      const bW   = 24;
-      setFill(235, 248, 255); doc.rect(TC[4] + 2, y + 1.2, bW, 2.2, "F");
-      setFill(...C_BLUE);    doc.rect(TC[4] + 2, y + 1.2, (curr / maxV) * bW, 2.2, "F");
-      setFill(...C_SLATE);   doc.rect(TC[4] + 2, y + 4,   (prev / maxV) * bW, 1.5, "F");
-      y += TH;
+    const trendBody = trendRows.map(({ label, prevLabel: pLbl, curr, prev }) => {
+      const d = prev > 0 ? ((curr - prev) / prev) * 100 : null;
+      return [
+        label,
+        curr.toLocaleString(),
+        `${prev.toLocaleString()}  (${pLbl})`,
+        d !== null ? `${deltaSign(d)}${d.toFixed(1)}%` : "—",
+      ];
     });
 
-    setStroke(...C_LINE); doc.setLineWidth(0.3);
-    doc.rect(ML, y - trendRows.length * TH - TH - 1, CW, trendRows.length * TH + TH + 1, "S");
+    autoTable(doc, {
+      ...tableDefaults,
+      startY: curY,
+      head: [["Period", "New Contacts  (Current)", "New Contacts  (Previous)", "Change"]],
+      body: trendBody,
+      styles: { ...tableDefaults.styles, fontSize: 8 },
+      columnStyles: {
+        0: { cellWidth: 35, fontStyle: "bold", textColor: HEX2RGB(GRAY) },
+        1: { cellWidth: 55, halign: "center", textColor: HEX2RGB(BLUE), fontStyle: "bold" },
+        2: { cellWidth: 65, halign: "center", textColor: HEX2RGB(GRAY) },
+        3: { cellWidth: 27, halign: "center", fontStyle: "bold" },
+      },
+      didParseCell: (data) => {
+        if (data.section === "body" && data.column.index === 3) {
+          const v = String(data.cell.raw ?? "");
+          if (v.startsWith("+")) data.cell.styles.textColor = HEX2RGB(GREEN) as [number,number,number];
+          else if (v.startsWith("-")) data.cell.styles.textColor = HEX2RGB(RED) as [number,number,number];
+        }
+      },
+    });
   }
 
-  // ── footers on all pages ────────────────────────────────────────────────────
-  const total = doc.getNumberOfPages();
-  for (let pg = 1; pg <= total; pg++) {
+  // ── footer on every page ──────────────────────────────────────────────────
+  const totalPages = doc.getNumberOfPages();
+  for (let pg = 1; pg <= totalPages; pg++) {
     doc.setPage(pg);
-    setStroke(...C_LINE); doc.setLineWidth(0.3);
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.3);
     doc.line(ML, 285, PW - MR, 285);
-    setTxt(...C_GRAY); doc.setFontSize(7.5); doc.setFont("helvetica", "normal");
-    doc.text("American Bath Group — CRM Comparison Report — Confidential", ML, 290);
-    doc.text(`Page ${pg} of ${total}`, PW - MR, 290, { align: "right" });
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(7.5);
+    doc.setTextColor(...HEX2RGB(GRAY));
+    doc.text("American Bath Group  —  CRM Comparison Report  —  Confidential", ML, 291);
+    doc.text(`Page ${pg} of ${totalPages}`, PW - MR, 291, { align: "right" });
   }
 
   doc.save(`ABG-CRM-Comparison-${format(new Date(), "yyyy-MM-dd")}.pdf`);
