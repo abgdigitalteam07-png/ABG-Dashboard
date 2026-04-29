@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef } from "react";
 import { subDays, format } from "date-fns";
 import { callFunction } from "@/lib/api-client";
 import { WaterFillLoader } from "@/components/WaterFillLoader";
