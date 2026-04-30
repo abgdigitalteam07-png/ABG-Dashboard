@@ -474,6 +474,18 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     console.error("HubSpot contacts error:", error);
+    if (isRateLimited(error)) {
+      return new Response(JSON.stringify({
+        totalContacts: 0,
+        contactsOverTime: [],
+        jobTitles: [],
+        stateDistribution: [],
+        dealerAssignedTotal: 0,
+        dealerUnassignedTotal: 0,
+        dealerBreakdown: [],
+        rateLimited: true,
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
