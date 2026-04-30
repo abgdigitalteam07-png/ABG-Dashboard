@@ -390,8 +390,8 @@ export function ContactCharts({
     <>
       {/* ── New Contacts Over Time ── */}
       <ChartCard
-        title={useLeadLabel ? "New Leads Created Over Time" : "New Contacts Created Over Time"}
-        subtitle={useLeadLabel ? "Lead acquisition trend by time period" : "Contact acquisition trend by time period"}
+        title="New Contacts Created Over Time"
+        subtitle="Contact acquisition trend by time period"
         headerRight={<GranularityToggle value={granularity} onChange={setGranularity} />}
       >
         {loading ? (
