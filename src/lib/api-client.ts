@@ -67,6 +67,7 @@ export async function fetchHubSpotData(brand: Brand, dateFrom: Date, dateTo: Dat
     brandName: brand.name,
     startDate: formatDate(dateFrom),
     endDate: formatDate(dateTo),
+    _t: Date.now(),
   });
   if (data?.error) throw new Error(data.error);
   return data;

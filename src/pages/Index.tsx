@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { brands } from "@/lib/brands";
 import { supabase } from "@/integrations/supabase/client";
 import { DashboardHeader } from "@/components/DashboardHeader";
@@ -35,15 +35,24 @@ const Index = () => {
   const [activeTab, setActiveTab] = useState("performance");
 
   const now = new Date();
-  const start30 = new Date(now);
-  start30.setDate(start30.getDate() - 30);
-  const [dateFrom, setDateFrom] = useState(start30);
+  const start60 = new Date(now);
+  start60.setDate(start60.getDate() - 60);
+  const [dateFrom, setDateFrom] = useState(start60);
   const [dateTo, setDateTo] = useState(now);
 
   const handleDateChange = useCallback((from: Date, to: Date) => {
     setDateFrom(from);
     setDateTo(to);
   }, []);
+
+  // Re-apply fresh Date objects on brand change so every tab fetch gets a unique timestamp
+  const prevBrandId = useRef(selectedBrand.id);
+  useEffect(() => {
+    if (prevBrandId.current === selectedBrand.id) return;
+    prevBrandId.current = selectedBrand.id;
+    setDateFrom(d => new Date(d));
+    setDateTo(d => new Date(d));
+  }, [selectedBrand.id]);
 
   const socialMediaBrandNames = [
     "Laurel Mountain", "ABG Home Services", "Accessible Home Store", "American Bath Group",
