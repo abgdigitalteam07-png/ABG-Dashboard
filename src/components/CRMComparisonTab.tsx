@@ -186,10 +186,11 @@ function downloadPDF(opts: {
   currStart: Date; prevStart: Date;
   currBrandSeries: BrandSeriesMap; prevBrandSeries: BrandSeriesMap;
   excludedDates: string[];
+  currBrandDealerBreakdown: BrandDealerMap;
 }) {
   const { currLabel, prevLabel, activeBrands, results,
           currSeries, prevSeries, currStart, prevStart,
-          currBrandSeries, prevBrandSeries } = opts;
+          currBrandSeries, prevBrandSeries, currBrandDealerBreakdown } = opts;
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const PW = 210;
   const ML = 13;
@@ -692,6 +693,112 @@ function downloadPDF(opts: {
     });
   }
 
+  // ══ ALL DEALERS PAGE(S) ══════════════════════════════════════════════════════
+  const combinedDealer: Record<string, DealerRow & { brands: SecondaryBrand[] }> = {};
+  for (const brand of activeBrands) {
+    for (const row of (currBrandDealerBreakdown[brand] ?? [])) {
+      if (!combinedDealer[row.email]) {
+        combinedDealer[row.email] = { ...row, brands: [brand], count: row.count };
+      } else {
+        combinedDealer[row.email].count += row.count;
+        if (!combinedDealer[row.email].brands.includes(brand))
+          combinedDealer[row.email].brands.push(brand);
+      }
+    }
+  }
+  const allDealerRows = Object.values(combinedDealer).sort((a, b) => b.count - a.count);
+
+  if (allDealerRows.length > 0) {
+    doc.addPage();
+
+    // ── Dealer page header
+    doc.setFillColor(...rgb(NAVY));
+    doc.rect(0, 0, PW, 22, "F");
+    doc.setFillColor(...rgb(ACCENT));
+    doc.rect(0, 0, 5, 22, "F");
+    doc.setFillColor(255, 196, 0);
+    doc.rect(0, 21.4, PW, 0.6, "F");
+
+    doc.setFont("helvetica", "normal"); doc.setFontSize(6.5); doc.setTextColor(148, 173, 209);
+    doc.text("AMERICAN BATH GROUP  |  BRAND PERFORMANCE HUB", ML + 2, 6);
+
+    doc.setFont("helvetica", "bold"); doc.setFontSize(13); doc.setTextColor(255, 255, 255);
+    doc.text("Top Dealers by Lead Volume", ML + 2, 15.5);
+
+    doc.setFont("helvetica", "bold"); doc.setFontSize(6.5); doc.setTextColor(148, 173, 209);
+    doc.text("GENERATED", PW - MR, 6.5, { align: "right" });
+    doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); doc.setTextColor(255, 255, 255);
+    doc.text(format(new Date(), "MMM d, yyyy  |  h:mm a"), PW - MR, 12, { align: "right" });
+    doc.setFont("helvetica", "normal"); doc.setFontSize(7); doc.setTextColor(148, 173, 209);
+    doc.text(`${opts.selectedDays}-day window  |  ${allDealerRows.length} dealers  |  ${allDealerRows.reduce((s, d) => s + d.count, 0).toLocaleString()} leads assigned`, PW - MR, 17.5, { align: "right" });
+
+    // ── Subtitle strip
+    let dy = 26;
+    doc.setFillColor(...rgb(LGRAY));
+    doc.rect(ML, dy, CW, 8, "F");
+    doc.setDrawColor(...rgb(BORDER)); doc.setLineWidth(0.25);
+    doc.rect(ML, dy, CW, 8, "S");
+    doc.setFont("helvetica", "normal"); doc.setFontSize(7); doc.setTextColor(...rgb(GRAY));
+    doc.text(`Dealers who received at least one lead during ${opts.currLabel}. All ${allDealerRows.length} dealers shown, sorted by lead volume.`, ML + 4, dy + 5.5);
+    dy += 12;
+
+    const dealerBody = allDealerRows.map((d, i) => [
+      String(i + 1),
+      d.name || "",
+      d.email,
+      d.state || "",
+      activeBrands.length > 1 ? d.brands.join(", ") : "",
+      d.count.toLocaleString(),
+    ]);
+
+    const dealerCols = activeBrands.length > 1
+      ? ["#", "Name", "Email", "State", "Brand(s)", "Leads"]
+      : ["#", "Name", "Email", "State", "Leads"];
+
+    const dealerBody2 = activeBrands.length > 1
+      ? dealerBody
+      : dealerBody.map(r => [r[0], r[1], r[2], r[3], r[5]]);
+
+    // single-brand: 5 cols totalling 182mm; multi-brand: 6 cols totalling 182mm
+    const dealerColStyles = activeBrands.length > 1 ? {
+      0: { cellWidth: 8,  halign: "center" as const, textColor: rgb(GRAY) as [number,number,number] },
+      1: { cellWidth: 34, fontStyle: "bold" as const },
+      2: { cellWidth: 56, textColor: rgb(GRAY) as [number,number,number] },
+      3: { cellWidth: 12, halign: "center" as const },
+      4: { cellWidth: 46, textColor: rgb(GRAY) as [number,number,number], fontSize: 6.5 },
+      5: { cellWidth: 26, halign: "center" as const, fontStyle: "bold" as const,
+           textColor: rgb(ACCENT) as [number,number,number] },
+    } : {
+      0: { cellWidth: 8,  halign: "center" as const, textColor: rgb(GRAY) as [number,number,number] },
+      1: { cellWidth: 44, fontStyle: "bold" as const },
+      2: { cellWidth: 84, textColor: rgb(GRAY) as [number,number,number] },
+      3: { cellWidth: 14, halign: "center" as const },
+      4: { cellWidth: 32, halign: "center" as const, fontStyle: "bold" as const,
+           textColor: rgb(ACCENT) as [number,number,number] },
+    };
+
+    autoTable(doc, {
+      ...AT,
+      startY: dy,
+      margin: { left: ML, right: MR, bottom: 18 },  // 18mm bottom leaves room for footer
+      showHead: "everyPage",
+      head: [dealerCols],
+      body: dealerBody2,
+      styles: { ...AT.styles, fontSize: 7, cellPadding: { top: 2.5, bottom: 2.5, left: 3, right: 3 } },
+      headStyles: { ...AT.headStyles, cellPadding: { top: 3.5, bottom: 3.5, left: 3, right: 3 } },
+      columnStyles: dealerColStyles,
+      didDrawPage: () => {
+        // Repeat footer bar on every dealer page (including overflow pages)
+        doc.setFillColor(...rgb(NAVY));
+        doc.rect(0, FY, PW, 10, "F");
+        doc.setFillColor(...rgb(ACCENT));
+        doc.rect(0, FY, 5, 10, "F");
+        doc.setFont("helvetica", "normal"); doc.setFontSize(6.5); doc.setTextColor(148, 173, 209);
+        doc.text("American Bath Group  |  Dealer Lead Report  |  Confidential", ML + 2, FY + 6.5);
+      },
+    });
+  }
+
   doc.save(`ABG-CRM-Lead-Report-${format(new Date(), "yyyy-MM-dd")}.pdf`);
 }
 
@@ -818,6 +925,7 @@ function ComparisonContent() {
   const [excludedDates,    setExcludedDates]    = useState<string[]>([]);
   const [showExclPanel,    setShowExclPanel]    = useState(false);
   const [exclInput,        setExclInput]        = useState("");
+  const [showAllDealers,   setShowAllDealers]   = useState(false);
   const reqRef = useRef(0);
 
   // Auto-exclude Nov 19, 2025 whenever the selected period window includes it
@@ -1019,6 +1127,7 @@ function ComparisonContent() {
                 currBrandSeries: filtCurrBrandSeries,
                 prevBrandSeries: filtPrevBrandSeries,
                 excludedDates,
+                currBrandDealerBreakdown,
               });
             }}
             className="flex items-center gap-2 rounded-xl border border-border bg-background px-4 py-2 text-xs font-semibold text-foreground cursor-pointer hover:bg-muted transition-all duration-150 shadow-sm">
@@ -1529,8 +1638,8 @@ function ComparisonContent() {
               const allDealers = Object.values(combined).sort((a, b) => b.count - a.count);
               if (!allDealers.length) return null;
 
-              const top10 = allDealers.slice(0, 10);
-              const maxCount = top10[0]?.count || 1;
+              const displayedDealers = showAllDealers ? allDealers : allDealers.slice(0, 10);
+              const maxCount = allDealers[0]?.count || 1;
 
               return (
                 <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
@@ -1538,7 +1647,7 @@ function ComparisonContent() {
                     <div>
                       <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
                         <Users className="h-4 w-4 text-[#3B82F6]" />
-                        Top Dealers by Lead Volume
+                        {showAllDealers ? "All Dealers by Lead Volume" : "Top Dealers by Lead Volume"}
                       </h3>
                       <p className="mt-0.5 text-[11px] text-muted-foreground">
                         Dealers who received leads — current period · {currLabel}
@@ -1555,12 +1664,20 @@ function ComparisonContent() {
                           {allDealers.reduce((s, d) => s + d.count, 0).toLocaleString()}
                         </p>
                       </div>
+                      {allDealers.length > 10 && (
+                        <button
+                          onClick={() => setShowAllDealers(v => !v)}
+                          className="rounded-xl border border-[#3B82F6]/40 bg-[#3B82F6]/5 px-3 py-1.5 text-[11px] font-semibold text-[#3B82F6] hover:bg-[#3B82F6]/10 transition-colors cursor-pointer">
+                          {showAllDealers ? `Show Top 10` : `See All ${allDealers.length}`}
+                        </button>
+                      )}
                     </div>
                   </div>
 
                   <div className="flex flex-col lg:flex-row gap-0">
                     {/* Table */}
-                    <div className="flex-1 overflow-x-auto">
+                    <div className="flex-1 min-w-0">
+                      <div className="overflow-x-auto">
                       <table className="w-full text-xs">
                         <thead>
                           <tr className="border-b border-border bg-muted/30">
@@ -1574,7 +1691,7 @@ function ComparisonContent() {
                           </tr>
                         </thead>
                         <tbody>
-                          {top10.map((dealer, idx) => (
+                          {displayedDealers.map((dealer, idx) => (
                             <tr key={dealer.email}
                               className={cn("border-b border-border/50 hover:bg-muted/20 transition-colors cursor-default",
                                 idx % 2 === 0 ? "bg-background" : "bg-muted/10")}>
@@ -1632,20 +1749,31 @@ function ComparisonContent() {
                           ))}
                         </tbody>
                       </table>
-                      {allDealers.length > 10 && (
-                        <p className="px-4 py-2.5 text-center text-[11px] text-muted-foreground border-t border-border">
-                          Showing top 10 of {allDealers.length} dealers
+                      </div>{/* end overflow-x-auto */}
+                      {/* Footer — outside scroll wrapper so always visible */}
+                      <div className="px-4 py-2.5 flex items-center justify-between border-t border-border bg-muted/10">
+                        <p className="text-[11px] text-muted-foreground">
+                          Showing {displayedDealers.length} of {allDealers.length} dealers
                         </p>
-                      )}
-                    </div>
+                        {allDealers.length > 10 && (
+                          <button
+                            onClick={() => setShowAllDealers(v => !v)}
+                            className="rounded-lg border border-[#3B82F6]/30 bg-[#3B82F6]/5 px-3 py-1 text-[11px] font-semibold text-[#3B82F6] hover:bg-[#3B82F6]/15 transition-colors cursor-pointer">
+                            {showAllDealers ? "↑ Show top 10" : `↓ See all ${allDealers.length} dealers`}
+                          </button>
+                        )}
+                      </div>
+                    </div>{/* end flex-1 min-w-0 */}
 
-                    {/* Bar chart */}
-                    {top10.length >= 3 && (
+                    {/* Bar chart — always shows top 10 for readability */}
+                    {allDealers.length >= 3 && (
                       <div className="lg:w-[320px] shrink-0 border-t lg:border-t-0 lg:border-l border-border p-4 flex flex-col gap-3">
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-1">Lead Volume</p>
-                        <ResponsiveContainer width="100%" height={Math.min(top10.length * 36, 360)}>
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-1">
+                          Lead Volume{showAllDealers ? " · Top 10" : ""}
+                        </p>
+                        <ResponsiveContainer width="100%" height={Math.min(allDealers.slice(0, 10).length * 36, 360)}>
                           <BarChart
-                            data={top10.map(d => ({ name: d.name || d.email.split("@")[0], count: d.count }))}
+                            data={allDealers.slice(0, 10).map(d => ({ name: d.name || d.email.split("@")[0], count: d.count }))}
                             layout="vertical"
                             margin={{ left: 4, right: 36, top: 4, bottom: 4 }}
                           >
@@ -1658,7 +1786,7 @@ function ComparisonContent() {
                               tickFormatter={v => v.length > 16 ? v.slice(0, 15) + "…" : v}
                             />
                             <Bar dataKey="count" radius={[0, 4, 4, 0]} maxBarSize={22}>
-                              {top10.map((_, i) => (
+                              {allDealers.slice(0, 10).map((_, i) => (
                                 <Cell key={i} fill={i === 0 ? "#3B82F6" : i === 1 ? "#60A5FA" : i === 2 ? "#93C5FD" : "hsl(var(--muted-foreground)/0.25)"} />
                               ))}
                               <LabelList dataKey="count" position="right"
