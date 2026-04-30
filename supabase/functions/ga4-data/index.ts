@@ -20,6 +20,29 @@ const isGoogleRateLimitHtml = (text: string) =>
   text.includes("We're sorry") ||
   text.includes("<title>Sorry...</title>");
 
+const emptyReport = { rows: [] };
+
+const emptyGA4Data = () => ({
+  sessions: 0,
+  sessionsDelta: 0,
+  organicSessions: 0,
+  organicSessionsDelta: 0,
+  pageViews: 0,
+  pageViewsDelta: 0,
+  activeUsers1Day: 0,
+  activeUsers1DayDelta: 0,
+  sessionsOverTime: [],
+  activeUsersOverTime: [],
+  topPages: [],
+  deviceBreakdown: [],
+  topCountries: [],
+});
+
+const isGoogleRateLimitError = (error: unknown) => {
+  const text = error instanceof Error ? error.message : String(error);
+  return isGoogleRateLimitHtml(text);
+};
+
 async function getAccessToken(serviceAccountJson: string): Promise<string> {
   const sa = JSON.parse(serviceAccountJson);
   const now = Math.floor(Date.now() / 1000);
@@ -118,6 +141,25 @@ async function runReport(
   throw new Error(`GA4 API error (${propertyId}): ${lastErr}`);
 }
 
+async function safeRunReport(
+  accessToken: string,
+  propertyId: string,
+  startDate: string,
+  endDate: string,
+  metrics: string[],
+  dimensions: string[]
+) {
+  try {
+    return await runReport(accessToken, propertyId, startDate, endDate, metrics, dimensions);
+  } catch (error) {
+    if (isGoogleRateLimitError(error)) {
+      console.warn(`GA4 rate limit page received for property ${propertyId}; returning empty report.`);
+      return emptyReport;
+    }
+    throw error;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -145,17 +187,17 @@ Deno.serve(async (req) => {
 
     for (const pid of propertyIds) {
       // Run reports sequentially with a small gap to avoid Google rate limiting / "Sorry" page
-      const summary = await runReport(accessToken, pid, startDate, endDate, ["sessions", "screenPageViews", "active1DayUsers"], []);
+      const summary = await safeRunReport(accessToken, pid, startDate, endDate, ["sessions", "screenPageViews", "active1DayUsers"], []);
       await wait(350);
-      const organic = await runReport(accessToken, pid, startDate, endDate, ["sessions"], ["sessionDefaultChannelGroup"]);
+      const organic = await safeRunReport(accessToken, pid, startDate, endDate, ["sessions"], ["sessionDefaultChannelGroup"]);
       await wait(350);
-      const daily = await runReport(accessToken, pid, startDate, endDate, ["sessions", "active1DayUsers", "screenPageViews"], ["date"]);
+      const daily = await safeRunReport(accessToken, pid, startDate, endDate, ["sessions", "active1DayUsers", "screenPageViews"], ["date"]);
       await wait(350);
-      const pages = await runReport(accessToken, pid, startDate, endDate, ["sessions", "screenPageViews", "averageSessionDuration"], ["pagePath"]);
+      const pages = await safeRunReport(accessToken, pid, startDate, endDate, ["sessions", "screenPageViews", "averageSessionDuration"], ["pagePath"]);
       await wait(350);
-      const devices = await runReport(accessToken, pid, startDate, endDate, ["sessions"], ["deviceCategory"]);
+      const devices = await safeRunReport(accessToken, pid, startDate, endDate, ["sessions"], ["deviceCategory"]);
       await wait(350);
-      const countries = await runReport(accessToken, pid, startDate, endDate, ["sessions"], ["country"]);
+      const countries = await safeRunReport(accessToken, pid, startDate, endDate, ["sessions"], ["country"]);
 
       // Summary totals
       if (summary.rows?.[0]) {
@@ -275,6 +317,11 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     console.error("GA4 proxy error:", error);
+    if (isGoogleRateLimitError(error)) {
+      return new Response(JSON.stringify(emptyGA4Data()), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
