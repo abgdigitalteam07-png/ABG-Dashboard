@@ -167,10 +167,12 @@ Deno.serve(async (req) => {
       const brandStats: Record<string, { total: number; assigned: number; unassigned: number }> = {};
       const brandSeries: Record<string, Record<string, number>> = {};
       const brandDealerCounts: Record<string, Record<string, { name: string; state: string; zip: string; count: number }>> = {};
+      const brandSourceCounts: Record<string, Record<string, number>> = {};
       for (const bn of brandNames) {
         brandStats[bn] = { total: 0, assigned: 0, unassigned: 0 };
         brandSeries[bn] = {};
         brandDealerCounts[bn] = {};
+        brandSourceCounts[bn] = {};
       }
 
       let after: string | undefined;
@@ -183,7 +185,7 @@ Deno.serve(async (req) => {
             { propertyName: "createdate", operator: "GTE", value: String(startMs) },
             { propertyName: "createdate", operator: "LTE", value: String(endMs) },
           ]}],
-          properties: ["brands", "nearest_dealer_email", "closest_dealer_name", "closest_dealer_state", "closest_dealer_zip", "createdate"],
+          properties: ["brands", "nearest_dealer_email", "closest_dealer_name", "closest_dealer_state", "closest_dealer_zip", "createdate", "hs_analytics_source"],
           sorts: [{ propertyName: "createdate", direction: "ASCENDING" }],
           limit: 100,
         };
@@ -232,6 +234,9 @@ Deno.serve(async (req) => {
               if (dateKey) {
                 brandSeries[bn][dateKey] = (brandSeries[bn][dateKey] || 0) + 1;
               }
+              // Original source
+              const src = (props.hs_analytics_source || "UNKNOWN").toUpperCase().trim() || "UNKNOWN";
+              brandSourceCounts[bn][src] = (brandSourceCounts[bn][src] || 0) + 1;
             }
           }
         }
@@ -259,6 +264,7 @@ Deno.serve(async (req) => {
         }])),
         brandTimeSeries: brandSeries,
         brandDealerBreakdown,
+        brandSourceBreakdown: brandSourceCounts,
       }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 

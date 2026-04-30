@@ -78,6 +78,47 @@ type BrandSeriesMap = Partial<Record<SecondaryBrand, TimeSeries>>;
 interface DealerRow { email: string; name: string; state: string; zip: string; count: number; }
 type BrandDealerMap = Partial<Record<SecondaryBrand, DealerRow[]>>;
 
+// source key → count
+type SourceMap = Record<string, number>;
+type BrandSourceMap = Partial<Record<SecondaryBrand, SourceMap>>;
+
+const SOURCE_LABELS: Record<string, string> = {
+  ORGANIC_SEARCH:    "Organic Search",
+  PAID_SEARCH:       "Paid Search",
+  DIRECT_TRAFFIC:    "Direct",
+  REFERRALS:         "Referral",
+  SOCIAL_MEDIA:      "Social (Organic)",
+  EMAIL_MARKETING:   "Email",
+  PAID_SOCIAL:       "Paid Social",
+  OFFLINE:           "Offline",
+  OTHER_CAMPAIGNS:   "Other Campaigns",
+  UNKNOWN:           "Unknown",
+};
+
+const SOURCE_COLORS: Record<string, string> = {
+  ORGANIC_SEARCH:    "#10B981",
+  PAID_SEARCH:       "#3B82F6",
+  DIRECT_TRAFFIC:    "#6366F1",
+  REFERRALS:         "#F59E0B",
+  SOCIAL_MEDIA:      "#EC4899",
+  EMAIL_MARKETING:   "#F97316",
+  PAID_SOCIAL:       "#8B5CF6",
+  OFFLINE:           "#64748B",
+  OTHER_CAMPAIGNS:   "#06B6D4",
+  UNKNOWN:           "#9CA3AF",
+};
+
+/** Merge per-brand source maps into one combined map */
+function mergeSourceMaps(brandMaps: BrandSourceMap, brands: SecondaryBrand[]): SourceMap {
+  const out: SourceMap = {};
+  for (const b of brands) {
+    const m = brandMaps[b];
+    if (!m) continue;
+    for (const [k, v] of Object.entries(m)) out[k] = (out[k] || 0) + v;
+  }
+  return out;
+}
+
 /** Zero-out excluded dates in a TimeSeries so they don't count in KPIs or trends */
 function filterSeries(series: TimeSeries, excluded: string[]): TimeSeries {
   if (!excluded.length) return series;
@@ -95,6 +136,7 @@ async function fetchAllBrandsForPeriod(
   timeSeries:  TimeSeries;
   brandSeries: BrandSeriesMap;
   brandDealerBreakdown: BrandDealerMap;
+  brandSourceBreakdown: BrandSourceMap;
 }> {
   const data = await callFunction("hubspot-contacts", {
     brandNames: brands,
@@ -107,6 +149,7 @@ async function fetchAllBrandsForPeriod(
   const timeSeries: TimeSeries    = {};
   const brandSeries: BrandSeriesMap = {};
   const brandDealerBreakdown: BrandDealerMap = {};
+  const brandSourceBreakdown: BrandSourceMap = {};
 
   for (const brand of brands) {
     const s = data?.brandData?.[brand];
@@ -121,8 +164,9 @@ async function fetchAllBrandsForPeriod(
       timeSeries[date] = (timeSeries[date] || 0) + (count as number);
     }
     brandDealerBreakdown[brand] = data?.brandDealerBreakdown?.[brand] ?? [];
+    brandSourceBreakdown[brand] = data?.brandSourceBreakdown?.[brand] ?? {};
   }
-  return { periodData, timeSeries, brandSeries, brandDealerBreakdown };
+  return { periodData, timeSeries, brandSeries, brandDealerBreakdown, brandSourceBreakdown };
 }
 
 /** Build chart rows: align current + previous by day-offset so they overlay */
@@ -924,6 +968,8 @@ function ComparisonContent() {
   const [currBrandSeries,        setCurrBrandSeries]        = useState<BrandSeriesMap>({});
   const [prevBrandSeries,        setPrevBrandSeries]        = useState<BrandSeriesMap>({});
   const [currBrandDealerBreakdown, setCurrBrandDealerBreakdown] = useState<BrandDealerMap>({});
+  const [currBrandSourceBreakdown, setCurrBrandSourceBreakdown] = useState<BrandSourceMap>({});
+  const [prevBrandSourceBreakdown, setPrevBrandSourceBreakdown] = useState<BrandSourceMap>({});
   const [excludedDates,    setExcludedDates]    = useState<string[]>([]);
   const [showExclPanel,    setShowExclPanel]    = useState(false);
   const [exclInput,        setExclInput]        = useState("");
@@ -972,6 +1018,8 @@ function ComparisonContent() {
       setCurrBrandSeries(cRes.brandSeries);
       setPrevBrandSeries(pRes.brandSeries);
       setCurrBrandDealerBreakdown(cRes.brandDealerBreakdown);
+      setCurrBrandSourceBreakdown(cRes.brandSourceBreakdown);
+      setPrevBrandSourceBreakdown(pRes.brandSourceBreakdown);
       setLoading(false);
     }).catch(e => {
       if (reqRef.current !== id) return;
@@ -1654,6 +1702,117 @@ function ComparisonContent() {
               );
             })()}
 
+            {/* ── Lead Source Breakdown ───────────────────────────────── */}
+            {(() => {
+              const currMap = mergeSourceMaps(currBrandSourceBreakdown, activeBrands);
+              const prevMap = mergeSourceMaps(prevBrandSourceBreakdown, activeBrands);
+              const allKeys = Array.from(new Set([...Object.keys(currMap), ...Object.keys(prevMap)]))
+                .filter(k => (currMap[k] || 0) + (prevMap[k] || 0) > 0)
+                .sort((a, b) => ((currMap[b] || 0) + (prevMap[b] || 0)) - ((currMap[a] || 0) + (prevMap[a] || 0)));
+              if (!allKeys.length) return null;
+              const chartData = allKeys.map(k => ({
+                key: k,
+                name: SOURCE_LABELS[k] ?? k,
+                curr: currMap[k] || 0,
+                prev: prevMap[k] || 0,
+                color: SOURCE_COLORS[k] ?? "#9CA3AF",
+              }));
+              return (
+                <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+                  <div className="flex items-center justify-between gap-4 px-6 py-4 border-b border-border bg-muted/20">
+                    <div>
+                      <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+                        <TrendingUp className="h-4 w-4 text-[#3B82F6]" />
+                        Lead Source Breakdown
+                      </h3>
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">
+                        Original source — current period vs. {comparisonType === "yoy" ? "same period last year" : "previous period"}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-4 text-[11px] shrink-0">
+                      <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-[#3B82F6]" />{currLabel}</span>
+                      <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-[#3B82F6]/30 border border-[#3B82F6]/50" />{comparisonType === "yoy" ? "Last Year" : "Prev Period"}</span>
+                    </div>
+                  </div>
+                  <div className="p-4">
+                    <ResponsiveContainer width="100%" height={Math.max(240, allKeys.length * 42)}>
+                      <BarChart
+                        data={chartData}
+                        layout="vertical"
+                        margin={{ left: 0, right: 48, top: 4, bottom: 4 }}
+                        barCategoryGap="30%"
+                        barGap={3}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" />
+                        <XAxis type="number" tick={axisStyle} tickLine={false} axisLine={false} allowDecimals={false} />
+                        <YAxis
+                          type="category"
+                          dataKey="name"
+                          tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                          width={130}
+                          tickLine={false}
+                          axisLine={false}
+                        />
+                        <Tooltip
+                          cursor={{ fill: "hsl(var(--muted)/0.3)" }}
+                          content={({ active, payload, label }) => {
+                            if (!active || !payload?.length) return null;
+                            const curr = payload.find((p: any) => p.dataKey === "curr")?.value ?? 0;
+                            const prev = payload.find((p: any) => p.dataKey === "prev")?.value ?? 0;
+                            const delta = prev > 0 ? ((curr - prev) / prev) * 100 : null;
+                            return (
+                              <div className="rounded-xl border border-border bg-card shadow-xl px-4 py-3 text-xs min-w-[200px] space-y-1.5">
+                                <p className="font-bold text-sm text-foreground">{label}</p>
+                                <div className="flex items-center justify-between gap-6">
+                                  <span className="flex items-center gap-1.5 text-muted-foreground"><span className="h-2 w-2 rounded-sm bg-[#3B82F6]" />{currLabel}</span>
+                                  <span className="font-bold text-foreground tabular-nums">{curr.toLocaleString()}</span>
+                                </div>
+                                <div className="flex items-center justify-between gap-6">
+                                  <span className="flex items-center gap-1.5 text-muted-foreground"><span className="h-2 w-2 rounded-sm bg-[#3B82F6]/30 border border-[#3B82F6]/50" />{comparisonType === "yoy" ? "Last Year" : "Prev Period"}</span>
+                                  <span className="font-semibold text-muted-foreground tabular-nums">{prev.toLocaleString()}</span>
+                                </div>
+                                {delta !== null && (
+                                  <div className={`pt-1 border-t border-border text-[11px] font-semibold ${delta > 0.4 ? "text-emerald-600 dark:text-emerald-400" : delta < -0.4 ? "text-red-500 dark:text-red-400" : "text-muted-foreground"}`}>
+                                    {delta > 0.4 ? "▲" : delta < -0.4 ? "▼" : "→"} {Math.abs(delta).toFixed(1)}% change
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          }}
+                        />
+                        <Bar dataKey="curr" name="Current" radius={[0, 3, 3, 0]} maxBarSize={16}>
+                          {chartData.map((d) => <Cell key={d.key} fill={d.color} />)}
+                          <LabelList dataKey="curr" position="right" style={{ fontSize: 10, fill: "hsl(var(--muted-foreground))", fontVariantNumeric: "tabular-nums" }} formatter={(v: number) => v > 0 ? v.toLocaleString() : ""} />
+                        </Bar>
+                        <Bar dataKey="prev" name="Previous" radius={[0, 3, 3, 0]} maxBarSize={16}>
+                          {chartData.map((d) => <Cell key={d.key} fill={d.color} fillOpacity={0.3} stroke={d.color} strokeWidth={1} />)}
+                          <LabelList dataKey="prev" position="right" style={{ fontSize: 10, fill: "hsl(var(--muted-foreground))", fontVariantNumeric: "tabular-nums" }} formatter={(v: number) => v > 0 ? v.toLocaleString() : ""} />
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                    {/* delta summary row */}
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {chartData.map((d) => {
+                        const delta = d.prev > 0 ? ((d.curr - d.prev) / d.prev) * 100 : null;
+                        return (
+                          <div key={d.key} className="flex items-center gap-1.5 rounded-lg border border-border bg-muted/30 px-2.5 py-1.5 text-[11px]">
+                            <span className="h-2 w-2 rounded-full shrink-0" style={{ background: d.color }} />
+                            <span className="font-medium text-foreground">{d.name}</span>
+                            <span className="text-muted-foreground">{d.curr.toLocaleString()}</span>
+                            {delta !== null && (
+                              <span className={`font-bold ${delta > 0.4 ? "text-emerald-600 dark:text-emerald-400" : delta < -0.4 ? "text-red-500 dark:text-red-400" : "text-muted-foreground"}`}>
+                                {delta > 0.4 ? "▲" : delta < -0.4 ? "▼" : "→"}{delta > 0 ? "+" : ""}{delta.toFixed(1)}%
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* ── Top Dealers ──────────────────────────────────────────── */}
             {(() => {
               // Merge all active brands' dealer breakdown into one combined list
@@ -1881,6 +2040,8 @@ function ComparisonSectionContent({ dateFrom, dateTo, currentBrandName, onStatsR
   const [currBrandSeries,          setCurrBrandSeries]          = useState<BrandSeriesMap>({});
   const [prevBrandSeries,          setPrevBrandSeries]          = useState<BrandSeriesMap>({});
   const [currBrandDealerBreakdown, setCurrBrandDealerBreakdown] = useState<BrandDealerMap>({});
+  const [currBrandSourceBreakdown, setCurrBrandSourceBreakdown] = useState<BrandSourceMap>({});
+  const [prevBrandSourceBreakdown, setPrevBrandSourceBreakdown] = useState<BrandSourceMap>({});
   const [excludedDates,  setExcludedDates]  = useState<string[]>([]);
   const [showExclPanel,  setShowExclPanel]  = useState(false);
   const [exclInput,      setExclInput]      = useState("");
@@ -1930,6 +2091,8 @@ function ComparisonSectionContent({ dateFrom, dateTo, currentBrandName, onStatsR
       setCurrBrandSeries(cRes.brandSeries);
       setPrevBrandSeries(pRes.brandSeries);
       setCurrBrandDealerBreakdown(cRes.brandDealerBreakdown);
+      setCurrBrandSourceBreakdown(cRes.brandSourceBreakdown);
+      setPrevBrandSourceBreakdown(pRes.brandSourceBreakdown);
       setLoading(false);
       // Lift the current brand's stats up to HubSpotCRMTab for the top KPI cards
       if (onStatsReady && currentBrandName) {
@@ -2445,6 +2608,117 @@ function ComparisonSectionContent({ dateFrom, dateTo, currentBrandName, onStatsR
                 </div>
               </div>
             )}
+
+            {/* ── Lead Source Breakdown ───────────────────────────────── */}
+            {(() => {
+              const currMap = mergeSourceMaps(currBrandSourceBreakdown, activeBrands);
+              const prevMap = mergeSourceMaps(prevBrandSourceBreakdown, activeBrands);
+              const allKeys = Array.from(new Set([...Object.keys(currMap), ...Object.keys(prevMap)]))
+                .filter(k => (currMap[k] || 0) + (prevMap[k] || 0) > 0)
+                .sort((a, b) => ((currMap[b] || 0) + (prevMap[b] || 0)) - ((currMap[a] || 0) + (prevMap[a] || 0)));
+              if (!allKeys.length) return null;
+              const chartData = allKeys.map(k => ({
+                key: k,
+                name: SOURCE_LABELS[k] ?? k,
+                curr: currMap[k] || 0,
+                prev: prevMap[k] || 0,
+                color: SOURCE_COLORS[k] ?? "#9CA3AF",
+              }));
+              return (
+                <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+                  <div className="flex items-center justify-between gap-4 px-6 py-4 border-b border-border bg-muted/20">
+                    <div>
+                      <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+                        <TrendingUp className="h-4 w-4 text-[#3B82F6]" />
+                        Lead Source Breakdown
+                      </h3>
+                      <p className="mt-0.5 text-[11px] text-muted-foreground">
+                        Original source — current period vs. {comparisonType === "yoy" ? "same period last year" : "previous period"}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-4 text-[11px] shrink-0">
+                      <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-[#3B82F6]" />{currLabel}</span>
+                      <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-[#3B82F6]/30 border border-[#3B82F6]/50" />{comparisonType === "yoy" ? "Last Year" : "Prev Period"}</span>
+                    </div>
+                  </div>
+                  <div className="p-4">
+                    <ResponsiveContainer width="100%" height={Math.max(240, allKeys.length * 42)}>
+                      <BarChart
+                        data={chartData}
+                        layout="vertical"
+                        margin={{ left: 0, right: 48, top: 4, bottom: 4 }}
+                        barCategoryGap="30%"
+                        barGap={3}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" />
+                        <XAxis type="number" tick={axisStyle} tickLine={false} axisLine={false} allowDecimals={false} />
+                        <YAxis
+                          type="category"
+                          dataKey="name"
+                          tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                          width={130}
+                          tickLine={false}
+                          axisLine={false}
+                        />
+                        <Tooltip
+                          cursor={{ fill: "hsl(var(--muted)/0.3)" }}
+                          content={({ active, payload, label }) => {
+                            if (!active || !payload?.length) return null;
+                            const curr = payload.find((p: any) => p.dataKey === "curr")?.value ?? 0;
+                            const prev = payload.find((p: any) => p.dataKey === "prev")?.value ?? 0;
+                            const delta = prev > 0 ? ((curr - prev) / prev) * 100 : null;
+                            return (
+                              <div className="rounded-xl border border-border bg-card shadow-xl px-4 py-3 text-xs min-w-[200px] space-y-1.5">
+                                <p className="font-bold text-sm text-foreground">{label}</p>
+                                <div className="flex items-center justify-between gap-6">
+                                  <span className="flex items-center gap-1.5 text-muted-foreground"><span className="h-2 w-2 rounded-sm bg-[#3B82F6]" />{currLabel}</span>
+                                  <span className="font-bold text-foreground tabular-nums">{curr.toLocaleString()}</span>
+                                </div>
+                                <div className="flex items-center justify-between gap-6">
+                                  <span className="flex items-center gap-1.5 text-muted-foreground"><span className="h-2 w-2 rounded-sm bg-[#3B82F6]/30 border border-[#3B82F6]/50" />{comparisonType === "yoy" ? "Last Year" : "Prev Period"}</span>
+                                  <span className="font-semibold text-muted-foreground tabular-nums">{prev.toLocaleString()}</span>
+                                </div>
+                                {delta !== null && (
+                                  <div className={`pt-1 border-t border-border text-[11px] font-semibold ${delta > 0.4 ? "text-emerald-600 dark:text-emerald-400" : delta < -0.4 ? "text-red-500 dark:text-red-400" : "text-muted-foreground"}`}>
+                                    {delta > 0.4 ? "▲" : delta < -0.4 ? "▼" : "→"} {Math.abs(delta).toFixed(1)}% change
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          }}
+                        />
+                        <Bar dataKey="curr" name="Current" radius={[0, 3, 3, 0]} maxBarSize={16}>
+                          {chartData.map((d) => <Cell key={d.key} fill={d.color} />)}
+                          <LabelList dataKey="curr" position="right" style={{ fontSize: 10, fill: "hsl(var(--muted-foreground))", fontVariantNumeric: "tabular-nums" }} formatter={(v: number) => v > 0 ? v.toLocaleString() : ""} />
+                        </Bar>
+                        <Bar dataKey="prev" name="Previous" radius={[0, 3, 3, 0]} maxBarSize={16}>
+                          {chartData.map((d) => <Cell key={d.key} fill={d.color} fillOpacity={0.3} stroke={d.color} strokeWidth={1} />)}
+                          <LabelList dataKey="prev" position="right" style={{ fontSize: 10, fill: "hsl(var(--muted-foreground))", fontVariantNumeric: "tabular-nums" }} formatter={(v: number) => v > 0 ? v.toLocaleString() : ""} />
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                    {/* delta summary row */}
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {chartData.map((d) => {
+                        const delta = d.prev > 0 ? ((d.curr - d.prev) / d.prev) * 100 : null;
+                        return (
+                          <div key={d.key} className="flex items-center gap-1.5 rounded-lg border border-border bg-muted/30 px-2.5 py-1.5 text-[11px]">
+                            <span className="h-2 w-2 rounded-full shrink-0" style={{ background: d.color }} />
+                            <span className="font-medium text-foreground">{d.name}</span>
+                            <span className="text-muted-foreground">{d.curr.toLocaleString()}</span>
+                            {delta !== null && (
+                              <span className={`font-bold ${delta > 0.4 ? "text-emerald-600 dark:text-emerald-400" : delta < -0.4 ? "text-red-500 dark:text-red-400" : "text-muted-foreground"}`}>
+                                {delta > 0.4 ? "▲" : delta < -0.4 ? "▼" : "→"}{delta > 0 ? "+" : ""}{delta.toFixed(1)}%
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Dealers */}
             {(() => {
