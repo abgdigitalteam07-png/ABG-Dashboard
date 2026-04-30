@@ -20,6 +20,29 @@ const isGoogleRateLimitHtml = (text: string) =>
   text.includes("We're sorry") ||
   text.includes("<title>Sorry...</title>");
 
+const emptyReport = { rows: [] };
+
+const emptyGA4Data = () => ({
+  sessions: 0,
+  sessionsDelta: 0,
+  organicSessions: 0,
+  organicSessionsDelta: 0,
+  pageViews: 0,
+  pageViewsDelta: 0,
+  activeUsers1Day: 0,
+  activeUsers1DayDelta: 0,
+  sessionsOverTime: [],
+  activeUsersOverTime: [],
+  topPages: [],
+  deviceBreakdown: [],
+  topCountries: [],
+});
+
+const isGoogleRateLimitError = (error: unknown) => {
+  const text = error instanceof Error ? error.message : String(error);
+  return isGoogleRateLimitHtml(text);
+};
+
 async function getAccessToken(serviceAccountJson: string): Promise<string> {
   const sa = JSON.parse(serviceAccountJson);
   const now = Math.floor(Date.now() / 1000);
@@ -116,6 +139,25 @@ async function runReport(
     await wait(delay);
   }
   throw new Error(`GA4 API error (${propertyId}): ${lastErr}`);
+}
+
+async function safeRunReport(
+  accessToken: string,
+  propertyId: string,
+  startDate: string,
+  endDate: string,
+  metrics: string[],
+  dimensions: string[]
+) {
+  try {
+    return await runReport(accessToken, propertyId, startDate, endDate, metrics, dimensions);
+  } catch (error) {
+    if (isGoogleRateLimitError(error)) {
+      console.warn(`GA4 rate limit page received for property ${propertyId}; returning empty report.`);
+      return emptyReport;
+    }
+    throw error;
+  }
 }
 
 Deno.serve(async (req) => {
