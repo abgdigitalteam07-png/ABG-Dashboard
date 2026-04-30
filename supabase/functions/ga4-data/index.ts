@@ -317,6 +317,11 @@ Deno.serve(async (req) => {
     });
   } catch (error) {
     console.error("GA4 proxy error:", error);
+    if (isGoogleRateLimitError(error)) {
+      return new Response(JSON.stringify(emptyGA4Data()), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
