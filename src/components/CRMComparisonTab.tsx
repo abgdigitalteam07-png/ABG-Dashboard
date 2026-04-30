@@ -759,21 +759,22 @@ function downloadPDF(opts: {
       ? dealerBody
       : dealerBody.map(r => [r[0], r[1], r[2], r[3], r[5]]);
 
-    // single-brand: 5 cols totalling 182mm; multi-brand: 6 cols totalling 182mm
+    // single-brand: 5 cols = 182mm; multi-brand: 6 cols = 182mm
+    // # col is 16mm so 3-digit numbers (100+) never wrap
     const dealerColStyles = activeBrands.length > 1 ? {
-      0: { cellWidth: 8,  halign: "center" as const, textColor: rgb(GRAY) as [number,number,number] },
+      0: { cellWidth: 16, halign: "center" as const, textColor: rgb(GRAY) as [number,number,number] },
       1: { cellWidth: 34, fontStyle: "bold" as const },
-      2: { cellWidth: 56, textColor: rgb(GRAY) as [number,number,number] },
-      3: { cellWidth: 12, halign: "center" as const },
-      4: { cellWidth: 46, textColor: rgb(GRAY) as [number,number,number], fontSize: 6.5 },
-      5: { cellWidth: 26, halign: "center" as const, fontStyle: "bold" as const,
+      2: { cellWidth: 52, textColor: rgb(GRAY) as [number,number,number] },
+      3: { cellWidth: 14, halign: "center" as const },
+      4: { cellWidth: 42, textColor: rgb(GRAY) as [number,number,number], fontSize: 6.5 },
+      5: { cellWidth: 24, halign: "center" as const, fontStyle: "bold" as const,
            textColor: rgb(ACCENT) as [number,number,number] },
     } : {
-      0: { cellWidth: 8,  halign: "center" as const, textColor: rgb(GRAY) as [number,number,number] },
+      0: { cellWidth: 16, halign: "center" as const, textColor: rgb(GRAY) as [number,number,number] },
       1: { cellWidth: 44, fontStyle: "bold" as const },
-      2: { cellWidth: 84, textColor: rgb(GRAY) as [number,number,number] },
-      3: { cellWidth: 14, halign: "center" as const },
-      4: { cellWidth: 32, halign: "center" as const, fontStyle: "bold" as const,
+      2: { cellWidth: 78, textColor: rgb(GRAY) as [number,number,number] },
+      3: { cellWidth: 16, halign: "center" as const },
+      4: { cellWidth: 28, halign: "center" as const, fontStyle: "bold" as const,
            textColor: rgb(ACCENT) as [number,number,number] },
     };
 
