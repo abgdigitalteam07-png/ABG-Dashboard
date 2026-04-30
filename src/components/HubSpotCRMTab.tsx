@@ -7,7 +7,7 @@ import {
 } from "recharts";
 import { fetchHubSpotData } from "@/lib/api-client";
 import { Brand } from "@/lib/brands";
-import { Users, TrendingUp } from "lucide-react";
+import { Users, TrendingUp, UserCheck, UserX } from "lucide-react";
 import { ContactCharts } from "@/components/ContactCharts";
 import { AIRecommendations } from "./AIRecommendations";
 import { CRMComparisonSection } from "./CRMComparisonTab";
@@ -195,78 +195,89 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo, userEmail = "" }: HubSp
     <>
     <div className="space-y-8 p-6">
 
-      {/* ═══ TOP — Contacts Created ═══ */}
-      <section>
-        <div className="rounded-2xl border border-border bg-card p-5">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Contacts Created</p>
-          <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">
-            {(data.totalContacts || 0).toLocaleString()}
-          </p>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">New contacts in selected date range</p>
-        </div>
-      </section>
-
-      {/* ═══ SECTION 1 — Marketing Leads Cycle ═══ */}
-      <section className="space-y-5">
-        <SectionHeader icon={TrendingUp} label="Marketing Leads Cycle" color="bg-blue-600" />
-
-        <ChartCard
-          title="Subscriber to MQL Funnel"
-          subtitle="Contacts created in selected period, by current lifecycle stage"
-        >
-          {/* Funnel cards — minimal flat */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            {marketingFunnelData.map((stage) => (
-              <div
-                key={stage.key}
-                className="rounded-xl bg-muted/40 p-5 transition-colors hover:bg-muted/60"
-              >
-                <p
-                  className="text-[11px] font-semibold uppercase tracking-wider"
-                  style={{ color: stage.color }}
-                >
-                  {stage.label}
-                </p>
-                <p className="mt-2 text-4xl font-bold tabular-nums text-foreground">
-                  {stage.count.toLocaleString()}
-                </p>
-                {stage.conversionRate !== undefined && (
-                  <p className="mt-1 text-[11px] text-muted-foreground">
-                    {stage.conversionRate.toFixed(1)}% from prev stage
-                  </p>
-                )}
+      {isSecondaryBrand ? (
+        /* ═══ TOP — 3 KPI cards for secondary brands ═══ */
+        <section>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            {[
+              { label: "Total Created",       value: data.totalContacts        || 0, color: "#3B82F6", Icon: Users },
+              { label: "Assigned to Dealer",  value: data.dealerAssignedTotal  || 0, color: "#10B981", Icon: UserCheck },
+              { label: "Not Assigned",        value: data.dealerUnassignedTotal || 0, color: "#F59E0B", Icon: UserX },
+            ].map(({ label, value, color, Icon }) => (
+              <div key={label} className="relative rounded-2xl border border-border bg-card overflow-hidden">
+                <div className="absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl" style={{ background: color }} />
+                <div className="pl-6 pr-5 pt-5 pb-5 space-y-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-xl shrink-0" style={{ background: `${color}15` }}>
+                      <Icon className="h-4 w-4" style={{ color }} />
+                    </div>
+                    <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide">{label}</p>
+                  </div>
+                  <p className="text-5xl font-black tabular-nums text-foreground leading-none">{value.toLocaleString()}</p>
+                  <p className="text-[11px] text-muted-foreground">New contacts in selected date range</p>
+                </div>
               </div>
             ))}
           </div>
-
-          {/* Bar chart visual for the marketing funnel */}
-          {marketingFunnelData.some((s) => s.count > 0) ? (
-            <div className="mt-6">
-              <ResponsiveContainer width="100%" height={200}>
-                <BarChart
-                  data={marketingFunnelData.map((s) => ({ name: s.label, count: s.count, color: s.color }))}
-                  layout="vertical"
-                  margin={{ left: 0, right: 16, top: 0, bottom: 0 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={gridColor} />
-                  <XAxis type="number" tick={axisStyle} tickLine={false} axisLine={false} />
-                  <YAxis type="category" dataKey="name" tick={axisStyle} width={90} tickLine={false} axisLine={false} />
-                  <Tooltip content={<ChartTooltip />} />
-                  <Bar dataKey="count" name="Contacts" radius={[0, 4, 4, 0]}>
-                    {marketingFunnelData.map((s, i) => (
-                      <Cell key={i} fill={s.color} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+        </section>
+      ) : (
+        <>
+          {/* ═══ TOP — Contacts Created ═══ */}
+          <section>
+            <div className="rounded-2xl border border-border bg-card p-5">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Contacts Created</p>
+              <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">
+                {(data.totalContacts || 0).toLocaleString()}
+              </p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">New contacts in selected date range</p>
             </div>
-          ) : (
-            <p className="mt-6 py-8 text-center text-sm text-muted-foreground">
-              No lifecycle stage data available for {brand.name}
-            </p>
-          )}
-        </ChartCard>
-      </section>
+          </section>
+
+          {/* ═══ SECTION 1 — Marketing Leads Cycle ═══ */}
+          <section className="space-y-5">
+            <SectionHeader icon={TrendingUp} label="Marketing Leads Cycle" color="bg-blue-600" />
+            <ChartCard
+              title="Subscriber to MQL Funnel"
+              subtitle="Contacts created in selected period, by current lifecycle stage"
+            >
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                {marketingFunnelData.map((stage) => (
+                  <div key={stage.key} className="rounded-xl bg-muted/40 p-5 transition-colors hover:bg-muted/60">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: stage.color }}>
+                      {stage.label}
+                    </p>
+                    <p className="mt-2 text-4xl font-bold tabular-nums text-foreground">{stage.count.toLocaleString()}</p>
+                    {stage.conversionRate !== undefined && (
+                      <p className="mt-1 text-[11px] text-muted-foreground">{stage.conversionRate.toFixed(1)}% from prev stage</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {marketingFunnelData.some((s) => s.count > 0) ? (
+                <div className="mt-6">
+                  <ResponsiveContainer width="100%" height={200}>
+                    <BarChart
+                      data={marketingFunnelData.map((s) => ({ name: s.label, count: s.count, color: s.color }))}
+                      layout="vertical"
+                      margin={{ left: 0, right: 16, top: 0, bottom: 0 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={gridColor} />
+                      <XAxis type="number" tick={axisStyle} tickLine={false} axisLine={false} />
+                      <YAxis type="category" dataKey="name" tick={axisStyle} width={90} tickLine={false} axisLine={false} />
+                      <Tooltip content={<ChartTooltip />} />
+                      <Bar dataKey="count" name="Contacts" radius={[0, 4, 4, 0]}>
+                        {marketingFunnelData.map((s, i) => (<Cell key={i} fill={s.color} />))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <p className="mt-6 py-8 text-center text-sm text-muted-foreground">No lifecycle stage data available for {brand.name}</p>
+              )}
+            </ChartCard>
+          </section>
+        </>
+      )}
 
       {/* ═══ SECTION 3 — Contact Charts ═══ */}
       <section className="space-y-5">
