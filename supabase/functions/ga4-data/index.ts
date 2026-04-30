@@ -13,6 +13,13 @@ interface GA4Request {
   endDate: string;
 }
 
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const isGoogleRateLimitHtml = (text: string) =>
+  text.includes("automated queries") ||
+  text.includes("We're sorry") ||
+  text.includes("<title>Sorry...</title>");
+
 async function getAccessToken(serviceAccountJson: string): Promise<string> {
   const sa = JSON.parse(serviceAccountJson);
   const now = Math.floor(Date.now() / 1000);
@@ -80,7 +87,7 @@ async function runReport(
     body.dimensions = dimensions.map((d) => ({ name: d }));
   }
 
-  const maxAttempts = 5;
+  const maxAttempts = 6;
   let lastErr = "";
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const res = await fetch(url, {
@@ -95,18 +102,18 @@ async function runReport(
 
     lastErr = await res.text();
     // Retry on rate limit / transient / Google "Sorry" HTML page
-    const transient =
-      res.status === 429 ||
-      res.status === 503 ||
-      res.status === 500 ||
-      lastErr.includes("Sorry") ||
-      lastErr.includes("automated queries");
+    const googleRateLimited = isGoogleRateLimitHtml(lastErr);
+    const transient = res.status === 429 || res.status === 503 || googleRateLimited;
+    if (googleRateLimited && attempt === maxAttempts - 1) {
+      console.warn(`GA4 rate limit page received for property ${propertyId}; returning empty report after retries.`);
+      return { rows: [] };
+    }
     if (!transient || attempt === maxAttempts - 1) {
       throw new Error(`GA4 API error (${propertyId}): ${lastErr}`);
     }
-    // Exponential backoff with jitter: 500ms, 1s, 2s, 4s
-    const delay = 500 * Math.pow(2, attempt) + Math.random() * 250;
-    await new Promise((r) => setTimeout(r, delay));
+    // Exponential backoff with jitter to cool down Google's automated-query protection.
+    const delay = Math.min(1200 * Math.pow(2, attempt), 12000) + Math.random() * 500;
+    await wait(delay);
   }
   throw new Error(`GA4 API error (${propertyId}): ${lastErr}`);
 }
@@ -139,15 +146,15 @@ Deno.serve(async (req) => {
     for (const pid of propertyIds) {
       // Run reports sequentially with a small gap to avoid Google rate limiting / "Sorry" page
       const summary = await runReport(accessToken, pid, startDate, endDate, ["sessions", "screenPageViews", "active1DayUsers"], []);
-      await new Promise((r) => setTimeout(r, 150));
+      await wait(350);
       const organic = await runReport(accessToken, pid, startDate, endDate, ["sessions"], ["sessionDefaultChannelGroup"]);
-      await new Promise((r) => setTimeout(r, 150));
+      await wait(350);
       const daily = await runReport(accessToken, pid, startDate, endDate, ["sessions", "active1DayUsers", "screenPageViews"], ["date"]);
-      await new Promise((r) => setTimeout(r, 150));
+      await wait(350);
       const pages = await runReport(accessToken, pid, startDate, endDate, ["sessions", "screenPageViews", "averageSessionDuration"], ["pagePath"]);
-      await new Promise((r) => setTimeout(r, 150));
+      await wait(350);
       const devices = await runReport(accessToken, pid, startDate, endDate, ["sessions"], ["deviceCategory"]);
-      await new Promise((r) => setTimeout(r, 150));
+      await wait(350);
       const countries = await runReport(accessToken, pid, startDate, endDate, ["sessions"], ["country"]);
 
       // Summary totals
