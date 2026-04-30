@@ -469,6 +469,7 @@ export function ContactCharts({
               : stateDistribution
           }
           unknownCount={externalUnknownStateCount ?? 0}
+          hideStatSummary={hideSourceBreakdown}
         />
       )}
 

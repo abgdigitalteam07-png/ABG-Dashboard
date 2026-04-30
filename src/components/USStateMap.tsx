@@ -14,6 +14,7 @@ interface USStateMapProps {
   unknownCount?: number;
   dealerWithDealDistribution?: StateData[];
   dealerWithoutDealDistribution?: StateData[];
+  hideStatSummary?: boolean;
 }
 
 const STATE_NAMES: Record<string, string> = {
@@ -154,6 +155,7 @@ export function USStateMap({
   unknownCount: externalUnknownCount,
   dealerWithDealDistribution,
   dealerWithoutDealDistribution,
+  hideStatSummary = false,
 }: USStateMapProps) {
   const showDealerToggle =
     (dealerWithDealDistribution && dealerWithDealDistribution.length > 0) ||
@@ -250,31 +252,32 @@ ${fillRules}
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/12">
-            <MapPin className="h-5 w-5 text-emerald-600" />
+      {!hideStatSummary && (
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/12">
+              <MapPin className="h-5 w-5 text-emerald-600" />
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Known States</p>
+              <p className="text-2xl font-bold tabular-nums text-slate-900">{base.knownCount.toLocaleString()}</p>
+              <p className="text-xs text-slate-500">Mapped from State field</p>
+            </div>
           </div>
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Known States</p>
-            <p className="text-2xl font-bold tabular-nums text-slate-900">{base.knownCount.toLocaleString()}</p>
-            <p className="text-xs text-slate-500">Mapped from State field</p>
+          <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/12">
+              <MapPinOff className="h-5 w-5 text-amber-600" />
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Unknown States</p>
+              <p className="text-2xl font-bold tabular-nums text-slate-900">
+                {(externalUnknownCount ?? base.unknownCount).toLocaleString()}
+              </p>
+              <p className="text-xs text-slate-500">Missing State field</p>
+            </div>
           </div>
         </div>
-
-        <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/12">
-            <MapPinOff className="h-5 w-5 text-amber-600" />
-          </div>
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Unknown States</p>
-            <p className="text-2xl font-bold tabular-nums text-slate-900">
-              {(externalUnknownCount ?? base.unknownCount).toLocaleString()}
-            </p>
-            <p className="text-xs text-slate-500">Missing State field</p>
-          </div>
-        </div>
-      </div>
+      )}
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.5fr)_320px]">
         <div className="rounded-[28px] border border-slate-200 bg-gradient-to-b from-slate-50 to-white p-6 shadow-sm">

@@ -111,6 +111,11 @@ function ChartTooltip({ active, payload, label }: any) {
 
 const SECONDARY_BRAND_NAMES = new Set(["American Whirlpool", "Vita Spa", "MAAX Sauna"]);
 
+interface SecondaryStats {
+  total: number; assigned: number; unassigned: number;
+  prevTotal: number; prevAssigned: number; prevUnassigned: number;
+}
+
 export function HubSpotCRMTab({ brand, dateFrom, dateTo, userEmail = "" }: HubSpotCRMTabProps) {
   const isSecondaryBrand = SECONDARY_BRAND_NAMES.has(brand.name) || brand.hubspotAccount === "secondary";
 
@@ -118,6 +123,10 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo, userEmail = "" }: HubSp
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const showLoader = useFirstLoad(loading);
+
+  const [secondaryStats, setSecondaryStats] = useState<SecondaryStats | null>(null);
+  // Reset lifted stats when brand or date range changes
+  useEffect(() => { setSecondaryStats(null); }, [brand.id, dateFrom.getTime(), dateTo.getTime()]);
 
   useEffect(() => {
     let cancelled = false;
@@ -200,24 +209,61 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo, userEmail = "" }: HubSp
         <section>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             {[
-              { label: "Total Created",       value: data.totalContacts        || 0, color: "#3B82F6", Icon: Users },
-              { label: "Assigned to Dealer",  value: data.dealerAssignedTotal  || 0, color: "#10B981", Icon: UserCheck },
-              { label: "Not Assigned",        value: data.dealerUnassignedTotal || 0, color: "#F59E0B", Icon: UserX },
-            ].map(({ label, value, color, Icon }) => (
-              <div key={label} className="relative rounded-2xl border border-border bg-card overflow-hidden">
-                <div className="absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl" style={{ background: color }} />
-                <div className="pl-6 pr-5 pt-5 pb-5 space-y-3">
-                  <div className="flex items-center gap-2.5">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-xl shrink-0" style={{ background: `${color}15` }}>
-                      <Icon className="h-4 w-4" style={{ color }} />
+              {
+                label: "Total Created",
+                curr: secondaryStats?.total    ?? data.totalContacts        ?? 0,
+                prev: secondaryStats?.prevTotal    ?? null,
+                color: "#3B82F6", Icon: Users,
+              },
+              {
+                label: "Assigned to Dealer",
+                curr: secondaryStats?.assigned ?? data.dealerAssignedTotal  ?? 0,
+                prev: secondaryStats?.prevAssigned ?? null,
+                color: "#10B981", Icon: UserCheck,
+              },
+              {
+                label: "Not Assigned",
+                curr: secondaryStats?.unassigned ?? data.dealerUnassignedTotal ?? 0,
+                prev: secondaryStats?.prevUnassigned ?? null,
+                color: "#F59E0B", Icon: UserX,
+              },
+            ].map(({ label, curr, prev, color, Icon }) => {
+              const delta = (prev !== null && prev > 0) ? ((curr - prev) / prev) * 100 : null;
+              const up = delta !== null && delta > 0.4;
+              const dn = delta !== null && delta < -0.4;
+              return (
+                <div key={label} className="relative rounded-2xl border border-border bg-card overflow-hidden">
+                  <div className="absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl" style={{ background: color }} />
+                  <div className="pl-6 pr-5 pt-5 pb-5 space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2.5">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-xl shrink-0" style={{ background: `${color}15` }}>
+                          <Icon className="h-4 w-4" style={{ color }} />
+                        </div>
+                        <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide">{label}</p>
+                      </div>
+                      {delta !== null && (
+                        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold shrink-0 ${
+                          up  ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400" :
+                          dn  ? "bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400" :
+                                "bg-muted text-muted-foreground"
+                        }`}>
+                          {up ? "▲" : dn ? "▼" : "→"} {up ? "+" : ""}{delta.toFixed(1)}%
+                        </span>
+                      )}
                     </div>
-                    <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide">{label}</p>
+                    <p className="text-5xl font-black tabular-nums text-foreground leading-none">{curr.toLocaleString()}</p>
+                    {prev !== null ? (
+                      <p className="text-[11px] text-muted-foreground">
+                        vs <span className="font-semibold tabular-nums">{prev.toLocaleString()}</span> previous period
+                      </p>
+                    ) : (
+                      <p className="text-[11px] text-muted-foreground">New contacts in selected date range</p>
+                    )}
                   </div>
-                  <p className="text-5xl font-black tabular-nums text-foreground leading-none">{value.toLocaleString()}</p>
-                  <p className="text-[11px] text-muted-foreground">New contacts in selected date range</p>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
       ) : (
@@ -313,6 +359,8 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo, userEmail = "" }: HubSp
         dateFrom={dateFrom}
         dateTo={dateTo}
         userEmail={userEmail}
+        currentBrandName={brand.name}
+        onStatsReady={setSecondaryStats}
       />
     )}
     </>

@@ -1810,17 +1810,29 @@ function ComparisonContent() {
   );
 }
 
-// ─── COMPARISON SECTION — embedded in Overview for secondary brands ───────────
-export function CRMComparisonSection({ dateFrom, dateTo, userEmail }: {
+// ─── COMPARISON SECTION (new — collapsed by default) ─────────────────────────
+interface SectionStats {
+  total: number; assigned: number; unassigned: number;
+  prevTotal: number; prevAssigned: number; prevUnassigned: number;
+}
+
+export function CRMComparisonSection({ dateFrom, dateTo, userEmail, currentBrandName, onStatsReady }: {
   dateFrom: Date;
   dateTo: Date;
   userEmail: string;
+  currentBrandName?: string;
+  onStatsReady?: (stats: SectionStats) => void;
 }) {
   if (!ALLOWED_EMAILS.has(userEmail)) return null;
-  return <ComparisonSectionContent dateFrom={dateFrom} dateTo={dateTo} />;
+  return <ComparisonSectionContent dateFrom={dateFrom} dateTo={dateTo} currentBrandName={currentBrandName} onStatsReady={onStatsReady} />;
 }
 
-function ComparisonSectionContent({ dateFrom, dateTo }: { dateFrom: Date; dateTo: Date }) {
+function ComparisonSectionContent({ dateFrom, dateTo, currentBrandName, onStatsReady }: {
+  dateFrom: Date; dateTo: Date;
+  currentBrandName?: string;
+  onStatsReady?: (stats: SectionStats) => void;
+}) {
+  const [isExpanded,      setIsExpanded]      = useState(false);
   const [comparisonMode, setComparisonMode] = useState(false);
   const [selectedBrands, setSelectedBrands] = useState<SecondaryBrand[]>([...SECONDARY_BRANDS]);
   const [results,        setResults]        = useState<BrandResults | null>(null);
@@ -1880,6 +1892,18 @@ function ComparisonSectionContent({ dateFrom, dateTo }: { dateFrom: Date; dateTo
       setPrevBrandSeries(pRes.brandSeries);
       setCurrBrandDealerBreakdown(cRes.brandDealerBreakdown);
       setLoading(false);
+      // Lift the current brand's stats up to HubSpotCRMTab for the top KPI cards
+      if (onStatsReady && currentBrandName) {
+        const bn = currentBrandName as SecondaryBrand;
+        const c = cRes.periodData[bn];
+        const p = pRes.periodData[bn];
+        if (c && p) {
+          onStatsReady({
+            total:         c.totalContacts,    assigned:         c.dealerAssigned,    unassigned:         c.dealerUnassigned,
+            prevTotal:     p.totalContacts,    prevAssigned:     p.dealerAssigned,    prevUnassigned:     p.dealerUnassigned,
+          });
+        }
+      }
     }).catch(e => {
       if (reqRef.current !== id) return;
       setError(e instanceof Error ? e.message : "Failed to load");
@@ -1935,36 +1959,37 @@ function ComparisonSectionContent({ dateFrom, dateTo }: { dateFrom: Date; dateTo
   const tickInterval = trendRows.length > 60 ? 13 : trendRows.length > 30 ? 6 : trendRows.length > 14 ? 3 : 0;
 
   return (
-    <div className="space-y-5 p-6 border-t border-border">
+    <div className="border-t border-border">
 
-      {/* ── Section Header with Comparison Mode toggle ── */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      {/* ── Collapsed header — always visible ── */}
+      <button
+        onClick={() => setIsExpanded(v => !v)}
+        className="w-full flex items-center justify-between gap-3 px-6 py-4 hover:bg-muted/30 transition-colors cursor-pointer text-left"
+      >
         <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#3B82F6]/10">
+          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#3B82F6]/10 shrink-0">
             <Users className="h-4 w-4 text-[#3B82F6]" />
           </div>
           <div>
             <h2 className="text-sm font-bold text-foreground">Comparison Report</h2>
-            <p className="text-[11px] text-muted-foreground">
-              {comparisonMode ? `${currLabel} vs ${prevLabel}` : currLabel}
-            </p>
+            <p className="text-[11px] text-muted-foreground">{currLabel}</p>
           </div>
         </div>
+        <span className={cn(
+          "flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-semibold transition-all duration-150 shrink-0",
+          isExpanded
+            ? "bg-[#3B82F6] border-[#3B82F6] text-white"
+            : "border-border bg-background text-muted-foreground",
+        )}>
+          {isExpanded ? "▲ Minimize" : "▼ Expand"}
+        </span>
+      </button>
 
-        <button
-          onClick={() => setComparisonMode(v => !v)}
-          className={cn(
-            "flex items-center gap-2 rounded-xl border px-4 py-2 text-xs font-bold transition-all duration-150 cursor-pointer",
-            comparisonMode
-              ? "bg-[#3B82F6] border-[#3B82F6] text-white shadow-sm"
-              : "border-border bg-background text-muted-foreground hover:text-foreground hover:border-muted-foreground/40",
-          )}>
-          <TrendingUp className="h-3.5 w-3.5" />
-          {comparisonMode ? "Comparison Mode: On" : "Comparison Mode: Off"}
-        </button>
-      </div>
+      {!isExpanded && null}
+      {isExpanded && (
+      <div className="space-y-5 px-6 pb-6">
 
-      {/* ── Toolbar ── */}
+      {/* ── Comparison Mode + brand toggles toolbar ── */}
       <div className="flex flex-wrap items-center gap-2.5 rounded-2xl border border-border bg-card px-5 py-3.5 shadow-sm">
         {/* Brand toggles */}
         <div className="flex flex-wrap items-center gap-1.5">
@@ -1985,6 +2010,19 @@ function ComparisonSectionContent({ dateFrom, dateTo }: { dateFrom: Date; dateTo
             );
           })}
         </div>
+
+        {/* Comparison Mode toggle */}
+        <button
+          onClick={() => setComparisonMode(v => !v)}
+          className={cn(
+            "flex items-center gap-2 rounded-xl border px-3.5 py-2 text-xs font-bold transition-all duration-150 cursor-pointer",
+            comparisonMode
+              ? "bg-[#3B82F6] border-[#3B82F6] text-white shadow-sm"
+              : "border-border bg-background text-muted-foreground hover:text-foreground hover:border-muted-foreground/40",
+          )}>
+          <TrendingUp className="h-3.5 w-3.5" />
+          {comparisonMode ? "Comparison: On" : "Comparison: Off"}
+        </button>
 
         <div className="flex-1" />
 
@@ -2496,6 +2534,8 @@ function ComparisonSectionContent({ dateFrom, dateTo }: { dateFrom: Date; dateTo
           </div>
         );
       })()}
+      </div>
+      )}
     </div>
   );
 }
