@@ -61,6 +61,7 @@ interface ContactChartsProps {
   externalUnknownStateCount?: number;
   dealerWithDealDistribution?: { state: string; count: number }[];
   dealerWithoutDealDistribution?: { state: string; count: number }[];
+  hideSourceBreakdown?: boolean;
 }
 
 type Granularity = "day" | "week" | "month" | "quarter";
@@ -282,6 +283,7 @@ export function ContactCharts({
   externalUnknownStateCount,
   dealerWithDealDistribution,
   dealerWithoutDealDistribution,
+  hideSourceBreakdown = false,
 }: ContactChartsProps) {
   const [granularity, setGranularity] = useState<Granularity>("week");
   const [dealerSearch, setDealerSearch] = useState("");
@@ -428,7 +430,7 @@ export function ContactCharts({
       </ChartCard>
 
       {/* ── Source Breakdown ── */}
-      <ChartCard title="Contacts Source Breakdown" subtitle="HubSpot vs Salesforce origin vs Import">
+      {!hideSourceBreakdown && <ChartCard title="Contacts Source Breakdown" subtitle="HubSpot vs Salesforce origin vs Import">
         {loading ? (
           <Skeleton className="h-[280px] w-full" />
         ) : error ? (
@@ -456,7 +458,7 @@ export function ContactCharts({
             </BarChart>
           </ResponsiveContainer>
         )}
-      </ChartCard>
+      </ChartCard>}
 
       {/* ── State Map ── */}
       {!loading && !error && (
