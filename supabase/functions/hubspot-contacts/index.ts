@@ -30,16 +30,17 @@ const BRAND_TO_BU: Record<string, string> = {
 // Secondary HubSpot account brands — filtered by "brand" contact property, not business unit
 const SECONDARY_BRANDS = new Set(["American Whirlpool", "Vita Spa", "MAAX Sauna"]);
 
-async function hubspotPostWithRetry(path: string, token: string, body: unknown, maxRetries = 3): Promise<any> {
+async function hubspotPostWithRetry(path: string, token: string, body: unknown, maxRetries = 6): Promise<any> {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const res = await fetch(`https://api.hubapi.com${path}`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    if (res.status === 429) {
-      const wait = Math.min(2000 * Math.pow(2, attempt), 10000);
-      console.log(`[hubspot-contacts] Rate limited, retrying in ${wait}ms (attempt ${attempt + 1}/${maxRetries})`);
+    if (res.status === 429 || res.status === 502 || res.status === 503 || res.status === 504) {
+      if (attempt === maxRetries) break;
+      const wait = Math.min(1000 * Math.pow(2, attempt), 12000) + Math.floor(Math.random() * 300);
+      console.log(`[hubspot-contacts] ${res.status} retry in ${wait}ms (attempt ${attempt + 1}/${maxRetries})`);
       await new Promise((r) => setTimeout(r, wait));
       continue;
     }
@@ -49,7 +50,14 @@ async function hubspotPostWithRetry(path: string, token: string, body: unknown, 
     }
     return res.json();
   }
-  throw new Error(`HubSpot API rate limit exceeded after ${maxRetries} retries`);
+  // Soft-fail: signal rate limit to caller, which returns empty data instead of 500
+  const err: any = new Error(`HubSpot rate limit after ${maxRetries} retries`);
+  err.rateLimited = true;
+  throw err;
+}
+
+function isRateLimited(e: unknown): boolean {
+  return !!(e && typeof e === "object" && (e as any).rateLimited);
 }
 
 interface ContactsRequest {
