@@ -943,6 +943,157 @@ function TrendTooltip({ active, payload, label }:
   );
 }
 
+// ─── SourceBreakdownCard ──────────────────────────────────────────────────────
+interface SourceRow { key: string; name: string; curr: number; prev: number; color: string; }
+
+function SourceBreakdownCard({
+  chartData, maxVal, totalCurr, currLabel, prevPeriodLabel,
+}: {
+  chartData: SourceRow[];
+  maxVal: number;
+  totalCurr: number;
+  currLabel: string;
+  prevPeriodLabel: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+
+      {/* ── Header ── */}
+      <div className="flex flex-wrap items-start justify-between gap-4 px-6 py-4 border-b border-border bg-muted/20">
+        <div>
+          <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+            <TrendingUp className="h-4 w-4 text-[#3B82F6]" />
+            Lead Source Breakdown
+          </h3>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            Where leads are coming from — channel shift explains period differences
+          </p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 py-1.5">
+            <span className="h-3 w-3 rounded-sm bg-[#3B82F6]" />
+            <span className="text-[11px] font-semibold text-foreground truncate max-w-[160px]">{currLabel}</span>
+          </div>
+          <div className="flex items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 py-1.5">
+            <span className="h-3 w-3 rounded-sm border-2 border-[#94A3B8] bg-[#94A3B8]/20" />
+            <span className="text-[11px] font-semibold text-muted-foreground">{prevPeriodLabel}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Bar rows ── */}
+      <div className="px-6 pt-5 pb-3 space-y-5">
+        {chartData.map((d) => {
+          const delta = d.prev > 0 ? ((d.curr - d.prev) / d.prev) * 100 : null;
+          const up = delta !== null && delta > 0.4;
+          const dn = delta !== null && delta < -0.4;
+          const currPct = Math.max((d.curr / maxVal) * 100, d.curr > 0 ? 1 : 0);
+          const prevPct = Math.max((d.prev / maxVal) * 100, d.prev > 0 ? 1 : 0);
+          return (
+            <div key={d.key}>
+              {/* Label row */}
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: d.color }} />
+                  <span className="text-xs font-semibold text-foreground truncate">{d.name}</span>
+                </div>
+                <div className="flex items-center gap-2 shrink-0 ml-3">
+                  <span className="text-xs font-black tabular-nums text-foreground">{d.curr.toLocaleString()}</span>
+                  <span className="text-[11px] text-muted-foreground tabular-nums">/ {d.prev.toLocaleString()}</span>
+                  {delta !== null ? (
+                    <span className={cn(
+                      "inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums",
+                      up  ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400" :
+                      dn  ? "bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400" :
+                            "bg-muted text-muted-foreground",
+                    )}>
+                      {up ? "▲" : dn ? "▼" : "→"}{up ? "+" : ""}{delta.toFixed(1)}%
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-muted-foreground/40 font-mono">new</span>
+                  )}
+                </div>
+              </div>
+              {/* Current bar — vivid source color, full height */}
+              <div className="relative h-4 w-full rounded-full bg-muted/40 overflow-hidden mb-1">
+                <div
+                  className="absolute inset-y-0 left-0 rounded-full transition-all duration-700 ease-out"
+                  style={{ width: `${currPct}%`, background: d.color }}
+                />
+              </div>
+              {/* Previous bar — uniform slate, half height */}
+              <div className="relative h-2 w-full rounded-full bg-muted/30 overflow-hidden">
+                <div
+                  className="absolute inset-y-0 left-0 rounded-full transition-all duration-700 ease-out bg-[#94A3B8]/60"
+                  style={{ width: `${prevPct}%` }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ── Summary table ── */}
+      <div className="px-4 pb-5 pt-2">
+        <div className="overflow-x-auto rounded-xl border border-border">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-border bg-muted/40">
+                <th className="px-4 py-2.5 text-left font-bold text-[10px] uppercase tracking-widest text-muted-foreground">Source</th>
+                <th className="px-4 py-2.5 text-right font-bold text-[10px] uppercase tracking-widest text-muted-foreground">Current</th>
+                <th className="px-4 py-2.5 text-right font-bold text-[10px] uppercase tracking-widest text-muted-foreground hidden sm:table-cell">{prevPeriodLabel}</th>
+                <th className="px-4 py-2.5 text-right font-bold text-[10px] uppercase tracking-widest text-muted-foreground">Δ Change</th>
+                <th className="px-4 py-2.5 text-right font-bold text-[10px] uppercase tracking-widest text-muted-foreground hidden md:table-cell">Share</th>
+              </tr>
+            </thead>
+            <tbody>
+              {chartData.map((d, idx) => {
+                const delta = d.prev > 0 ? ((d.curr - d.prev) / d.prev) * 100 : null;
+                const up = delta !== null && delta > 0.4;
+                const dn = delta !== null && delta < -0.4;
+                const sharePct = totalCurr > 0 ? (d.curr / totalCurr) * 100 : 0;
+                return (
+                  <tr key={d.key} className={cn("border-b border-border/50", idx % 2 === 0 ? "bg-background" : "bg-muted/10")}>
+                    <td className="px-4 py-2.5">
+                      <span className="flex items-center gap-2">
+                        <span className="h-2 w-2 rounded-full shrink-0" style={{ background: d.color }} />
+                        <span className="font-semibold text-foreground">{d.name}</span>
+                      </span>
+                    </td>
+                    <td className="px-4 py-2.5 text-right font-black tabular-nums" style={{ color: d.color }}>
+                      {d.curr.toLocaleString()}
+                    </td>
+                    <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground hidden sm:table-cell">
+                      {d.prev.toLocaleString()}
+                    </td>
+                    <td className="px-4 py-2.5 text-right">
+                      {delta !== null ? (
+                        <span className={cn("font-bold tabular-nums",
+                          up ? "text-emerald-600 dark:text-emerald-400" :
+                          dn ? "text-red-500 dark:text-red-400" : "text-muted-foreground")}>
+                          {up ? "▲ +" : dn ? "▼ " : "→ "}{delta.toFixed(1)}%
+                        </span>
+                      ) : <span className="text-muted-foreground/40 text-[10px]">—</span>}
+                    </td>
+                    <td className="px-4 py-2.5 hidden md:table-cell">
+                      <div className="flex items-center justify-end gap-2">
+                        <span className="text-muted-foreground tabular-nums text-[11px]">{sharePct.toFixed(1)}%</span>
+                        <div className="h-1.5 w-16 rounded-full bg-muted overflow-hidden">
+                          <div className="h-full rounded-full" style={{ width: `${sharePct}%`, background: d.color }} />
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── main export ──────────────────────────────────────────────────────────────
 export function CRMComparisonTab({ userEmail }: { userEmail: string }) {
   if (!ALLOWED_EMAILS.has(userEmail)) {
@@ -1708,109 +1859,17 @@ function ComparisonContent() {
               const prevMap = mergeSourceMaps(prevBrandSourceBreakdown, activeBrands);
               const allKeys = Array.from(new Set([...Object.keys(currMap), ...Object.keys(prevMap)]))
                 .filter(k => (currMap[k] || 0) + (prevMap[k] || 0) > 0)
-                .sort((a, b) => ((currMap[b] || 0) + (prevMap[b] || 0)) - ((currMap[a] || 0) + (prevMap[a] || 0)));
+                .sort((a, b) => (currMap[b] || 0) - (currMap[a] || 0));
               if (!allKeys.length) return null;
               const chartData = allKeys.map(k => ({
-                key: k,
-                name: SOURCE_LABELS[k] ?? k,
-                curr: currMap[k] || 0,
-                prev: prevMap[k] || 0,
+                key: k, name: SOURCE_LABELS[k] ?? k,
+                curr: currMap[k] || 0, prev: prevMap[k] || 0,
                 color: SOURCE_COLORS[k] ?? "#9CA3AF",
               }));
-              return (
-                <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
-                  <div className="flex items-center justify-between gap-4 px-6 py-4 border-b border-border bg-muted/20">
-                    <div>
-                      <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
-                        <TrendingUp className="h-4 w-4 text-[#3B82F6]" />
-                        Lead Source Breakdown
-                      </h3>
-                      <p className="mt-0.5 text-[11px] text-muted-foreground">
-                        Original source — current period vs. {comparisonType === "yoy" ? "same period last year" : "previous period"}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-4 text-[11px] shrink-0">
-                      <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-[#3B82F6]" />{currLabel}</span>
-                      <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-[#3B82F6]/30 border border-[#3B82F6]/50" />{comparisonType === "yoy" ? "Last Year" : "Prev Period"}</span>
-                    </div>
-                  </div>
-                  <div className="p-4">
-                    <ResponsiveContainer width="100%" height={Math.max(240, allKeys.length * 42)}>
-                      <BarChart
-                        data={chartData}
-                        layout="vertical"
-                        margin={{ left: 0, right: 48, top: 4, bottom: 4 }}
-                        barCategoryGap="30%"
-                        barGap={3}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" />
-                        <XAxis type="number" tick={axisStyle} tickLine={false} axisLine={false} allowDecimals={false} />
-                        <YAxis
-                          type="category"
-                          dataKey="name"
-                          tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
-                          width={130}
-                          tickLine={false}
-                          axisLine={false}
-                        />
-                        <Tooltip
-                          cursor={{ fill: "hsl(var(--muted)/0.3)" }}
-                          content={({ active, payload, label }) => {
-                            if (!active || !payload?.length) return null;
-                            const curr = payload.find((p: any) => p.dataKey === "curr")?.value ?? 0;
-                            const prev = payload.find((p: any) => p.dataKey === "prev")?.value ?? 0;
-                            const delta = prev > 0 ? ((curr - prev) / prev) * 100 : null;
-                            return (
-                              <div className="rounded-xl border border-border bg-card shadow-xl px-4 py-3 text-xs min-w-[200px] space-y-1.5">
-                                <p className="font-bold text-sm text-foreground">{label}</p>
-                                <div className="flex items-center justify-between gap-6">
-                                  <span className="flex items-center gap-1.5 text-muted-foreground"><span className="h-2 w-2 rounded-sm bg-[#3B82F6]" />{currLabel}</span>
-                                  <span className="font-bold text-foreground tabular-nums">{curr.toLocaleString()}</span>
-                                </div>
-                                <div className="flex items-center justify-between gap-6">
-                                  <span className="flex items-center gap-1.5 text-muted-foreground"><span className="h-2 w-2 rounded-sm bg-[#3B82F6]/30 border border-[#3B82F6]/50" />{comparisonType === "yoy" ? "Last Year" : "Prev Period"}</span>
-                                  <span className="font-semibold text-muted-foreground tabular-nums">{prev.toLocaleString()}</span>
-                                </div>
-                                {delta !== null && (
-                                  <div className={`pt-1 border-t border-border text-[11px] font-semibold ${delta > 0.4 ? "text-emerald-600 dark:text-emerald-400" : delta < -0.4 ? "text-red-500 dark:text-red-400" : "text-muted-foreground"}`}>
-                                    {delta > 0.4 ? "▲" : delta < -0.4 ? "▼" : "→"} {Math.abs(delta).toFixed(1)}% change
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          }}
-                        />
-                        <Bar dataKey="curr" name="Current" radius={[0, 3, 3, 0]} maxBarSize={16}>
-                          {chartData.map((d) => <Cell key={d.key} fill={d.color} />)}
-                          <LabelList dataKey="curr" position="right" style={{ fontSize: 10, fill: "hsl(var(--muted-foreground))", fontVariantNumeric: "tabular-nums" }} formatter={(v: number) => v > 0 ? v.toLocaleString() : ""} />
-                        </Bar>
-                        <Bar dataKey="prev" name="Previous" radius={[0, 3, 3, 0]} maxBarSize={16}>
-                          {chartData.map((d) => <Cell key={d.key} fill={d.color} fillOpacity={0.3} stroke={d.color} strokeWidth={1} />)}
-                          <LabelList dataKey="prev" position="right" style={{ fontSize: 10, fill: "hsl(var(--muted-foreground))", fontVariantNumeric: "tabular-nums" }} formatter={(v: number) => v > 0 ? v.toLocaleString() : ""} />
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                    {/* delta summary row */}
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {chartData.map((d) => {
-                        const delta = d.prev > 0 ? ((d.curr - d.prev) / d.prev) * 100 : null;
-                        return (
-                          <div key={d.key} className="flex items-center gap-1.5 rounded-lg border border-border bg-muted/30 px-2.5 py-1.5 text-[11px]">
-                            <span className="h-2 w-2 rounded-full shrink-0" style={{ background: d.color }} />
-                            <span className="font-medium text-foreground">{d.name}</span>
-                            <span className="text-muted-foreground">{d.curr.toLocaleString()}</span>
-                            {delta !== null && (
-                              <span className={`font-bold ${delta > 0.4 ? "text-emerald-600 dark:text-emerald-400" : delta < -0.4 ? "text-red-500 dark:text-red-400" : "text-muted-foreground"}`}>
-                                {delta > 0.4 ? "▲" : delta < -0.4 ? "▼" : "→"}{delta > 0 ? "+" : ""}{delta.toFixed(1)}%
-                              </span>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              );
+              const maxVal = Math.max(...chartData.map(d => Math.max(d.curr, d.prev)), 1);
+              const totalCurr = chartData.reduce((s, d) => s + d.curr, 0);
+              const prevPeriodLabel = comparisonType === "yoy" ? "Last Year" : "Prev Period";
+              return <SourceBreakdownCard chartData={chartData} maxVal={maxVal} totalCurr={totalCurr} currLabel={currLabel} prevPeriodLabel={prevPeriodLabel} />;
             })()}
 
             {/* ── Top Dealers ──────────────────────────────────────────── */}
@@ -2615,109 +2674,17 @@ function ComparisonSectionContent({ dateFrom, dateTo, currentBrandName, onStatsR
               const prevMap = mergeSourceMaps(prevBrandSourceBreakdown, activeBrands);
               const allKeys = Array.from(new Set([...Object.keys(currMap), ...Object.keys(prevMap)]))
                 .filter(k => (currMap[k] || 0) + (prevMap[k] || 0) > 0)
-                .sort((a, b) => ((currMap[b] || 0) + (prevMap[b] || 0)) - ((currMap[a] || 0) + (prevMap[a] || 0)));
+                .sort((a, b) => (currMap[b] || 0) - (currMap[a] || 0));
               if (!allKeys.length) return null;
               const chartData = allKeys.map(k => ({
-                key: k,
-                name: SOURCE_LABELS[k] ?? k,
-                curr: currMap[k] || 0,
-                prev: prevMap[k] || 0,
+                key: k, name: SOURCE_LABELS[k] ?? k,
+                curr: currMap[k] || 0, prev: prevMap[k] || 0,
                 color: SOURCE_COLORS[k] ?? "#9CA3AF",
               }));
-              return (
-                <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
-                  <div className="flex items-center justify-between gap-4 px-6 py-4 border-b border-border bg-muted/20">
-                    <div>
-                      <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
-                        <TrendingUp className="h-4 w-4 text-[#3B82F6]" />
-                        Lead Source Breakdown
-                      </h3>
-                      <p className="mt-0.5 text-[11px] text-muted-foreground">
-                        Original source — current period vs. {comparisonType === "yoy" ? "same period last year" : "previous period"}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-4 text-[11px] shrink-0">
-                      <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-[#3B82F6]" />{currLabel}</span>
-                      <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-[#3B82F6]/30 border border-[#3B82F6]/50" />{comparisonType === "yoy" ? "Last Year" : "Prev Period"}</span>
-                    </div>
-                  </div>
-                  <div className="p-4">
-                    <ResponsiveContainer width="100%" height={Math.max(240, allKeys.length * 42)}>
-                      <BarChart
-                        data={chartData}
-                        layout="vertical"
-                        margin={{ left: 0, right: 48, top: 4, bottom: 4 }}
-                        barCategoryGap="30%"
-                        barGap={3}
-                      >
-                        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" />
-                        <XAxis type="number" tick={axisStyle} tickLine={false} axisLine={false} allowDecimals={false} />
-                        <YAxis
-                          type="category"
-                          dataKey="name"
-                          tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
-                          width={130}
-                          tickLine={false}
-                          axisLine={false}
-                        />
-                        <Tooltip
-                          cursor={{ fill: "hsl(var(--muted)/0.3)" }}
-                          content={({ active, payload, label }) => {
-                            if (!active || !payload?.length) return null;
-                            const curr = payload.find((p: any) => p.dataKey === "curr")?.value ?? 0;
-                            const prev = payload.find((p: any) => p.dataKey === "prev")?.value ?? 0;
-                            const delta = prev > 0 ? ((curr - prev) / prev) * 100 : null;
-                            return (
-                              <div className="rounded-xl border border-border bg-card shadow-xl px-4 py-3 text-xs min-w-[200px] space-y-1.5">
-                                <p className="font-bold text-sm text-foreground">{label}</p>
-                                <div className="flex items-center justify-between gap-6">
-                                  <span className="flex items-center gap-1.5 text-muted-foreground"><span className="h-2 w-2 rounded-sm bg-[#3B82F6]" />{currLabel}</span>
-                                  <span className="font-bold text-foreground tabular-nums">{curr.toLocaleString()}</span>
-                                </div>
-                                <div className="flex items-center justify-between gap-6">
-                                  <span className="flex items-center gap-1.5 text-muted-foreground"><span className="h-2 w-2 rounded-sm bg-[#3B82F6]/30 border border-[#3B82F6]/50" />{comparisonType === "yoy" ? "Last Year" : "Prev Period"}</span>
-                                  <span className="font-semibold text-muted-foreground tabular-nums">{prev.toLocaleString()}</span>
-                                </div>
-                                {delta !== null && (
-                                  <div className={`pt-1 border-t border-border text-[11px] font-semibold ${delta > 0.4 ? "text-emerald-600 dark:text-emerald-400" : delta < -0.4 ? "text-red-500 dark:text-red-400" : "text-muted-foreground"}`}>
-                                    {delta > 0.4 ? "▲" : delta < -0.4 ? "▼" : "→"} {Math.abs(delta).toFixed(1)}% change
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          }}
-                        />
-                        <Bar dataKey="curr" name="Current" radius={[0, 3, 3, 0]} maxBarSize={16}>
-                          {chartData.map((d) => <Cell key={d.key} fill={d.color} />)}
-                          <LabelList dataKey="curr" position="right" style={{ fontSize: 10, fill: "hsl(var(--muted-foreground))", fontVariantNumeric: "tabular-nums" }} formatter={(v: number) => v > 0 ? v.toLocaleString() : ""} />
-                        </Bar>
-                        <Bar dataKey="prev" name="Previous" radius={[0, 3, 3, 0]} maxBarSize={16}>
-                          {chartData.map((d) => <Cell key={d.key} fill={d.color} fillOpacity={0.3} stroke={d.color} strokeWidth={1} />)}
-                          <LabelList dataKey="prev" position="right" style={{ fontSize: 10, fill: "hsl(var(--muted-foreground))", fontVariantNumeric: "tabular-nums" }} formatter={(v: number) => v > 0 ? v.toLocaleString() : ""} />
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
-                    {/* delta summary row */}
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {chartData.map((d) => {
-                        const delta = d.prev > 0 ? ((d.curr - d.prev) / d.prev) * 100 : null;
-                        return (
-                          <div key={d.key} className="flex items-center gap-1.5 rounded-lg border border-border bg-muted/30 px-2.5 py-1.5 text-[11px]">
-                            <span className="h-2 w-2 rounded-full shrink-0" style={{ background: d.color }} />
-                            <span className="font-medium text-foreground">{d.name}</span>
-                            <span className="text-muted-foreground">{d.curr.toLocaleString()}</span>
-                            {delta !== null && (
-                              <span className={`font-bold ${delta > 0.4 ? "text-emerald-600 dark:text-emerald-400" : delta < -0.4 ? "text-red-500 dark:text-red-400" : "text-muted-foreground"}`}>
-                                {delta > 0.4 ? "▲" : delta < -0.4 ? "▼" : "→"}{delta > 0 ? "+" : ""}{delta.toFixed(1)}%
-                              </span>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              );
+              const maxVal = Math.max(...chartData.map(d => Math.max(d.curr, d.prev)), 1);
+              const totalCurr = chartData.reduce((s, d) => s + d.curr, 0);
+              const prevPeriodLabel = comparisonType === "yoy" ? "Last Year" : "Prev Period";
+              return <SourceBreakdownCard chartData={chartData} maxVal={maxVal} totalCurr={totalCurr} currLabel={currLabel} prevPeriodLabel={prevPeriodLabel} />;
             })()}
 
             {/* Dealers */}
