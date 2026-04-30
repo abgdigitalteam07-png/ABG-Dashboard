@@ -7,7 +7,7 @@ import {
 } from "recharts";
 import { fetchHubSpotData } from "@/lib/api-client";
 import { Brand } from "@/lib/brands";
-import { Users, TrendingUp, UserCheck, UserX } from "lucide-react";
+import { Users, TrendingUp, UserCheck, UserX, RefreshCw } from "lucide-react";
 import { ContactCharts } from "@/components/ContactCharts";
 import { AIRecommendations } from "./AIRecommendations";
 import { CRMComparisonSection } from "./CRMComparisonTab";
@@ -122,6 +122,7 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo, userEmail = "" }: HubSp
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
   const showLoader = useFirstLoad(loading);
 
   const [secondaryStats, setSecondaryStats] = useState<SecondaryStats | null>(null);
@@ -146,7 +147,7 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo, userEmail = "" }: HubSp
         }
       });
     return () => { cancelled = true; };
-  }, [brand.id, dateFrom.getTime(), dateTo.getTime()]);
+  }, [brand.id, dateFrom.getTime(), dateTo.getTime(), refreshKey]);
 
   // Build lifecycle stage map helper
   function buildStageMap(stages: any[]): Record<string, number> {
@@ -203,6 +204,17 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo, userEmail = "" }: HubSp
   return (
     <>
     <div className="space-y-8 p-6">
+      {/* ── Refresh button ── */}
+      <div className="flex justify-end">
+        <button
+          onClick={() => setRefreshKey(k => k + 1)}
+          disabled={loading}
+          className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+          {loading ? "Refreshing…" : "Refresh"}
+        </button>
+      </div>
 
       {isSecondaryBrand ? (
         /* ═══ TOP — 3 KPI cards for secondary brands ═══ */
