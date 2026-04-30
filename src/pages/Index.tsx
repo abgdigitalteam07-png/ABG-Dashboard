@@ -45,15 +45,6 @@ const Index = () => {
     setDateTo(to);
   }, []);
 
-  // Re-apply fresh Date objects on brand change so every tab fetch gets a unique timestamp
-  const prevBrandId = useRef(selectedBrand.id);
-  useEffect(() => {
-    if (prevBrandId.current === selectedBrand.id) return;
-    prevBrandId.current = selectedBrand.id;
-    setDateFrom(d => new Date(d));
-    setDateTo(d => new Date(d));
-  }, [selectedBrand.id]);
-
   const socialMediaBrandNames = [
     "Laurel Mountain", "ABG Home Services", "Accessible Home Store", "American Bath Group",
     "Arizona Shower Door", "Bootz", "Coastal Shower Doors", "DreamLine", "MAAX", "MAAX Spas",
