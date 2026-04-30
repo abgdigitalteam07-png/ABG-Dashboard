@@ -203,6 +203,8 @@ Deno.serve(async (req) => {
             ? new Date(props.createdate).toISOString().split("T")[0]
             : null;
           for (const bn of brandNames) {
+            // Exclude Nov 19 2025 data spike for American Whirlpool
+            if (bn === "American Whirlpool" && dateKey === "2025-11-19") continue;
             if (matchesBrand(props, tokenSets.get(bn)!)) {
               brandStats[bn].total++;
               if (hasDealer) {
@@ -348,12 +350,15 @@ Deno.serve(async (req) => {
 
         if (isSecondary && !matchesBrand(props, brandMatchTokens)) continue;
 
-        totalFetched++;
-
         // Date bucket
         const createDate = props.createdate;
         if (!createDate) continue;
         const dateKey = new Date(createDate).toISOString().split("T")[0];
+
+        // American Whirlpool: exclude Nov 19 2025 data spike from all counts
+        if (brandName === "American Whirlpool" && dateKey === "2025-11-19") continue;
+
+        totalFetched++;
 
         if (!contactsByDate[dateKey]) {
           contactsByDate[dateKey] = { total: 0, hubspot: 0, salesforce: 0 };

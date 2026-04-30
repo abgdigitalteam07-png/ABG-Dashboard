@@ -62,6 +62,9 @@ interface ContactChartsProps {
   dealerWithDealDistribution?: { state: string; count: number }[];
   dealerWithoutDealDistribution?: { state: string; count: number }[];
   hideSourceBreakdown?: boolean;
+  useLeadLabel?: boolean;
+  overrideAssignedTotal?: number;
+  overrideUnassignedTotal?: number;
 }
 
 type Granularity = "day" | "week" | "month" | "quarter";
@@ -284,6 +287,9 @@ export function ContactCharts({
   dealerWithDealDistribution,
   dealerWithoutDealDistribution,
   hideSourceBreakdown = false,
+  useLeadLabel = false,
+  overrideAssignedTotal,
+  overrideUnassignedTotal,
 }: ContactChartsProps) {
   const [granularity, setGranularity] = useState<Granularity>("week");
   const [dealerSearch, setDealerSearch] = useState("");
@@ -384,8 +390,8 @@ export function ContactCharts({
     <>
       {/* ── New Contacts Over Time ── */}
       <ChartCard
-        title="New Contacts Created Over Time"
-        subtitle="Contact acquisition trend by time period"
+        title={useLeadLabel ? "New Leads Created Over Time" : "New Contacts Created Over Time"}
+        subtitle={useLeadLabel ? "Lead acquisition trend by time period" : "Contact acquisition trend by time period"}
         headerRight={<GranularityToggle value={granularity} onChange={setGranularity} />}
       >
         {loading ? (
@@ -417,7 +423,7 @@ export function ContactCharts({
               <Area
                 type="monotone"
                 dataKey="total"
-                name="New Contacts"
+                name={useLeadLabel ? "New Leads" : "New Contacts"}
                 stroke="#3B82F6"
                 strokeWidth={2}
                 fill="url(#gContacts)"
@@ -478,6 +484,8 @@ export function ContactCharts({
         <DealerGapMap
           dealerWithDealDistribution={dealerWithDealDistribution}
           dealerWithoutDealDistribution={dealerWithoutDealDistribution}
+          dealerAssignedTotal={overrideAssignedTotal}
+          dealerUnassignedTotal={overrideUnassignedTotal}
         />
       )}
 

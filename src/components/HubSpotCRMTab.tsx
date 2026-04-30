@@ -327,7 +327,7 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo, userEmail = "" }: HubSp
 
       {/* ═══ SECTION 3 — Contact Charts ═══ */}
       <section className="space-y-5">
-        <SectionHeader icon={Users} label="Contact Analytics" color="bg-emerald-600" />
+        <SectionHeader icon={Users} label={isSecondaryBrand ? "Lead Analytics" : "Contact Analytics"} color="bg-emerald-600" />
         <ContactCharts
           brand={brand}
           dateFrom={dateFrom}
@@ -340,6 +340,9 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo, userEmail = "" }: HubSp
           dealerWithDealDistribution={data?.dealerWithDealStateDistribution}
           dealerWithoutDealDistribution={data?.dealerWithoutDealStateDistribution}
           hideSourceBreakdown={isSecondaryBrand}
+          useLeadLabel={isSecondaryBrand}
+          overrideAssignedTotal={isSecondaryBrand ? (secondaryStats?.assigned ?? undefined) : undefined}
+          overrideUnassignedTotal={isSecondaryBrand ? (secondaryStats?.unassigned ?? undefined) : undefined}
         />
       </section>
 
