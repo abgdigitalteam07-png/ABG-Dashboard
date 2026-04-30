@@ -777,11 +777,9 @@ Deno.serve(async (req) => {
           }
 
           if (res.paging?.next?.after) after = res.paging.next.after;
-          else {
-            totalContacts = fetchedContacts;
-            break;
-          }
+          else break;
         }
+        totalContacts = fetchedContacts;
         console.log(`Primary account: ${totalContacts} contacts in range for "${brandName}"`);
       } catch (e) {
         console.error("Primary account contacts fetch error:", e);

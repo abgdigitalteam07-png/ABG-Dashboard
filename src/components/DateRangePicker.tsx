@@ -60,9 +60,14 @@ interface PresetGroup {
 
 const PRESET_GROUPS: PresetGroup[] = [
   {
-    label: "All",
+    label: "Last N Days",
     items: [
-      { id: "allTime", label: "All Time" },
+      { id: "last7", label: "Last 7 days" },
+      { id: "last14", label: "Last 14 days" },
+      { id: "last30", label: "Last 30 days" },
+      { id: "last60", label: "Last 60 days" },
+      { id: "last90", label: "Last 90 days" },
+      { id: "last365", label: "Last 365 days" },
     ],
   },
   {
@@ -73,7 +78,7 @@ const PRESET_GROUPS: PresetGroup[] = [
     ],
   },
   {
-    label: "Calendar periods",
+    label: "Relative",
     items: [
       { id: "thisWeek", label: "This week" },
       { id: "lastWeek", label: "Last week" },
@@ -83,17 +88,6 @@ const PRESET_GROUPS: PresetGroup[] = [
       { id: "lastQuarter", label: "Last quarter" },
       { id: "thisYear", label: "This year" },
       { id: "lastYear", label: "Last year" },
-    ],
-  },
-  {
-    label: "Relative",
-    items: [
-      { id: "last7", label: "Last 7 days" },
-      { id: "last14", label: "Last 14 days" },
-      { id: "last30", label: "Last 30 days" },
-      { id: "last60", label: "Last 60 days" },
-      { id: "last90", label: "Last 90 days" },
-      { id: "last365", label: "Last 365 days" },
     ],
   },
 ];

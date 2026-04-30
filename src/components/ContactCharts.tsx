@@ -549,8 +549,8 @@ export function ContactCharts({
         </div>
       </ChartCard>}
 
-      {/* ── Dealer Emails Info ── */}
-      <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
+      {/* ── Assigned Dealer Details — secondary brands only ── */}
+      {hideSourceBreakdown && <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-sm">
         {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-4 border-b border-border bg-muted/20">
           <div>
@@ -778,7 +778,7 @@ export function ContactCharts({
             )}
           </div>
         )}
-      </div>
+      </div>}
     </>
   );
 }
