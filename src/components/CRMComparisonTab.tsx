@@ -1814,6 +1814,7 @@ function ComparisonContent() {
 interface SectionStats {
   total: number; assigned: number; unassigned: number;
   prevTotal: number; prevAssigned: number; prevUnassigned: number;
+  timeSeries?: Record<string, number>;
 }
 
 export function CRMComparisonSection({ dateFrom, dateTo, userEmail, currentBrandName, onStatsReady }: {
@@ -1901,6 +1902,7 @@ function ComparisonSectionContent({ dateFrom, dateTo, currentBrandName, onStatsR
           onStatsReady({
             total:         c.totalContacts,    assigned:         c.dealerAssigned,    unassigned:         c.dealerUnassigned,
             prevTotal:     p.totalContacts,    prevAssigned:     p.dealerAssigned,    prevUnassigned:     p.dealerUnassigned,
+            timeSeries:    cRes.brandSeries?.[bn] ?? undefined,
           });
         }
       }

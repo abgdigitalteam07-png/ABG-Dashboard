@@ -114,6 +114,7 @@ const SECONDARY_BRAND_NAMES = new Set(["American Whirlpool", "Vita Spa", "MAAX S
 interface SecondaryStats {
   total: number; assigned: number; unassigned: number;
   prevTotal: number; prevAssigned: number; prevUnassigned: number;
+  timeSeries?: Record<string, number>;
 }
 
 export function HubSpotCRMTab({ brand, dateFrom, dateTo, userEmail = "" }: HubSpotCRMTabProps) {
@@ -355,6 +356,7 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo, userEmail = "" }: HubSp
           useLeadLabel={isSecondaryBrand}
           overrideAssignedTotal={isSecondaryBrand ? (secondaryStats?.assigned ?? undefined) : undefined}
           overrideUnassignedTotal={isSecondaryBrand ? (secondaryStats?.unassigned ?? undefined) : undefined}
+          overrideTimeSeries={isSecondaryBrand ? (secondaryStats?.timeSeries ?? undefined) : undefined}
         />
       </section>
 

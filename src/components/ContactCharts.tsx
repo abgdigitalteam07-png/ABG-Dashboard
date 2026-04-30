@@ -65,6 +65,7 @@ interface ContactChartsProps {
   useLeadLabel?: boolean;
   overrideAssignedTotal?: number;
   overrideUnassignedTotal?: number;
+  overrideTimeSeries?: Record<string, number>;
 }
 
 type Granularity = "day" | "week" | "month" | "quarter";
@@ -290,12 +291,15 @@ export function ContactCharts({
   useLeadLabel = false,
   overrideAssignedTotal,
   overrideUnassignedTotal,
+  overrideTimeSeries,
 }: ContactChartsProps) {
   const [granularity, setGranularity] = useState<Granularity>("week");
   const [dealerSearch, setDealerSearch] = useState("");
   const [dealerPage,   setDealerPage]   = useState(0);
   const DEALER_PAGE_SIZE = 10;
-  const contactsOverTime = data?.contactsOverTime || [];
+  const contactsOverTime = overrideTimeSeries
+    ? Object.entries(overrideTimeSeries).map(([date, total]) => ({ date, total, hubspot: total, salesforce: 0, import: 0 }))
+    : data?.contactsOverTime || [];
   const totalContacts = data?.totalContacts || 0;
   const totalContactsAllTime = data?.totalContactsAllTime || 0;
   const jobTitles = data?.jobTitles || [];
