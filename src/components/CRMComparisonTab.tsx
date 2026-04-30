@@ -1,5 +1,5 @@
 import { useState, useRef, useMemo, useEffect } from "react";
-import { subDays, format, addDays, parseISO, startOfWeek, startOfMonth } from "date-fns";
+import { subDays, subYears, format, addDays, parseISO, startOfWeek, startOfMonth } from "date-fns";
 import { callFunction } from "@/lib/api-client";
 import { WaterFillLoader } from "@/components/WaterFillLoader";
 import { TrendingUp, TrendingDown, Minus, RefreshCw, Check, Users, UserCheck, UserX, Download, CalendarX2, X } from "lucide-react";
@@ -914,6 +914,7 @@ export function CRMComparisonTab({ userEmail }: { userEmail: string }) {
 function ComparisonContent() {
   const [selectedDays,   setSelectedDays]   = useState<number | null>(null);
   const [selectedBrands, setSelectedBrands] = useState<SecondaryBrand[]>([]);
+  const [comparisonType, setComparisonType] = useState<"previous" | "yoy">("previous");
   const [results,        setResults]        = useState<BrandResults | null>(null);
   const [currSeries,     setCurrSeries]     = useState<TimeSeries | null>(null);
   const [prevSeries,     setPrevSeries]     = useState<TimeSeries | null>(null);
@@ -951,11 +952,13 @@ function ComparisonContent() {
     setSelectedBrands(p => p.includes(b) ? p.filter(x => x !== b) : p.length < 3 ? [...p, b] : p);
   }
 
-  function runReport(days: number | null, brands: SecondaryBrand[]) {
+  function runReport(days: number | null, brands: SecondaryBrand[], cType: "previous" | "yoy" = comparisonType) {
     if (!days || !brands.length) return;
     const id = ++reqRef.current;
     setLoading(true); setError(null);
-    const { currStart, currEnd, prevStart, prevEnd } = getPeriods(days);
+    const { currStart, currEnd } = getPeriods(days);
+    const prevStart = cType === "yoy" ? subYears(currStart, 1) : getPeriods(days).prevStart;
+    const prevEnd   = cType === "yoy" ? subYears(currEnd, 1)   : getPeriods(days).prevEnd;
     Promise.all([
       fetchAllBrandsForPeriod(brands, currStart, currEnd),
       fetchAllBrandsForPeriod(brands, prevStart, prevEnd),
@@ -979,9 +982,19 @@ function ComparisonContent() {
 
   const periods   = selectedDays ? getPeriods(selectedDays) : null;
   const currLabel = periods ? `${format(periods.currStart, "MMM d")} – ${format(periods.currEnd, "MMM d, yyyy")}` : "";
-  const prevLabel = periods ? `${format(periods.prevStart, "MMM d")} – ${format(periods.prevEnd, "MMM d, yyyy")}` : "";
+  const prevLabel = periods
+    ? comparisonType === "yoy"
+      ? `Same period last year: ${format(subYears(periods.currStart, 1), "MMM d")} – ${format(subYears(periods.currEnd, 1), "MMM d, yyyy")}`
+      : `${format(periods.prevStart, "MMM d")} – ${format(periods.prevEnd, "MMM d, yyyy")}`
+    : "";
   const axisStyle = { fontSize: 11, fill: "hsl(var(--muted-foreground))" };
   const canRun    = !!selectedDays && selectedBrands.length > 0;
+
+  // Auto re-run when comparison type changes and a report is already loaded
+  useEffect(() => {
+    if (results) runReport(selectedDays, selectedBrands, comparisonType);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [comparisonType]);
 
   // ── Filtered series (zeros out excluded dates) ─────────────────────────────
   const filtCurrSeries = useMemo(
@@ -1087,6 +1100,28 @@ function ComparisonContent() {
               </button>
             );
           })}
+        </div>
+
+        <div className="h-5 w-px bg-border" />
+
+        {/* YOY / Previous period toggle */}
+        <div className="flex items-center rounded-xl border border-border bg-muted/40 p-0.5 text-xs">
+          <button
+            onClick={() => setComparisonType("previous")}
+            className={cn(
+              "rounded-lg px-3 py-1.5 font-semibold transition-all cursor-pointer",
+              comparisonType === "previous" ? "bg-white dark:bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground",
+            )}>
+            vs. Previous Period
+          </button>
+          <button
+            onClick={() => setComparisonType("yoy")}
+            className={cn(
+              "rounded-lg px-3 py-1.5 font-semibold transition-all cursor-pointer",
+              comparisonType === "yoy" ? "bg-white dark:bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground",
+            )}>
+            vs. Same Period Last Year
+          </button>
         </div>
 
         <div className="flex-1" />
@@ -1835,6 +1870,7 @@ function ComparisonSectionContent({ dateFrom, dateTo, currentBrandName, onStatsR
 }) {
   const [isExpanded,      setIsExpanded]      = useState(false);
   const [comparisonMode, setComparisonMode] = useState(false);
+  const [comparisonType, setComparisonType] = useState<"previous" | "yoy">("previous");
   const [selectedBrands, setSelectedBrands] = useState<SecondaryBrand[]>([...SECONDARY_BRANDS]);
   const [results,        setResults]        = useState<BrandResults | null>(null);
   const [currSeries,     setCurrSeries]     = useState<TimeSeries | null>(null);
@@ -1852,11 +1888,13 @@ function ComparisonSectionContent({ dateFrom, dateTo, currentBrandName, onStatsR
   const reqRef = useRef(0);
 
   const durationDays = Math.round((dateTo.getTime() - dateFrom.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-  const prevEnd   = subDays(dateFrom, 1);
-  const prevStart = subDays(prevEnd, durationDays - 1);
+  const prevEnd   = comparisonType === "yoy" ? subYears(dateTo, 1)   : subDays(dateFrom, 1);
+  const prevStart = comparisonType === "yoy" ? subYears(dateFrom, 1) : subDays(prevEnd, durationDays - 1);
 
   const currLabel = `${format(dateFrom, "MMM d")} – ${format(dateTo, "MMM d, yyyy")}`;
-  const prevLabel = `${format(prevStart, "MMM d")} – ${format(prevEnd, "MMM d, yyyy")}`;
+  const prevLabel = comparisonType === "yoy"
+    ? `Same period last year: ${format(prevStart, "MMM d")} – ${format(prevEnd, "MMM d, yyyy")}`
+    : `${format(prevStart, "MMM d")} – ${format(prevEnd, "MMM d, yyyy")}`;
   const axisStyle = { fontSize: 11, fill: "hsl(var(--muted-foreground))" };
 
   const NOV19 = "2025-11-19";
@@ -1912,7 +1950,7 @@ function ComparisonSectionContent({ dateFrom, dateTo, currentBrandName, onStatsR
       setLoading(false);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateFrom.getTime(), dateTo.getTime(), selectedBrands.join(",")]);
+  }, [dateFrom.getTime(), dateTo.getTime(), selectedBrands.join(","), comparisonType]);
 
   const filtCurrSeries = useMemo(
     () => currSeries ? filterSeries(currSeries, excludedDates) : null,
@@ -2025,6 +2063,28 @@ function ComparisonSectionContent({ dateFrom, dateTo, currentBrandName, onStatsR
           <TrendingUp className="h-3.5 w-3.5" />
           {comparisonMode ? "Comparison: On" : "Comparison: Off"}
         </button>
+
+        {/* YOY toggle — only shown when comparison mode is on */}
+        {comparisonMode && (
+          <div className="flex items-center rounded-xl border border-border bg-muted/40 p-0.5 text-xs">
+            <button
+              onClick={() => setComparisonType("previous")}
+              className={cn(
+                "rounded-lg px-3 py-1.5 font-semibold transition-all cursor-pointer",
+                comparisonType === "previous" ? "bg-white dark:bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground",
+              )}>
+              vs. Previous Period
+            </button>
+            <button
+              onClick={() => setComparisonType("yoy")}
+              className={cn(
+                "rounded-lg px-3 py-1.5 font-semibold transition-all cursor-pointer",
+                comparisonType === "yoy" ? "bg-white dark:bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground",
+              )}>
+              vs. Same Period Last Year
+            </button>
+          </div>
+        )}
 
         <div className="flex-1" />
 
