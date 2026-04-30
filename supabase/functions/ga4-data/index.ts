@@ -187,17 +187,17 @@ Deno.serve(async (req) => {
 
     for (const pid of propertyIds) {
       // Run reports sequentially with a small gap to avoid Google rate limiting / "Sorry" page
-      const summary = await runReport(accessToken, pid, startDate, endDate, ["sessions", "screenPageViews", "active1DayUsers"], []);
+      const summary = await safeRunReport(accessToken, pid, startDate, endDate, ["sessions", "screenPageViews", "active1DayUsers"], []);
       await wait(350);
-      const organic = await runReport(accessToken, pid, startDate, endDate, ["sessions"], ["sessionDefaultChannelGroup"]);
+      const organic = await safeRunReport(accessToken, pid, startDate, endDate, ["sessions"], ["sessionDefaultChannelGroup"]);
       await wait(350);
-      const daily = await runReport(accessToken, pid, startDate, endDate, ["sessions", "active1DayUsers", "screenPageViews"], ["date"]);
+      const daily = await safeRunReport(accessToken, pid, startDate, endDate, ["sessions", "active1DayUsers", "screenPageViews"], ["date"]);
       await wait(350);
-      const pages = await runReport(accessToken, pid, startDate, endDate, ["sessions", "screenPageViews", "averageSessionDuration"], ["pagePath"]);
+      const pages = await safeRunReport(accessToken, pid, startDate, endDate, ["sessions", "screenPageViews", "averageSessionDuration"], ["pagePath"]);
       await wait(350);
-      const devices = await runReport(accessToken, pid, startDate, endDate, ["sessions"], ["deviceCategory"]);
+      const devices = await safeRunReport(accessToken, pid, startDate, endDate, ["sessions"], ["deviceCategory"]);
       await wait(350);
-      const countries = await runReport(accessToken, pid, startDate, endDate, ["sessions"], ["country"]);
+      const countries = await safeRunReport(accessToken, pid, startDate, endDate, ["sessions"], ["country"]);
 
       // Summary totals
       if (summary.rows?.[0]) {
