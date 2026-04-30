@@ -231,6 +231,8 @@ function downloadPDF(opts: {
   currBrandSeries: BrandSeriesMap; prevBrandSeries: BrandSeriesMap;
   excludedDates: string[];
   currBrandDealerBreakdown: BrandDealerMap;
+  currBrandSourceBreakdown?: BrandSourceMap;
+  prevBrandSourceBreakdown?: BrandSourceMap;
 }) {
   const { currLabel, prevLabel, activeBrands, results,
           currSeries, prevSeries, currStart, prevStart,
@@ -543,7 +545,136 @@ function downloadPDF(opts: {
     });
   }
 
-  // ── 6. FOOTER BAR ─────────────────────────────────────────────────────────
+  // ── 6. LEAD SOURCE BREAKDOWN TABLE ──────────────────────────────────────────
+  if (opts.currBrandSourceBreakdown && opts.prevBrandSourceBreakdown) {
+    const currMap = mergeSourceMaps(opts.currBrandSourceBreakdown, activeBrands);
+    const prevMap = mergeSourceMaps(opts.prevBrandSourceBreakdown, activeBrands);
+    const sourceKeys = Array.from(new Set([...Object.keys(currMap), ...Object.keys(prevMap)]))
+      .filter(k => (currMap[k] || 0) + (prevMap[k] || 0) > 0)
+      .sort((a, b) => (currMap[b] || 0) - (currMap[a] || 0));
+
+    if (sourceKeys.length > 0) {
+      const totalCurr = sourceKeys.reduce((s, k) => s + (currMap[k] || 0), 0);
+      const maxVal    = Math.max(...sourceKeys.map(k => Math.max(currMap[k] || 0, prevMap[k] || 0)), 1);
+
+      y = section("Lead Source Breakdown", y);
+
+      // Column layout: Source | Current | Previous | Change | Share (bar)
+      // Widths: 58 + 26 + 26 + 28 + 44 = 182mm = CW
+      const SRC_COL_W  = 58;
+      const NUM_COL_W  = 26;
+      const CHG_COL_W  = 28;
+      const BAR_COL_W  = 44;
+
+      // Draw header row manually so we can control brand-colour strips later
+      const rowH   = 7.5;
+      const hdrH   = 8;
+      const hdrY   = y;
+
+      doc.setFillColor(...rgb(NAVY));
+      doc.rect(ML, hdrY, CW, hdrH, "F");
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7);
+      doc.setTextColor(255, 255, 255);
+      const hdrCy = hdrY + 5.2;
+      doc.text("Source",          ML + 4,  hdrCy);
+      doc.text("Current",         ML + SRC_COL_W + NUM_COL_W - 4,  hdrCy, { align: "right" });
+      doc.text(opts.prevLabel.includes("last year") || opts.prevLabel.toLowerCase().includes("same period") ? "Last Year" : "Prev Period",
+               ML + SRC_COL_W + NUM_COL_W * 2 - 4, hdrCy, { align: "right" });
+      doc.text("Change",          ML + SRC_COL_W + NUM_COL_W * 2 + CHG_COL_W - 4, hdrCy, { align: "right" });
+      doc.text("Share",           ML + SRC_COL_W + NUM_COL_W * 2 + CHG_COL_W + 6, hdrCy);
+
+      y = hdrY + hdrH;
+
+      sourceKeys.forEach((key, idx) => {
+        const curr  = currMap[key] || 0;
+        const prev  = prevMap[key] || 0;
+        const d     = prev > 0 ? ((curr - prev) / prev) * 100 : null;
+        const share = totalCurr > 0 ? curr / totalCurr : 0;
+        const color = SOURCE_COLORS[key] ?? "#9CA3AF";
+        const label = SOURCE_LABELS[key] ?? key;
+
+        // Alternating row background
+        doc.setFillColor(...(idx % 2 === 0 ? rgb(WHITE) : rgb(LGRAY)));
+        doc.rect(ML, y, CW, rowH, "F");
+
+        // Left colour strip matching source identity
+        doc.setFillColor(...HEX2RGB(color));
+        doc.rect(ML, y, 2.5, rowH, "F");
+
+        // Thin bottom border
+        doc.setDrawColor(...rgb(BORDER));
+        doc.setLineWidth(0.2);
+        doc.line(ML, y + rowH, ML + CW, y + rowH);
+
+        const cy = y + 4.8;
+
+        // Source name
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(7);
+        doc.setTextColor(...rgb(DARK));
+        doc.text(label, ML + 5, cy);
+
+        // Current value (in source colour)
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(7.5);
+        doc.setTextColor(...HEX2RGB(color));
+        doc.text(curr.toLocaleString(), ML + SRC_COL_W + NUM_COL_W - 4, cy, { align: "right" });
+
+        // Previous value
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7);
+        doc.setTextColor(...rgb(GRAY));
+        doc.text(prev.toLocaleString(), ML + SRC_COL_W + NUM_COL_W * 2 - 4, cy, { align: "right" });
+
+        // Change %
+        if (d !== null) {
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(7);
+          doc.setTextColor(...dColor(d));
+          doc.text(dLabel(d), ML + SRC_COL_W + NUM_COL_W * 2 + CHG_COL_W - 4, cy, { align: "right" });
+        } else {
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(7);
+          doc.setTextColor(...rgb(GRAY));
+          doc.text("--", ML + SRC_COL_W + NUM_COL_W * 2 + CHG_COL_W - 4, cy, { align: "right" });
+        }
+
+        // Share bar — track bg then filled portion
+        const barX   = ML + SRC_COL_W + NUM_COL_W * 2 + CHG_COL_W + 4;
+        const barW   = BAR_COL_W - 8;
+        const barH2  = 2.8;
+        const barY2  = y + (rowH - barH2) / 2;
+
+        // Max-value bar (current)
+        const currBarW = Math.max(barW * (curr / maxVal), curr > 0 ? 1 : 0);
+        doc.setFillColor(230, 234, 240);
+        doc.roundedRect(barX, barY2, barW, barH2, 1, 1, "F");
+        doc.setFillColor(...HEX2RGB(color));
+        doc.roundedRect(barX, barY2, currBarW, barH2, 1, 1, "F");
+
+        // Prev marker line
+        const prevBarX = barX + barW * (prev / maxVal);
+        if (prev > 0) {
+          doc.setDrawColor(...rgb(GRAY));
+          doc.setLineWidth(0.6);
+          doc.line(prevBarX, barY2 - 0.5, prevBarX, barY2 + barH2 + 0.5);
+        }
+
+        y += rowH;
+      });
+
+      // Outer border around the whole table
+      doc.setDrawColor(...rgb(BORDER));
+      doc.setLineWidth(0.3);
+      doc.rect(ML, hdrY, CW, hdrH + sourceKeys.length * rowH, "S");
+
+      y += 6;
+    }
+  }
+
+  // ── 7. FOOTER BAR ─────────────────────────────────────────────────────────
   const FY = 287;
   doc.setFillColor(...rgb(NAVY));
   doc.rect(0, FY, PW, 10, "F");
@@ -1363,6 +1494,8 @@ function ComparisonContent() {
                 prevBrandSeries: filtPrevBrandSeries,
                 excludedDates,
                 currBrandDealerBreakdown,
+                currBrandSourceBreakdown,
+                prevBrandSourceBreakdown,
               });
             }}
             className="flex items-center gap-2 rounded-xl border border-border bg-background px-4 py-2 text-xs font-semibold text-foreground cursor-pointer hover:bg-muted transition-all duration-150 shadow-sm">
@@ -2348,6 +2481,8 @@ function ComparisonSectionContent({ dateFrom, dateTo, currentBrandName, onStatsR
                 prevBrandSeries: filtPrevBrandSeries,
                 excludedDates,
                 currBrandDealerBreakdown,
+                currBrandSourceBreakdown,
+                prevBrandSourceBreakdown,
               });
             }}
             className="flex items-center gap-2 rounded-xl border border-border bg-background px-4 py-2 text-xs font-semibold text-foreground cursor-pointer hover:bg-muted transition-all duration-150 shadow-sm">
