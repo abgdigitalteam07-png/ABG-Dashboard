@@ -213,8 +213,7 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo, userEmail = "" }: HubSp
 
   return (
     <>
-    <div className={isSecondaryBrand ? "flex items-start" : undefined}>
-    <div className="flex-1 min-w-0 space-y-8 p-6">
+    <div className="space-y-8 p-6">
       {/* ── Refresh button ── */}
       <div className="flex justify-end">
         <button
@@ -381,13 +380,8 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo, userEmail = "" }: HubSp
       />
     </div>
 
-    {/* ── Claude chat panel — secondary brands only ── */}
-    {isSecondaryBrand && (
-      <div className="w-[400px] shrink-0 sticky top-0 h-screen p-4 border-l border-border flex flex-col">
-        <CRMChatPanel brandName={brand.name} context={chatContext} />
-      </div>
-    )}
-    </div>
+    {/* ── Claude chat panel — fixed floating, secondary brands only ── */}
+    {isSecondaryBrand && <CRMChatPanel brandName={brand.name} context={chatContext} />}
 
     {isSecondaryBrand && (
       <CRMComparisonSection
