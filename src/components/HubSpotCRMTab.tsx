@@ -11,6 +11,7 @@ import { Users, TrendingUp, UserCheck, UserX, RefreshCw } from "lucide-react";
 import { ContactCharts } from "@/components/ContactCharts";
 import { AIRecommendations } from "./AIRecommendations";
 import { CRMComparisonSection } from "./CRMComparisonTab";
+import { CRMChatPanel } from "./CRMChatPanel";
 
 
 interface HubSpotCRMTabProps {
@@ -202,9 +203,18 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo, userEmail = "" }: HubSp
 
   if (!data) return null;
 
+  const chatContext = {
+    totalContacts: data?.totalContacts,
+    dealerAssignedTotal: data?.dealerAssignedTotal,
+    dealerUnassignedTotal: data?.dealerUnassignedTotal,
+    dateRange: `${format(dateFrom, "MMM d, yyyy")} – ${format(dateTo, "MMM d, yyyy")}`,
+    secondaryStats: secondaryStats ?? undefined,
+  };
+
   return (
     <>
-    <div className="space-y-8 p-6">
+    <div className={isSecondaryBrand ? "flex items-start" : undefined}>
+    <div className="flex-1 min-w-0 space-y-8 p-6">
       {/* ── Refresh button ── */}
       <div className="flex justify-end">
         <button
@@ -369,6 +379,14 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo, userEmail = "" }: HubSp
           totalContactsAllTime: data?.totalContactsAllTime,
         }}
       />
+    </div>
+
+    {/* ── Claude chat panel — secondary brands only ── */}
+    {isSecondaryBrand && (
+      <div className="w-[320px] shrink-0 sticky top-0 h-screen p-4 border-l border-border flex flex-col">
+        <CRMChatPanel brandName={brand.name} context={chatContext} />
+      </div>
+    )}
     </div>
 
     {isSecondaryBrand && (
