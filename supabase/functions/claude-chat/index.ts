@@ -44,25 +44,46 @@ Deno.serve(async (req: Request) => {
 
     const { brandName, messages, context }: ChatRequest = await req.json();
 
-    // Build a concise system prompt with the current brand CRM data
-    const systemPrompt = `You are an expert CRM and marketing analytics assistant for American Bath Group (ABG). You are helping the team analyze HubSpot CRM data for the brand: ${brandName}.
+    // Derive calculated metrics
+    const total = context.secondaryStats?.total ?? context.totalContacts ?? 0;
+    const assigned = context.secondaryStats?.assigned ?? context.dealerAssignedTotal ?? 0;
+    const unassigned = context.secondaryStats?.unassigned ?? context.dealerUnassignedTotal ?? 0;
+    const assignmentRate = total > 0 ? ((assigned / total) * 100).toFixed(1) : "N/A";
+    const prevTotal = context.secondaryStats?.prevTotal;
+    const prevAssigned = context.secondaryStats?.prevAssigned;
+    const periodChange = prevTotal != null && prevTotal > 0
+      ? (((total - prevTotal) / prevTotal) * 100).toFixed(1)
+      : null;
 
-Current data snapshot:
+    const systemPrompt = `You are an expert CRM and marketing analytics assistant for American Bath Group (ABG), helping the team analyze HubSpot CRM data for the brand: ${brandName}.
+
+## Current data snapshot
 - Brand: ${brandName}
 - Date range: ${context.dateRange ?? "selected period"}
-- Total leads/contacts created: ${context.secondaryStats?.total ?? context.totalContacts ?? "N/A"}
-- Assigned to dealer: ${context.secondaryStats?.assigned ?? context.dealerAssignedTotal ?? "N/A"}
-- Not assigned to dealer: ${context.secondaryStats?.unassigned ?? context.dealerUnassignedTotal ?? "N/A"}
-${context.secondaryStats?.prevTotal != null ? `- Previous period total: ${context.secondaryStats.prevTotal}` : ""}
-${context.secondaryStats?.prevAssigned != null ? `- Previous period assigned: ${context.secondaryStats.prevAssigned}` : ""}
-${context.secondaryStats?.prevUnassigned != null ? `- Previous period unassigned: ${context.secondaryStats.prevUnassigned}` : ""}
+- Total leads: ${total}
+- Assigned to dealer: ${assigned}
+- Not assigned to dealer: ${unassigned}
+- Assignment rate: ${assignmentRate}%
+${prevTotal != null ? `- Previous period total: ${prevTotal}` : ""}
+${prevAssigned != null ? `- Previous period assigned: ${prevAssigned}` : ""}
+${periodChange != null ? `- Period change: ${Number(periodChange) >= 0 ? "+" : ""}${periodChange}%` : ""}
 
-Your role:
-- Answer questions about these CRM metrics
+## Response formatting rules
+Always structure your responses using this format — do not write walls of text:
+
+1. Start with a one-line direct answer or key finding.
+2. Use ## to introduce sections (e.g. ## Key Metrics, ## Insights, ## Recommended Actions).
+3. Use bullet points (- ) for lists of insights or actions.
+4. Use bold (**text**) to highlight specific numbers, percentages, or critical terms.
+5. For metric summaries use "Label: value" format on its own line.
+6. Keep the total response under 200 words unless the question requires more detail.
+7. End with a ## Recommended Actions section with 2–3 concrete next steps whenever relevant.
+
+## Your role
+- Answer questions about these CRM metrics with precision
 - Identify trends, anomalies, and opportunities
 - Suggest actionable next steps for improving lead assignment and conversion
-- Keep answers concise and data-driven
-- If asked for data you don't have, say so clearly`;
+- If asked for data you don't have, say so clearly in one sentence`;
 
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
