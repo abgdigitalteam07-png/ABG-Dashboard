@@ -254,26 +254,15 @@ ${fillRules}
         <div className="flex-1 border-t border-border" />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-3">
         <div className="flex items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 dark:bg-emerald-950/20 dark:border-emerald-800 p-4">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/15">
             <CheckCircle2 className="h-5 w-5 text-emerald-600" />
           </div>
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">Assigned</p>
-            <p className="text-2xl font-bold tabular-nums text-emerald-700 dark:text-emerald-300">{totalAssigned.toLocaleString()}</p>
-            <p className="text-[10px] text-emerald-600/70 dark:text-emerald-500">dealer_assigned is set</p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3 rounded-2xl border border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-800 p-4">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-500/15">
-            <AlertTriangle className="h-5 w-5 text-red-600" />
-          </div>
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-red-700 dark:text-red-400">Unassigned</p>
-            <p className="text-2xl font-bold tabular-nums text-red-700 dark:text-red-300">{totalUnassigned.toLocaleString()}</p>
-            <p className="text-[10px] text-red-600/70 dark:text-red-500">No dealer assigned</p>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">Full Coverage</p>
+            <p className="text-2xl font-bold tabular-nums text-emerald-700 dark:text-emerald-300">{summaryStats.covered}</p>
+            <p className="text-[10px] text-emerald-600/70 dark:text-emerald-500">All leads assigned</p>
           </div>
         </div>
 
