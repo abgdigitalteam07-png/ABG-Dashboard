@@ -191,9 +191,16 @@ export function DateRangePicker({ from, to, onChange }: DateRangePickerProps) {
   const [selectedPreset, setSelectedPreset] = useState<PresetId>("last60");
   const [range, setRange] = useState<{ from: Date; to?: Date }>({ from, to });
   const [phase, setPhase] = useState<SelectionPhase>("start");
+  // Separate navigation month so goToMonth isn't overridden by the controlled range.from
+  const [calendarMonth, setCalendarMonth] = useState<Date>(from);
 
   useEffect(() => { setRange({ from, to }); }, [from, to]);
-  useEffect(() => { if (open) setPhase("start"); }, [open]);
+  useEffect(() => {
+    if (open) {
+      setPhase("start");
+      setCalendarMonth(from); // Reset calendar view to current range start on open
+    }
+  }, [open]);
 
   const handlePreset = (id: PresetId) => {
     setSelectedPreset(id);
@@ -344,7 +351,8 @@ export function DateRangePicker({ from, to, onChange }: DateRangePickerProps) {
             <Calendar
               mode="range"
               selected={calendarSelected}
-              month={range.from}
+              month={calendarMonth}
+              onMonthChange={setCalendarMonth}
               onSelect={(selectedRange) => {
                 if (!selectedRange?.from) return;
                 setSelectedPreset("custom");
