@@ -311,6 +311,19 @@ export function DateRangePicker({ from, to, onChange }: DateRangePickerProps) {
               onSelect={(selectedRange) => {
                 if (!selectedRange?.from) return;
                 setSelectedPreset("custom");
+
+                // When from and to are the same date, the user only clicked a start date.
+                // Keep the picker open so they can pick the end date.
+                const sameDay =
+                  selectedRange.to &&
+                  format(selectedRange.from, "yyyy-MM-dd") ===
+                    format(selectedRange.to, "yyyy-MM-dd");
+
+                if (sameDay) {
+                  setRange({ from: selectedRange.from, to: undefined });
+                  return;
+                }
+
                 setRange({ from: selectedRange.from, to: selectedRange.to });
                 if (selectedRange.to) {
                   onChange(selectedRange.from, selectedRange.to);
