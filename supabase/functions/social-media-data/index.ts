@@ -206,6 +206,22 @@ async function getIgMedia(igId: string, pageToken: string, since: string, until:
   return allMedia;
 }
 
+async function getFbPostInsights(postId: string, pageToken: string): Promise<{ reach: number }> {
+  const result = { reach: 0 };
+  try {
+    const url = `${GRAPH}/${postId}/insights?metric=post_impressions_unique&access_token=${pageToken}`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.error) { console.warn(`[getFbPostInsights] ${postId}: ${data.error.message}`); return result; }
+    for (const item of (data.data || [])) {
+      if (item.name === "post_impressions_unique") {
+        result.reach = typeof item.values?.[0]?.value === "number" ? item.values[0].value : 0;
+      }
+    }
+  } catch (e: unknown) { console.warn(`[getFbPostInsights] error ${postId}: ${(e as Error).message}`); }
+  return result;
+}
+
 async function getIgMediaInsights(mediaId: string, mediaType: string, pageToken: string): Promise<{ reach: number; impressions: number; saved: number; shares: number }> {
   const result = { reach: 0, impressions: 0, saved: 0, shares: 0 };
   // v21: plays is deprecated. Use reach,saved,shares for all types.
@@ -322,30 +338,35 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Format FB posts
+      // Format FB posts — fetch per-post reach in batches of 5
       const fbPostsFormatted: any[] = [];
-      for (const p of fbPosts) {
-        const likes = p.likes?.summary?.total_count || 0;
-        const comments = p.comments?.summary?.total_count || 0;
-        const shares = p.shares?.count || 0;
-        const att = p.attachments?.data?.[0];
-        const attType = att?.type || att?.media_type || "";
-        const type = attType.toLowerCase().includes("video") ? "reel" : attType.toLowerCase().includes("album") ? "carousel" : "image";
-        const thumbnail = att?.media?.image?.src || "";
-        const totalEng = likes + comments + shares;
-        // FB post-level reach/impressions not available on New Pages Experience
-        // Use engagementRate from totalEng / fbFans as approximation
-        const engRate = fbFans > 0 ? safeDiv(totalEng, fbFans) : 0;
+      for (let i = 0; i < fbPosts.length; i += 5) {
+        const batch = fbPosts.slice(i, i + 5);
+        const insights = await Promise.all(batch.map((p: any) => getFbPostInsights(p.id, pageToken)));
+        for (let j = 0; j < batch.length; j++) {
+          const p = batch[j];
+          const likes = p.likes?.summary?.total_count || 0;
+          const comments = p.comments?.summary?.total_count || 0;
+          const shares = p.shares?.count || 0;
+          const att = p.attachments?.data?.[0];
+          const attType = att?.type || att?.media_type || "";
+          const type = attType.toLowerCase().includes("video") ? "reel" : attType.toLowerCase().includes("album") ? "carousel" : "image";
+          const thumbnail = att?.media?.image?.src || "";
+          const totalEng = likes + comments + shares;
+          const reach = insights[j].reach;
+          // Use real reach when available; fall back to fan count as denominator
+          const engRate = reach > 0 ? safeDiv(totalEng, reach) : (fbFans > 0 ? safeDiv(totalEng, fbFans) : 0);
 
-        fbPostsFormatted.push({
-          id: p.id, platform: "facebook", type,
-          caption: p.message || "", publishedAt: p.created_time,
-          thumbnail,
-          permalink: p.permalink_url || "",
-          reach: 0, impressions: 0,
-          likes, comments, shares, saves: 0,
-          engagementRate: engRate, clicks: 0,
-        });
+          fbPostsFormatted.push({
+            id: p.id, platform: "facebook", type,
+            caption: p.message || "", publishedAt: p.created_time,
+            thumbnail,
+            permalink: p.permalink_url || "",
+            reach, impressions: reach,
+            likes, comments, shares, saves: 0,
+            engagementRate: engRate, clicks: 0,
+          });
+        }
       }
 
       const allPosts = [
