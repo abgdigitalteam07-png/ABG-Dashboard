@@ -231,86 +231,175 @@ async function exportPostsToPDF(posts: any[], brandName: string, dateFrom: Date,
   const { jsPDF } = await import("jspdf");
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
 
-  const pageW = doc.internal.pageSize.getWidth();
-  const pageH = doc.internal.pageSize.getHeight();
-  const margin = 12;
-  const colWidths = [22, 18, 26, 74, 18, 18, 20, 18, 16];
-  const headers = ["Platform", "Type", "Date", "Caption", "Reach", "Eng.", "Eng.Rate", "Clicks", "Likes"];
-  const rowH = 7;
-  const headerH = 8;
+  const pageW = doc.internal.pageSize.getWidth();  // 297
+  const pageH = doc.internal.pageSize.getHeight(); // 210
+  const margin = 14;
+  const tableW = pageW - margin * 2; // 269
 
-  // Header bar
-  doc.setFillColor(15, 23, 42);
-  doc.rect(0, 0, pageW, 18, "F");
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
-  doc.text(`${brandName} — Social Media Posts`, margin, 11);
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "normal");
-  doc.text(`${format(dateFrom, "MMM d, yyyy")} – ${format(dateTo, "MMM d, yyyy")}  ·  ${posts.length} posts`, pageW - margin, 11, { align: "right" });
+  // Strip emojis and characters jsPDF can't render
+  const clean = (str: string) =>
+    (str || "")
+      .replace(/[\u{1F000}-\u{1FFFF}]/gu, "")
+      .replace(/[☀-➿︀-️‍]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
 
-  let y = 24;
+  // Column definitions [header, width mm, text-align]
+  type ColAlign = "left" | "right" | "center";
+  const cols: { h: string; w: number; a: ColAlign }[] = [
+    { h: "Platform",  w: 24, a: "left"  },
+    { h: "Type",      w: 20, a: "left"  },
+    { h: "Date",      w: 30, a: "left"  },
+    { h: "Caption",   w: 87, a: "left"  },
+    { h: "Reach",     w: 22, a: "right" },
+    { h: "Eng.",      w: 20, a: "right" },
+    { h: "Eng. Rate", w: 24, a: "right" },
+    { h: "Clicks",    w: 22, a: "right" },
+    { h: "Likes",     w: 20, a: "right" },
+  ]; // total = 269 = tableW ✓
 
-  const drawTableHeader = () => {
-    doc.setFillColor(243, 244, 246);
-    doc.rect(margin, y, pageW - margin * 2, headerH, "F");
-    doc.setTextColor(80, 80, 80);
-    doc.setFontSize(7.5);
+  const rowH   = 7.5;
+  const tHdrH  = 9;
+  const pgHdrH = 18;
+  const footerY = pageH - 6;
+
+  /* ── Page header bar ── */
+  const drawPageHeader = (pageNum: number) => {
+    doc.setFillColor(15, 23, 42);
+    doc.rect(0, 0, pageW, pgHdrH, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(11);
     doc.setFont("helvetica", "bold");
-    let x = margin + 2;
-    headers.forEach((h, i) => {
-      doc.text(h, x, y + 5.5);
-      x += colWidths[i];
-    });
-    y += headerH;
+    doc.text(`${brandName}  —  Social Media Posts`, margin, 12);
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(180, 200, 225);
+    const right = pageNum === 1
+      ? `${format(dateFrom, "MMM d, yyyy")} – ${format(dateTo, "MMM d, yyyy")}   ·   ${posts.length} posts`
+      : `Page ${pageNum}`;
+    doc.text(right, pageW - margin, 12, { align: "right" });
   };
 
+  /* ── Table header row ── */
+  let y = 0;
+  const drawTableHeader = () => {
+    doc.setFillColor(30, 41, 59);
+    doc.rect(margin, y, tableW, tHdrH, "F");
+    doc.setTextColor(148, 163, 184);
+    doc.setFontSize(6.8);
+    doc.setFont("helvetica", "bold");
+    let x = margin;
+    cols.forEach((col) => {
+      const tx = col.a === "right" ? x + col.w - 2.5 : x + 3;
+      doc.text(col.h.toUpperCase(), tx, y + 6, { align: col.a });
+      x += col.w;
+    });
+    y += tHdrH;
+  };
+
+  /* ── Data row ── */
+  const drawRow = (cells: string[], isEven: boolean, isTotal = false) => {
+    if (isTotal) {
+      doc.setFillColor(241, 245, 249);
+    } else if (isEven) {
+      doc.setFillColor(255, 255, 255);
+    } else {
+      doc.setFillColor(248, 250, 252);
+    }
+    doc.rect(margin, y, tableW, rowH, "F");
+
+    // Row bottom divider
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.15);
+    doc.line(margin, y + rowH, margin + tableW, y + rowH);
+
+    doc.setTextColor(isTotal ? 15 : 40, isTotal ? 23 : 40, isTotal ? 42 : 42);
+    doc.setFontSize(isTotal ? 7.2 : 7);
+    doc.setFont("helvetica", isTotal ? "bold" : "normal");
+
+    let x = margin;
+    cells.forEach((cell, i) => {
+      const col = cols[i];
+      const tx = col.a === "right" ? x + col.w - 2.5 : x + 3;
+      doc.text(cell, tx, y + 5.2, { align: col.a });
+      x += col.w;
+    });
+    y += rowH;
+  };
+
+  // === Page 1 ===
+  let pageNum = 1;
+  drawPageHeader(pageNum);
+  y = pgHdrH + 5;
   drawTableHeader();
 
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(7);
-
   posts.forEach((p: any, idx: number) => {
-    if (y + rowH > pageH - 12) {
+    // New page if needed
+    if (y + rowH > footerY - 8) {
+      // Close table border
+      doc.setDrawColor(203, 213, 225);
+      doc.setLineWidth(0.4);
+      doc.line(margin, y, margin + tableW, y);
+
       doc.addPage();
-      y = 14;
+      pageNum++;
+      drawPageHeader(pageNum);
+      y = pgHdrH + 4;
       drawTableHeader();
     }
 
     const totalEng = (p.likes || 0) + (p.comments || 0) + (p.shares || 0) + (p.saves || 0);
-    const date = new Date(p.publishedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-    const caption = (p.caption || "").slice(0, 55) + ((p.caption || "").length > 55 ? "…" : "");
-    const cells = [
-      p.platform,
-      p.type,
-      date,
+    const dateStr  = new Date(p.publishedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    const rawCap   = clean(p.caption || "");
+    const caption  = rawCap.length > 65 ? rawCap.slice(0, 64) + "…" : rawCap;
+
+    drawRow([
+      (p.platform || "").toLowerCase(),
+      (p.type     || "").toLowerCase(),
+      dateStr,
       caption,
-      (p.reach || 0).toLocaleString(),
+      (p.reach || 0) === 0 ? "—" : (p.reach || 0).toLocaleString(),
       totalEng.toLocaleString(),
-      `${p.engagementRate || 0}%`,
+      `${(p.engagementRate || 0)}%`,
       (p.clicks || 0).toLocaleString(),
-      (p.likes || 0).toLocaleString(),
-    ];
-
-    if (idx % 2 === 0) {
-      doc.setFillColor(249, 250, 251);
-      doc.rect(margin, y, pageW - margin * 2, rowH, "F");
-    }
-
-    doc.setTextColor(30, 30, 30);
-    let x = margin + 2;
-    cells.forEach((cell, i) => {
-      doc.text(String(cell), x, y + 4.8);
-      x += colWidths[i];
-    });
-    y += rowH;
+      (p.likes  || 0).toLocaleString(),
+    ], idx % 2 === 0);
   });
 
-  // Footer
-  doc.setFontSize(7);
-  doc.setTextColor(150, 150, 150);
-  doc.text(`Generated ${format(new Date(), "MMM d, yyyy, h:mm a")}  ·  ABG Brand Performance Hub`, pageW / 2, pageH - 5, { align: "center" });
+  // Totals row
+  const sumReach  = posts.reduce((s, p) => s + (p.reach || 0), 0);
+  const sumEng    = posts.reduce((s, p) => s + (p.likes||0)+(p.comments||0)+(p.shares||0)+(p.saves||0), 0);
+  const avgRate   = (posts.reduce((s, p) => s + (p.engagementRate||0), 0) / posts.length).toFixed(2);
+  const sumClicks = posts.reduce((s, p) => s + (p.clicks||0), 0);
+  const sumLikes  = posts.reduce((s, p) => s + (p.likes||0), 0);
+
+  if (y + rowH <= footerY - 6) {
+    drawRow([
+      "TOTALS", `${posts.length} posts`, "", "",
+      sumReach  === 0 ? "—" : sumReach.toLocaleString(),
+      sumEng.toLocaleString(),
+      `${avgRate}% avg`,
+      sumClicks.toLocaleString(),
+      sumLikes.toLocaleString(),
+    ], false, true);
+  }
+
+  // Table outer bottom border
+  doc.setDrawColor(203, 213, 225);
+  doc.setLineWidth(0.4);
+  doc.line(margin, y, margin + tableW, y);
+
+  // Footer on every page
+  const totalPages = doc.getNumberOfPages();
+  for (let pg = 1; pg <= totalPages; pg++) {
+    doc.setPage(pg);
+    doc.setFontSize(7);
+    doc.setTextColor(148, 163, 184);
+    doc.text(
+      `Generated ${format(new Date(), "MMM d, yyyy, h:mm a")}   ·   ABG Brand Performance Hub   ·   Page ${pg} of ${totalPages}`,
+      pageW / 2, footerY, { align: "center" }
+    );
+  }
 
   doc.save(`${brandName}_social_posts_${format(dateFrom, "yyyy-MM-dd")}_${format(dateTo, "yyyy-MM-dd")}.pdf`);
 }
