@@ -650,7 +650,11 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
                         {post.caption.length > 60 ? post.caption.slice(0, 60) + "..." : post.caption}
                       </TableCell>
                       <TableCell className="text-right text-sm tabular-nums">{new Date(post.publishedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</TableCell>
-                      <TableCell className="text-right text-sm tabular-nums">{(post.reach || 0).toLocaleString()}</TableCell>
+                      <TableCell className="text-right text-sm tabular-nums">
+                        {post.platform === "facebook" && (post.reach || 0) === 0
+                          ? <span className="text-muted-foreground text-xs" title="Facebook does not provide per-post reach data for this page type">—</span>
+                          : (post.reach || 0).toLocaleString()}
+                      </TableCell>
                       <TableCell className="text-right text-sm tabular-nums">{totalEng.toLocaleString()}</TableCell>
                       <TableCell className="text-right text-sm tabular-nums">
                         <span className={(post.engagementRate || 0) >= 5 ? "text-emerald-600" : (post.engagementRate || 0) < 2 ? "text-red-600" : ""}>
