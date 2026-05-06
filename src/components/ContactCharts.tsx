@@ -493,67 +493,94 @@ export function ContactCharts({
         />
       )}
 
-      {/* ── Contact Distribution by Account Type ── */}
+      {/* ── Contact Distribution by Job Title — primary account only ── */}
       {brand.hubspotAccount !== "secondary" && <ChartCard
-        title="Contact Distribution by Account Type"
-        subtitle="Breakdown by account_type property for contacts in the selected period"
+        title="Contact Distribution by Job Title"
+        subtitle="Grouped job title breakdown — hover a bar to see individual titles"
       >
         {loading ? (
           <Skeleton className="h-[280px] w-full" />
         ) : error ? (
           <p className="py-12 text-center text-sm text-muted-foreground">{error}</p>
-        ) : industryData.length === 0 ? (
-          <p className="py-12 text-center text-sm text-muted-foreground">No account type data available for {brand.name}</p>
+        ) : groupedTitles.length === 0 ? (
+          <p className="py-12 text-center text-sm text-muted-foreground">No job title data available for {brand.name}</p>
         ) : (() => {
-          const ACCT_COLORS = ["#3B82F6","#F97316","#10B981","#8B5CF6","#EC4899","#F59E0B","#06B6D4","#6366F1","#84CC16","#EF4444"];
-          const total = industryData.reduce((s, d) => s + d.count, 0);
-          const chartData = industryData.slice(0, 10).map((d, i) => ({
-            name: d.industry,
-            count: d.count,
-            pct: total > 0 ? ((d.count / total) * 100).toFixed(1) : "0.0",
-            color: ACCT_COLORS[i % ACCT_COLORS.length],
-          }));
-          return (
-            <div className="space-y-6">
-              {/* Summary tiles */}
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-                {chartData.map((d) => (
-                  <div key={d.name} className="flex items-start gap-2.5 rounded-xl bg-muted/40 px-3.5 py-3 hover:bg-muted/60 transition-colors">
-                    <span className="mt-0.5 h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: d.color }} />
-                    <div className="min-w-0">
-                      <p className="truncate text-[11px] font-semibold text-foreground leading-tight">{d.name}</p>
-                      <p className="mt-0.5 text-lg font-bold tabular-nums text-foreground leading-none">{d.count.toLocaleString()}</p>
-                      <p className="text-[10px] text-muted-foreground">{d.pct}%</p>
-                    </div>
-                  </div>
-                ))}
+          const JT_COLORS = ["#3B82F6","#F97316","#10B981","#8B5CF6","#EC4899","#F59E0B","#06B6D4","#6366F1","#84CC16","#EF4444","#14B8A6","#F43F5E"];
+          const total = groupedTitles.reduce((s, d) => s + d.count, 0);
+
+          // Sort Z → A by group label
+          const chartData = [...groupedTitles]
+            .sort((a, b) => b.group.localeCompare(a.group))
+            .map((d, i) => ({
+              name: d.group,
+              count: d.count,
+              pct: total > 0 ? ((d.count / total) * 100).toFixed(1) : "0.0",
+              color: JT_COLORS[i % JT_COLORS.length],
+              breakdown: d.breakdown,
+            }));
+
+          const JTTooltip = ({ active, payload }: any) => {
+            if (!active || !payload?.length) return null;
+            const item = payload[0].payload;
+            const top = item.breakdown.slice(0, 8);
+            const rest = item.breakdown.length - top.length;
+            return (
+              <div style={{
+                background: "hsl(var(--popover))",
+                border: "1px solid hsl(var(--border))",
+                borderRadius: 10,
+                padding: "10px 14px",
+                fontSize: 11,
+                minWidth: 190,
+                maxWidth: 260,
+                boxShadow: "0 4px 16px rgba(0,0,0,0.10)",
+              }}>
+                <p style={{ fontWeight: 700, marginBottom: 6, color: "hsl(var(--foreground))" }}>
+                  {item.name}
+                  <span style={{ fontWeight: 400, marginLeft: 6, color: "hsl(var(--muted-foreground))" }}>
+                    {item.count.toLocaleString()} ({item.pct}%)
+                  </span>
+                </p>
+                <div style={{ borderTop: "1px solid hsl(var(--border))", paddingTop: 6, display: "flex", flexDirection: "column", gap: 3 }}>
+                  {top.map((b: { title: string; count: number }) => {
+                    const bPct = total > 0 ? ((b.count / total) * 100).toFixed(1) : "0.0";
+                    return (
+                      <div key={b.title} style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                        <span style={{ color: "hsl(var(--foreground))", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 160 }}>{b.title}</span>
+                        <span style={{ color: "hsl(var(--muted-foreground))", whiteSpace: "nowrap" }}>{b.count.toLocaleString()} · {bPct}%</span>
+                      </div>
+                    );
+                  })}
+                  {rest > 0 && (
+                    <p style={{ marginTop: 2, color: "hsl(var(--muted-foreground))", fontStyle: "italic" }}>+{rest} more titles</p>
+                  )}
+                </div>
               </div>
-              {/* Horizontal bar chart */}
-              <ResponsiveContainer width="100%" height={Math.max(180, chartData.length * 36)}>
-                <BarChart
-                  data={chartData}
-                  layout="vertical"
-                  margin={{ left: 0, right: 40, top: 0, bottom: 0 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={gridColor} />
-                  <XAxis type="number" tick={axisStyle} tickLine={false} axisLine={false} allowDecimals={false} />
-                  <YAxis type="category" dataKey="name" tick={axisStyle} width={110} tickLine={false} axisLine={false} />
-                  <Tooltip
-                    formatter={(value: number, _name: string, entry: any) => [`${value.toLocaleString()} (${entry.payload.pct}%)`, "Contacts"]}
-                    contentStyle={{ fontSize: 11, borderRadius: 8 }}
+            );
+          };
+
+          return (
+            <ResponsiveContainer width="100%" height={Math.max(200, chartData.length * 38)}>
+              <BarChart
+                data={chartData}
+                layout="vertical"
+                margin={{ left: 0, right: 48, top: 0, bottom: 0 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={gridColor} />
+                <XAxis type="number" tick={axisStyle} tickLine={false} axisLine={false} allowDecimals={false} />
+                <YAxis type="category" dataKey="name" tick={axisStyle} width={140} tickLine={false} axisLine={false} />
+                <Tooltip content={<JTTooltip />} cursor={{ fill: "hsl(var(--muted))", opacity: 0.5 }} />
+                <Bar dataKey="count" name="Contacts" radius={[0, 4, 4, 0]}>
+                  {chartData.map((d, i) => <Cell key={i} fill={d.color} />)}
+                  <LabelList
+                    dataKey="pct"
+                    position="right"
+                    formatter={(v: string) => `${v}%`}
+                    style={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
                   />
-                  <Bar dataKey="count" name="Contacts" radius={[0, 4, 4, 0]}>
-                    {chartData.map((d, i) => <Cell key={i} fill={d.color} />)}
-                    <LabelList
-                      dataKey="pct"
-                      position="right"
-                      formatter={(v: string) => `${v}%`}
-                      style={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
-                    />
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
           );
         })()}
       </ChartCard>}
