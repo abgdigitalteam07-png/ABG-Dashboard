@@ -211,10 +211,10 @@ export function CRMChatPanel({ brandName, context }: CRMChatPanelProps) {
       <button
         onClick={() => setMinimized(false)}
         title="Ask Me"
-        className="fixed bottom-5 right-5 z-40 h-16 w-16 rounded-full shadow-2xl flex items-center justify-center hover:scale-110 transition-transform duration-200 overflow-hidden p-0 border-0"
+        className="fixed bottom-5 right-5 z-40 h-20 w-20 rounded-full shadow-2xl hover:scale-110 transition-transform duration-200 overflow-hidden p-0 border-0"
       >
-        <img src="https://24202603.fs1.hubspotusercontent-na1.net/hubfs/24202603/ABG%20Logo%20FINAL%20(1).jpg" alt="ABG" className="h-full w-full rounded-full object-cover" />
-        <span className="absolute bottom-0.5 right-0.5 h-3 w-3 rounded-full bg-emerald-400 ring-2 ring-[#0B1E3D]" />
+        <img src="https://24202603.fs1.hubspotusercontent-na1.net/hubfs/24202603/ABG%20Logo%20FINAL%20(1).jpg" alt="ABG" className="h-full w-full object-cover" />
+        <span className="absolute bottom-1 right-1 h-4 w-4 rounded-full bg-emerald-400 ring-2 ring-white" />
       </button>
     );
   }
