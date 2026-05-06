@@ -206,11 +206,24 @@ export function CRMChatPanel({ brandName, context }: CRMChatPanelProps) {
   // ── Size ──
   const W = maximized ? "w-[700px]" : "w-[460px]";
 
+  if (minimized) {
+    return (
+      <button
+        onClick={() => setMinimized(false)}
+        title="Ask Me"
+        className="fixed bottom-5 right-5 z-40 h-14 w-14 rounded-full bg-gradient-to-br from-[#0B1E3D] to-[#1e3f70] shadow-2xl flex items-center justify-center hover:scale-110 transition-transform duration-200 ring-2 ring-white/20"
+      >
+        <Sparkles className="h-6 w-6 text-white" />
+        <span className="absolute bottom-0.5 right-0.5 h-3 w-3 rounded-full bg-emerald-400 ring-2 ring-[#0B1E3D]" />
+      </button>
+    );
+  }
+
   return (
     <div className={cn(
       "fixed bottom-5 right-5 z-40 flex flex-col rounded-2xl overflow-hidden shadow-2xl border border-black/10 transition-all duration-300",
       W,
-      minimized ? "h-auto" : maximized ? "h-[88vh]" : "h-[78vh]"
+      maximized ? "h-[88vh]" : "h-[78vh]"
     )}>
 
       {/* ── Header ── */}
@@ -279,17 +292,8 @@ export function CRMChatPanel({ brandName, context }: CRMChatPanelProps) {
         </div>
       )}
 
-      {/* ── Collapsed bar ── */}
-      {minimized && (
-        <button onClick={() => setMinimized(false)}
-          className="px-4 py-2.5 text-[11px] text-white/50 hover:text-white/80 bg-[#0B1E3D] text-center transition-colors">
-          {messages.length > 0 ? `${messages.length} message${messages.length !== 1 ? "s" : ""} · tap to open` : "tap to open"}
-        </button>
-      )}
-
       {/* ── Body ── */}
-      {!minimized && (
-        <>
+      <>
           {/* Messages area — WhatsApp-style bg */}
           <div
             className="flex-1 overflow-y-auto px-4 py-4 space-y-2 min-h-0"
@@ -376,8 +380,7 @@ export function CRMChatPanel({ brandName, context }: CRMChatPanelProps) {
               </button>
             </div>
           </div>
-        </>
-      )}
+      </>
     </div>
   );
 }
