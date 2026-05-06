@@ -34,9 +34,8 @@ interface CRMChatPanelProps {
 }
 
 const SUGGESTIONS = [
-  { icon: "📊", text: "What's my lead assignment rate?" },
-  { icon: "📈", text: "How does this period compare to last?" },
-  { icon: "⚠️", text: "Which metric needs the most attention?" },
+  { icon: "📊", text: "Compare current period with previous period", prompt: "Compare the current period with the previous period. Show me the difference in total leads, assigned, and unassigned. Break down the change by lead source and explain the reason for any increase or decrease in each source." },
+  { icon: "📅", text: "Compare current period with last year", prompt: "Compare the current period with the same period last year. Show me the difference in total leads, assigned, and unassigned. Break down the change by lead source and explain the reason for any increase or decrease in each source." },
 ];
 
 function nowTime() {
@@ -313,7 +312,7 @@ export function CRMChatPanel({ brandName, context }: CRMChatPanelProps) {
                 </div>
                 <div className="w-full space-y-2">
                   {SUGGESTIONS.map((s) => (
-                    <button key={s.text} onClick={() => send(s.text)}
+                    <button key={s.text} onClick={() => send(s.prompt)}
                       className="w-full text-left rounded-2xl bg-white/80 backdrop-blur-sm px-4 py-2.5 text-[12.5px] text-gray-700 hover:bg-white shadow-sm hover:shadow-md transition-all flex items-center gap-3">
                       <span className="text-lg leading-none">{s.icon}</span>
                       <span>{s.text}</span>
