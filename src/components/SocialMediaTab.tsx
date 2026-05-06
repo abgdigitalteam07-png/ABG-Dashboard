@@ -199,7 +199,13 @@ function exportPostsToCSV(posts: any[], brandName: string, dateFrom: Date, dateT
   const rows = posts.map((p: any) => {
     const totalEng = (p.likes || 0) + (p.comments || 0) + (p.shares || 0) + (p.saves || 0);
     const date = new Date(p.publishedAt).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
-    const caption = `"${(p.caption || "").replace(/"/g, '""')}"`;
+    // Strip newlines/carriage-returns before quoting — a newline inside a quoted
+    // CSV field makes Excel treat the remainder of the row as a new row, which
+    // shifts all numeric columns and causes them to appear as 0 / empty.
+    const captionClean = (p.caption || "")
+      .replace(/\r?\n|\r/g, " ")
+      .replace(/"/g, '""');
+    const caption = `"${captionClean}"`;
     return [
       p.platform,
       p.type,
