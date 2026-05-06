@@ -314,7 +314,7 @@ export function PerformanceTab({ brand, dateFrom, dateTo }: PerformanceTabProps)
       )}
 
       {/* ── Search Console ── */}
-      {brand.hasGSC && (
+      {brand.hasGSC && !loading && gsc && (gsc.totalClicks > 0 || gsc.totalImpressions > 0) && (
         <section className="space-y-5">
           <SectionHeader icon={Search} label="Google Search Console" color="bg-violet-600" />
 
