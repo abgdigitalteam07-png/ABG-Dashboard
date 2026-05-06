@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { BarChart2, Sparkles, Bath, Ruler, PenTool, Mail, MapPin, Hash, TrendingUp } from "lucide-react";
+import { BarChart2, Sparkles, Mail, MapPin, Hash, TrendingUp } from "lucide-react";
 import {
   AreaChart,
   Area,
@@ -493,64 +493,69 @@ export function ContactCharts({
         />
       )}
 
-      {/* ── Contact Distribution by Channel — Coming Soon (hidden for secondary brands) ── */}
+      {/* ── Contact Distribution by Account Type ── */}
       {brand.hubspotAccount !== "secondary" && <ChartCard
-        title="Contact Distribution by Channel"
-        subtitle="Account type breakdown for contacts in the selected period"
+        title="Contact Distribution by Account Type"
+        subtitle="Breakdown by account_type property for contacts in the selected period"
       >
-        <div className="relative flex flex-col items-center justify-center py-20 text-center overflow-hidden">
-          {/* Blueprint grid background */}
-          <div className="absolute inset-0 rounded-xl" style={{
-            backgroundImage: `
-              linear-gradient(rgba(59,130,246,0.06) 1px, transparent 1px),
-              linear-gradient(90deg, rgba(59,130,246,0.06) 1px, transparent 1px)
-            `,
-            backgroundSize: '24px 24px',
-          }} />
-          {/* Blueprint border accent */}
-          <div className="absolute inset-3 rounded-lg border border-dashed border-blue-200/40 dark:border-blue-700/25" />
-          <div className="absolute inset-5 rounded-md border border-dashed border-blue-200/20 dark:border-blue-700/15" />
-
-          {/* Corner markers */}
-          {['top-3 left-3','top-3 right-3','bottom-3 left-3','bottom-3 right-3'].map((pos) => (
-            <div key={pos} className={`absolute ${pos} h-3 w-3 border-blue-300/50 dark:border-blue-600/40 ${
-              pos.includes('top') && pos.includes('left') ? 'border-t-2 border-l-2 rounded-tl-sm' :
-              pos.includes('top') && pos.includes('right') ? 'border-t-2 border-r-2 rounded-tr-sm' :
-              pos.includes('bottom') && pos.includes('left') ? 'border-b-2 border-l-2 rounded-bl-sm' :
-              'border-b-2 border-r-2 rounded-br-sm'
-            }`} />
-          ))}
-
-          {/* Dimension lines (decorative) */}
-          <div className="absolute top-8 left-12 right-12 flex items-center gap-1 opacity-20">
-            <div className="h-px flex-1 bg-blue-400 dark:bg-blue-500" />
-            <Ruler className="h-3 w-3 text-blue-400 dark:text-blue-500" />
-            <div className="h-px flex-1 bg-blue-400 dark:bg-blue-500" />
-          </div>
-
-          {/* Bathtub icon */}
-          <div className="relative mb-5">
-            <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-white dark:bg-slate-800 border-2 border-blue-200/60 dark:border-blue-700/40 shadow-sm">
-              <Bath className="h-8 w-8 text-blue-500 dark:text-blue-400" />
+        {loading ? (
+          <Skeleton className="h-[280px] w-full" />
+        ) : error ? (
+          <p className="py-12 text-center text-sm text-muted-foreground">{error}</p>
+        ) : industryData.length === 0 ? (
+          <p className="py-12 text-center text-sm text-muted-foreground">No account type data available for {brand.name}</p>
+        ) : (() => {
+          const ACCT_COLORS = ["#3B82F6","#F97316","#10B981","#8B5CF6","#EC4899","#F59E0B","#06B6D4","#6366F1","#84CC16","#EF4444"];
+          const total = industryData.reduce((s, d) => s + d.count, 0);
+          const chartData = industryData.slice(0, 10).map((d, i) => ({
+            name: d.industry,
+            count: d.count,
+            pct: total > 0 ? ((d.count / total) * 100).toFixed(1) : "0.0",
+            color: ACCT_COLORS[i % ACCT_COLORS.length],
+          }));
+          return (
+            <div className="space-y-6">
+              {/* Summary tiles */}
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                {chartData.map((d) => (
+                  <div key={d.name} className="flex items-start gap-2.5 rounded-xl bg-muted/40 px-3.5 py-3 hover:bg-muted/60 transition-colors">
+                    <span className="mt-0.5 h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: d.color }} />
+                    <div className="min-w-0">
+                      <p className="truncate text-[11px] font-semibold text-foreground leading-tight">{d.name}</p>
+                      <p className="mt-0.5 text-lg font-bold tabular-nums text-foreground leading-none">{d.count.toLocaleString()}</p>
+                      <p className="text-[10px] text-muted-foreground">{d.pct}%</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {/* Horizontal bar chart */}
+              <ResponsiveContainer width="100%" height={Math.max(180, chartData.length * 36)}>
+                <BarChart
+                  data={chartData}
+                  layout="vertical"
+                  margin={{ left: 0, right: 40, top: 0, bottom: 0 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={gridColor} />
+                  <XAxis type="number" tick={axisStyle} tickLine={false} axisLine={false} allowDecimals={false} />
+                  <YAxis type="category" dataKey="name" tick={axisStyle} width={110} tickLine={false} axisLine={false} />
+                  <Tooltip
+                    formatter={(value: number, _name: string, entry: any) => [`${value.toLocaleString()} (${entry.payload.pct}%)`, "Contacts"]}
+                    contentStyle={{ fontSize: 11, borderRadius: 8 }}
+                  />
+                  <Bar dataKey="count" name="Contacts" radius={[0, 4, 4, 0]}>
+                    {chartData.map((d, i) => <Cell key={i} fill={d.color} />)}
+                    <LabelList
+                      dataKey="pct"
+                      position="right"
+                      formatter={(v: string) => `${v}%`}
+                      style={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                    />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
             </div>
-            <div className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-700">
-              <PenTool className="h-2.5 w-2.5 text-blue-400" />
-            </div>
-          </div>
-
-          {/* Text */}
-          <p className="relative text-base font-bold text-foreground tracking-tight font-mono">COMING SOON</p>
-          <p className="relative mt-1 text-[10px] font-mono text-blue-400/60 dark:text-blue-500/50 tracking-widest uppercase">Rev 1.0 — In Progress</p>
-          <p className="relative mt-3 max-w-xs text-xs leading-relaxed text-muted-foreground">
-            Channel distribution analytics for bath &amp; shower contacts — currently on the drawing board.
-          </p>
-
-          {/* Status badge */}
-          <div className="relative mt-5 flex items-center gap-2 rounded border border-blue-200/50 dark:border-blue-700/30 bg-white/60 dark:bg-slate-800/60 px-3 py-1.5 font-mono">
-            <span className="h-2 w-2 rounded-full bg-blue-400 animate-pulse" />
-            <span className="text-[10px] font-medium text-blue-500 dark:text-blue-400 tracking-wide">DRAFTING</span>
-          </div>
-        </div>
+          );
+        })()}
       </ChartCard>}
 
       {/* ── Assigned Dealer Details — secondary brands only ── */}
