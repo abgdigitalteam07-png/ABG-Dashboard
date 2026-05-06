@@ -470,8 +470,8 @@ export function ContactCharts({
         )}
       </ChartCard>}
 
-      {/* ── State Map ── */}
-      {!loading && !error && (
+      {/* ── State Map — hidden for secondary brands (they use Dealer Coverage maps instead) ── */}
+      {brand.hubspotAccount !== "secondary" && !loading && !error && (
         <USStateMap
           stateDistribution={
             externalStateDistribution && externalStateDistribution.length > 0
