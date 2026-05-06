@@ -1,31 +1,18 @@
 import { useEffect, useState } from "react";
 import {
-  endOfMonth,
-  endOfQuarter,
-  endOfWeek,
-  endOfYear,
-  format,
-  startOfDay,
-  startOfMonth,
-  startOfQuarter,
-  startOfWeek,
-  startOfYear,
-  subDays,
-  subMonths,
-  subQuarters,
-  subWeeks,
-  subYears,
+  endOfMonth, endOfQuarter, endOfWeek, endOfYear,
+  format, setMonth, setYear,
+  startOfDay, startOfMonth, startOfQuarter, startOfWeek, startOfYear,
+  subDays, subMonths, subQuarters, subWeeks, subYears,
   differenceInCalendarDays,
 } from "date-fns";
-import { CalendarIcon, ChevronDown, Check } from "lucide-react";
+import type { CaptionProps } from "react-day-picker";
+import { useNavigation } from "react-day-picker";
+import { CalendarIcon, ChevronDown, ChevronLeft, ChevronRight, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 interface DateRangePickerProps {
   from: Date;
@@ -34,23 +21,10 @@ interface DateRangePickerProps {
 }
 
 type PresetId =
-  | "allTime"
-  | "today"
-  | "yesterday"
-  | "thisWeek"
-  | "lastWeek"
-  | "thisMonth"
-  | "lastMonth"
-  | "thisQuarter"
-  | "lastQuarter"
-  | "thisYear"
-  | "lastYear"
-  | "last7"
-  | "last14"
-  | "last30"
-  | "last60"
-  | "last90"
-  | "last365"
+  | "allTime" | "today" | "yesterday"
+  | "thisWeek" | "lastWeek" | "thisMonth" | "lastMonth"
+  | "thisQuarter" | "lastQuarter" | "thisYear" | "lastYear"
+  | "last7" | "last14" | "last30" | "last60" | "last90" | "last365"
   | "custom";
 
 interface PresetGroup {
@@ -99,62 +73,117 @@ const ALL_PRESETS = PRESET_GROUPS.flatMap((g) => g.items).concat([
 function getPresetRange(id: PresetId): { from: Date; to: Date } | null {
   const now = new Date();
   const today = startOfDay(now);
-
   switch (id) {
-    case "allTime":
-      return { from: new Date("2010-01-01T00:00:00Z"), to: now };
-    case "today":
-      return { from: today, to: now };
-    case "yesterday": {
-      const y = subDays(today, 1);
-      return { from: y, to: today };
-    }
-    case "thisWeek":
-      return { from: startOfWeek(today, { weekStartsOn: 1 }), to: now };
-    case "lastWeek": {
-      const lw = subWeeks(today, 1);
-      return {
-        from: startOfWeek(lw, { weekStartsOn: 1 }),
-        to: endOfWeek(lw, { weekStartsOn: 1 }),
-      };
-    }
-    case "thisMonth":
-      return { from: startOfMonth(now), to: now };
-    case "lastMonth": {
-      const lm = subMonths(now, 1);
-      return { from: startOfMonth(lm), to: endOfMonth(lm) };
-    }
-    case "thisQuarter":
-      return { from: startOfQuarter(now), to: now };
-    case "lastQuarter": {
-      const lq = subQuarters(now, 1);
-      return { from: startOfQuarter(lq), to: endOfQuarter(lq) };
-    }
-    case "thisYear":
-      return { from: startOfYear(now), to: now };
-    case "lastYear": {
-      const ly = subYears(now, 1);
-      return { from: startOfYear(ly), to: endOfYear(ly) };
-    }
-    case "last7":
-      return { from: subDays(today, 7), to: now };
-    case "last14":
-      return { from: subDays(today, 14), to: now };
-    case "last30":
-      return { from: subDays(today, 30), to: now };
-    case "last60":
-      return { from: subDays(today, 60), to: now };
-    case "last90":
-      return { from: subDays(today, 90), to: now };
-    case "last365":
-      return { from: subDays(today, 365), to: now };
-    default:
-      return null;
+    case "allTime": return { from: new Date("2010-01-01T00:00:00Z"), to: now };
+    case "today": return { from: today, to: now };
+    case "yesterday": { const y = subDays(today, 1); return { from: y, to: today }; }
+    case "thisWeek": return { from: startOfWeek(today, { weekStartsOn: 1 }), to: now };
+    case "lastWeek": { const lw = subWeeks(today, 1); return { from: startOfWeek(lw, { weekStartsOn: 1 }), to: endOfWeek(lw, { weekStartsOn: 1 }) }; }
+    case "thisMonth": return { from: startOfMonth(now), to: now };
+    case "lastMonth": { const lm = subMonths(now, 1); return { from: startOfMonth(lm), to: endOfMonth(lm) }; }
+    case "thisQuarter": return { from: startOfQuarter(now), to: now };
+    case "lastQuarter": { const lq = subQuarters(now, 1); return { from: startOfQuarter(lq), to: endOfQuarter(lq) }; }
+    case "thisYear": return { from: startOfYear(now), to: now };
+    case "lastYear": { const ly = subYears(now, 1); return { from: startOfYear(ly), to: endOfYear(ly) }; }
+    case "last7": return { from: subDays(today, 7), to: now };
+    case "last14": return { from: subDays(today, 14), to: now };
+    case "last30": return { from: subDays(today, 30), to: now };
+    case "last60": return { from: subDays(today, 60), to: now };
+    case "last90": return { from: subDays(today, 90), to: now };
+    case "last365": return { from: subDays(today, 365), to: now };
+    default: return null;
   }
 }
 
-// "start" = waiting for the user to pick a start date
-// "end"   = start is picked, waiting for user to pick (or accept) the end date
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+const CURRENT_YEAR = new Date().getFullYear();
+const YEARS = Array.from({ length: CURRENT_YEAR - 2019 }, (_, i) => 2020 + i);
+
+/* ── Custom calendar caption with month + year dropdowns ── */
+function CustomCaption({ displayMonth }: CaptionProps) {
+  const { goToMonth, nextMonth, previousMonth, displayMonths } = useNavigation();
+
+  const isFirst = displayMonths[0]?.getTime() === displayMonth.getTime();
+  const isLast  = displayMonths[displayMonths.length - 1]?.getTime() === displayMonth.getTime();
+
+  const navBtn = "flex h-7 w-7 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed";
+
+  return (
+    <div className="flex items-center justify-between px-1 pb-2">
+      {/* Left arrow — only on the first calendar */}
+      {isFirst ? (
+        <button
+          onClick={() => previousMonth && goToMonth(previousMonth)}
+          disabled={!previousMonth}
+          className={navBtn}
+          aria-label="Previous month"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+      ) : (
+        <div className="w-7" />
+      )}
+
+      {/* Month + Year selects */}
+      <div className="flex items-center gap-1.5">
+        {/* Month */}
+        <div className="relative">
+          <select
+            value={displayMonth.getMonth()}
+            onChange={(e) => goToMonth(setMonth(displayMonth, Number(e.target.value)))}
+            className={cn(
+              "appearance-none cursor-pointer rounded-md border border-border bg-muted/60",
+              "pl-2.5 pr-6 py-1 text-sm font-semibold text-foreground",
+              "hover:bg-muted focus:outline-none focus:ring-2 focus:ring-primary/40 transition-colors"
+            )}
+          >
+            {MONTH_NAMES.map((m, i) => (
+              <option key={i} value={i}>{m}</option>
+            ))}
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+        </div>
+
+        {/* Year */}
+        <div className="relative">
+          <select
+            value={displayMonth.getFullYear()}
+            onChange={(e) => goToMonth(setYear(displayMonth, Number(e.target.value)))}
+            className={cn(
+              "appearance-none cursor-pointer rounded-md border border-border bg-muted/60",
+              "pl-2.5 pr-6 py-1 text-sm font-semibold text-foreground",
+              "hover:bg-muted focus:outline-none focus:ring-2 focus:ring-primary/40 transition-colors"
+            )}
+          >
+            {YEARS.map((y) => (
+              <option key={y} value={y}>{y}</option>
+            ))}
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+        </div>
+      </div>
+
+      {/* Right arrow — only on the last calendar */}
+      {isLast ? (
+        <button
+          onClick={() => nextMonth && goToMonth(nextMonth)}
+          disabled={!nextMonth}
+          className={navBtn}
+          aria-label="Next month"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      ) : (
+        <div className="w-7" />
+      )}
+    </div>
+  );
+}
+
 type SelectionPhase = "start" | "end";
 
 export function DateRangePicker({ from, to, onChange }: DateRangePickerProps) {
@@ -163,15 +192,8 @@ export function DateRangePicker({ from, to, onChange }: DateRangePickerProps) {
   const [range, setRange] = useState<{ from: Date; to?: Date }>({ from, to });
   const [phase, setPhase] = useState<SelectionPhase>("start");
 
-  // Sync external changes into local state
-  useEffect(() => {
-    setRange({ from, to });
-  }, [from, to]);
-
-  // Reset phase each time the popover opens
-  useEffect(() => {
-    if (open) setPhase("start");
-  }, [open]);
+  useEffect(() => { setRange({ from, to }); }, [from, to]);
+  useEffect(() => { if (open) setPhase("start"); }, [open]);
 
   const handlePreset = (id: PresetId) => {
     setSelectedPreset(id);
@@ -191,21 +213,17 @@ export function DateRangePicker({ from, to, onChange }: DateRangePickerProps) {
     }
   };
 
-  const presetLabel =
-    ALL_PRESETS.find((p) => p.id === selectedPreset)?.label ?? "Custom range";
+  const isCustom = selectedPreset === "custom";
+  const presetLabel = ALL_PRESETS.find((p) => p.id === selectedPreset)?.label ?? "Custom range";
 
-  // In "end" phase show only the start (so react-day-picker waits for end click)
-  const calendarSelected =
-    phase === "end"
-      ? { from: range.from, to: undefined }
-      : { from: range.from, to: range.to };
+  // In "end" phase pass only from so react-day-picker waits for end click
+  const calendarSelected = phase === "end"
+    ? { from: range.from, to: undefined }
+    : { from: range.from, to: range.to };
 
-  const dayCount =
-    range.from && range.to
-      ? differenceInCalendarDays(range.to, range.from) + 1
-      : null;
-
-  const currentYear = new Date().getFullYear();
+  const dayCount = range.from && range.to
+    ? differenceInCalendarDays(range.to, range.from) + 1
+    : null;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -225,16 +243,12 @@ export function DateRangePicker({ from, to, onChange }: DateRangePickerProps) {
           <span className="text-primary-foreground/60 tabular-nums">
             {format(from, "MMM d")} – {format(to, "MMM d, yyyy")}
           </span>
-          <ChevronDown
-            className={cn(
-              "h-3 w-3 opacity-60 ml-0.5 transition-transform duration-200",
-              open && "rotate-180"
-            )}
-          />
+          <ChevronDown className={cn("h-3 w-3 opacity-60 ml-0.5 transition-transform duration-200", open && "rotate-180")} />
         </Button>
       </PopoverTrigger>
 
-      <PopoverContent align="end" className="w-[820px] p-0 shadow-xl overflow-hidden">
+      <PopoverContent align="end" className="w-[800px] p-0 shadow-xl overflow-hidden">
+
         {/* ── Header ── */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/30">
           <div className="flex items-center gap-2">
@@ -242,13 +256,13 @@ export function DateRangePicker({ from, to, onChange }: DateRangePickerProps) {
             <span className="text-sm font-semibold text-foreground">Date Range</span>
           </div>
           <div className="flex items-center gap-3">
-            {/* Phase hint */}
-            {selectedPreset === "custom" && (
+            {/* Phase hint — custom only */}
+            {isCustom && (
               <span className={cn(
-                "text-[11px] font-medium animate-pulse",
+                "text-[11px] font-medium",
                 phase === "start" ? "text-blue-600 dark:text-blue-400" : "text-amber-600 dark:text-amber-400"
               )}>
-                {phase === "start" ? "① Click a start date" : "② Click an end date (or Apply to use month end)"}
+                {phase === "start" ? "① Pick a start date" : "② Pick an end date — or Apply"}
               </span>
             )}
 
@@ -256,18 +270,14 @@ export function DateRangePicker({ from, to, onChange }: DateRangePickerProps) {
             <div className="flex items-center gap-1.5 rounded-lg bg-background border border-border px-3 py-1.5 text-xs shadow-sm">
               <span className={cn(
                 "font-semibold tabular-nums",
-                phase === "start" && selectedPreset === "custom"
-                  ? "text-blue-600 underline decoration-dotted"
-                  : "text-foreground"
+                isCustom && phase === "start" ? "text-blue-600" : "text-foreground"
               )}>
                 {format(range.from, "MMM d, yyyy")}
               </span>
-              <span className="text-muted-foreground/60 mx-0.5">→</span>
+              <span className="text-muted-foreground/50 mx-0.5">→</span>
               <span className={cn(
                 "font-semibold tabular-nums",
-                phase === "end" && selectedPreset === "custom"
-                  ? "text-amber-600 underline decoration-dotted"
-                  : "text-foreground"
+                isCustom && phase === "end" ? "text-amber-600" : "text-foreground"
               )}>
                 {range.to ? format(range.to, "MMM d, yyyy") : "—"}
               </span>
@@ -285,7 +295,7 @@ export function DateRangePicker({ from, to, onChange }: DateRangePickerProps) {
 
         <div className="flex">
           {/* ── Preset sidebar ── */}
-          <div className="w-52 border-r border-border py-3 overflow-y-auto" style={{ maxHeight: 420 }}>
+          <div className="w-52 border-r border-border py-3 overflow-y-auto" style={{ maxHeight: 400 }}>
             {PRESET_GROUPS.map((group, gi) => (
               <div key={group.label} className={cn("mb-1", gi > 0 && "mt-2")}>
                 <p className="px-3 pb-1 pt-0.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50">
@@ -296,16 +306,13 @@ export function DateRangePicker({ from, to, onChange }: DateRangePickerProps) {
                     key={preset.id}
                     onClick={() => handlePreset(preset.id)}
                     className={cn(
-                      "flex w-full items-center gap-2.5 rounded-md mx-1.5 px-2.5 py-1.5 text-left text-sm transition-colors",
-                      "hover:bg-muted",
-                      selectedPreset === preset.id
-                        ? "bg-primary/10 text-primary font-semibold"
-                        : "text-foreground"
+                      "flex w-full items-center gap-2.5 rounded-md mx-1.5 px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-muted",
+                      selectedPreset === preset.id ? "bg-primary/10 text-primary font-semibold" : "text-foreground"
                     )}
                     style={{ width: "calc(100% - 12px)" }}
                   >
                     <span className={cn(
-                      "h-1.5 w-1.5 rounded-full shrink-0 transition-all duration-150",
+                      "h-1.5 w-1.5 rounded-full shrink-0 transition-all",
                       selectedPreset === preset.id ? "bg-primary scale-125" : "bg-border"
                     )} />
                     {preset.label}
@@ -314,22 +321,18 @@ export function DateRangePicker({ from, to, onChange }: DateRangePickerProps) {
               </div>
             ))}
 
-            {/* Custom range option */}
             <div className="border-t border-border mt-2 pt-2">
               <button
                 onClick={() => { setSelectedPreset("custom"); setPhase("start"); }}
                 className={cn(
-                  "flex w-full items-center gap-2.5 rounded-md mx-1.5 px-2.5 py-1.5 text-left text-sm transition-colors",
-                  "hover:bg-muted",
-                  selectedPreset === "custom"
-                    ? "bg-primary/10 text-primary font-semibold"
-                    : "text-foreground"
+                  "flex w-full items-center gap-2.5 rounded-md mx-1.5 px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-muted",
+                  isCustom ? "bg-primary/10 text-primary font-semibold" : "text-foreground"
                 )}
                 style={{ width: "calc(100% - 12px)" }}
               >
                 <span className={cn(
-                  "h-1.5 w-1.5 rounded-full shrink-0 transition-all duration-150",
-                  selectedPreset === "custom" ? "bg-primary scale-125" : "bg-border"
+                  "h-1.5 w-1.5 rounded-full shrink-0 transition-all",
+                  isCustom ? "bg-primary scale-125" : "bg-border"
                 )} />
                 Custom range
               </button>
@@ -342,28 +345,24 @@ export function DateRangePicker({ from, to, onChange }: DateRangePickerProps) {
               mode="range"
               selected={calendarSelected}
               month={range.from}
-              captionLayout="dropdown-buttons"
-              fromYear={2020}
-              toYear={currentYear}
               onSelect={(selectedRange) => {
                 if (!selectedRange?.from) return;
                 setSelectedPreset("custom");
 
                 if (phase === "start") {
-                  // First click: set start date, auto-fill end to last day of that month
                   const newFrom = selectedRange.from;
                   setRange({ from: newFrom, to: endOfMonth(newFrom) });
                   setPhase("end");
                 } else {
-                  // Second click: user is picking a custom end date
                   if (selectedRange.to) {
                     setRange({ from: range.from, to: selectedRange.to });
                   }
-                  // Stay in "end" phase — user clicks Apply to confirm
                 }
               }}
               numberOfMonths={2}
-              className="pointer-events-auto [&_.rdp-caption_label]:hidden [&_.rdp-dropdown_select]:text-xs [&_.rdp-dropdown_select]:font-medium [&_.rdp-dropdown_select]:rounded-md [&_.rdp-dropdown_select]:border [&_.rdp-dropdown_select]:border-border [&_.rdp-dropdown_select]:bg-background [&_.rdp-dropdown_select]:px-2 [&_.rdp-dropdown_select]:py-1 [&_.rdp-dropdown_select]:cursor-pointer [&_.rdp-dropdown_select]:hover:bg-muted [&_.rdp-caption_dropdowns]:flex [&_.rdp-caption_dropdowns]:gap-1.5 [&_.rdp-caption_dropdowns]:items-center"
+              className="pointer-events-auto"
+              // Custom caption with month/year dropdowns — only in custom mode
+              components={isCustom ? { Caption: CustomCaption } : undefined}
             />
           </div>
         </div>
@@ -371,14 +370,14 @@ export function DateRangePicker({ from, to, onChange }: DateRangePickerProps) {
         {/* ── Footer ── */}
         <div className="border-t border-border px-4 py-2.5 bg-muted/20 flex items-center justify-between">
           <p className="text-[11px] text-muted-foreground">
-            {selectedPreset === "custom"
+            {isCustom
               ? phase === "start"
-                ? "Use the month/year dropdowns to navigate, then click your start date"
+                ? "Use the Month / Year dropdowns to navigate, then click your start date"
                 : "End date defaults to last day of the month — click any date to change it"
               : "Select a preset or click Custom range to pick specific dates"}
           </p>
           <div className="flex items-center gap-2">
-            {selectedPreset === "custom" && phase === "end" && range.from && range.to && (
+            {isCustom && phase === "end" && range.from && range.to && (
               <button
                 onClick={handleApply}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-1.5 text-[11px] font-semibold text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
@@ -389,12 +388,13 @@ export function DateRangePicker({ from, to, onChange }: DateRangePickerProps) {
             )}
             <button
               onClick={() => setOpen(false)}
-              className="text-[11px] font-medium text-muted-foreground hover:text-foreground"
+              className="text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors"
             >
               Cancel
             </button>
           </div>
         </div>
+
       </PopoverContent>
     </Popover>
   );
