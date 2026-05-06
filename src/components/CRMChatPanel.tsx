@@ -137,7 +137,7 @@ export function CRMChatPanel({ brandName, context }: CRMChatPanelProps) {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [maximized, setMaximized] = useState(false);
-  const [minimized, setMinimized] = useState(false);
+  const [minimized, setMinimized] = useState(true);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameVal, setRenameVal] = useState("");
 
@@ -224,7 +224,7 @@ export function CRMChatPanel({ brandName, context }: CRMChatPanelProps) {
         </div>
 
         <div className="flex-1 min-w-0">
-          <p className="text-[13px] font-bold text-white leading-tight">Ask Mostafa</p>
+          <p className="text-[13px] font-bold text-white leading-tight">Ask Me</p>
           <p className="text-[10px] text-white/45 leading-tight truncate">{brandName} · Active now</p>
         </div>
 
@@ -361,7 +361,7 @@ export function CRMChatPanel({ brandName, context }: CRMChatPanelProps) {
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={onKey}
-                  placeholder="Message Ask Mostafa…"
+                  placeholder="Message Ask Me…"
                   rows={1}
                   disabled={loading}
                   className="w-full resize-none bg-transparent text-[13px] text-gray-800 placeholder:text-gray-400 outline-none disabled:opacity-50 max-h-28 leading-snug"
