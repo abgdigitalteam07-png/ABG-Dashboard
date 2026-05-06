@@ -302,7 +302,8 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo, userEmail = "" }: HubSp
           </section>
 
           {/* ═══ SECTION 1 — Marketing Leads Cycle ═══ */}
-          <section className="space-y-5">
+          {/* TEMPORARILY HIDDEN — re-enable by removing the {false && ...} wrapper */}
+          {false && <section className="space-y-5">
             <SectionHeader icon={TrendingUp} label="Marketing Leads Cycle" color="bg-blue-600" />
             <ChartCard
               title="Subscriber to MQL Funnel"
@@ -343,7 +344,7 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo, userEmail = "" }: HubSp
                 <p className="mt-6 py-8 text-center text-sm text-muted-foreground">No lifecycle stage data available for {brand.name}</p>
               )}
             </ChartCard>
-          </section>
+          </section>}
         </>
       )}
 
