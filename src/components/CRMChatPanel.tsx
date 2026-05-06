@@ -177,7 +177,7 @@ export function CRMChatPanel({ brandName, context }: CRMChatPanelProps) {
     setRenamingId(null);
   }
 
-  async function send(text: string) {
+  async function send(text: string, hiddenPrompt?: string) {
     const t = text.trim();
     if (!t || loading) return;
     const userMsg: ChatMessage = { role: "user", content: t, time: nowTime() };
@@ -186,8 +186,12 @@ export function CRMChatPanel({ brandName, context }: CRMChatPanelProps) {
     setInput("");
     setLoading(true);
     try {
+      // Use hiddenPrompt for the AI call but show the short label in chat
+      const aiMessages = hiddenPrompt
+        ? [...messages.map(({ role, content }) => ({ role, content })), { role: "user" as const, content: hiddenPrompt }]
+        : next.map(({ role, content }) => ({ role, content }));
       const { data, error } = await supabase.functions.invoke("claude-chat", {
-        body: { brandName, messages: next.map(({ role, content }) => ({ role, content })), context },
+        body: { brandName, messages: aiMessages, context },
       });
       if (error) throw error;
       setMessages([...next, { role: "assistant", content: data.reply ?? "No response.", time: nowTime() }]);
@@ -312,7 +316,7 @@ export function CRMChatPanel({ brandName, context }: CRMChatPanelProps) {
                 </div>
                 <div className="w-full space-y-2">
                   {SUGGESTIONS.map((s) => (
-                    <button key={s.text} onClick={() => send(s.prompt)}
+                    <button key={s.text} onClick={() => send(s.text, s.prompt)}
                       className="w-full text-left rounded-2xl bg-white/80 backdrop-blur-sm px-4 py-2.5 text-[12.5px] text-gray-700 hover:bg-white shadow-sm hover:shadow-md transition-all flex items-center gap-3">
                       <span className="text-lg leading-none">{s.icon}</span>
                       <span>{s.text}</span>
