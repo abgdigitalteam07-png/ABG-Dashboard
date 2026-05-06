@@ -195,31 +195,30 @@ function quarterKey(date: Date): string {
 
 /* ── Export helpers ── */
 function exportPostsToCSV(posts: any[], brandName: string, dateFrom: Date, dateTo: Date) {
-  const headers = ["Platform", "Type", "Date", "Caption", "Reach", "Impressions", "Likes", "Comments", "Shares", "Saves", "Engagements", "Eng. Rate (%)", "Clicks"];
+  const headers = ["Platform", "Type", "Date", "Caption", "Reach", "Impressions", "Likes", "Comments", "Shares", "Saves", "Engagements", "Eng. Rate (%)"];
   const rows = posts.map((p: any) => {
     const totalEng = (p.likes || 0) + (p.comments || 0) + (p.shares || 0) + (p.saves || 0);
-    const date = new Date(p.publishedAt).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
-    // Strip newlines/carriage-returns before quoting — a newline inside a quoted
-    // CSV field makes Excel treat the remainder of the row as a new row, which
-    // shifts all numeric columns and causes them to appear as 0 / empty.
+    // Use ISO-style date (no commas) — "Apr 28, 2025" splits into two CSV fields
+    const date = format(new Date(p.publishedAt), "MMM d yyyy");
+    // Strip newlines before quoting — a newline inside a quoted CSV field makes
+    // Excel split the row, shifting all numeric columns and showing 0s.
     const captionClean = (p.caption || "")
       .replace(/\r?\n|\r/g, " ")
       .replace(/"/g, '""');
-    const caption = `"${captionClean}"`;
+    const q = (v: string | number) => `"${v}"`;
     return [
-      p.platform,
-      p.type,
-      date,
-      caption,
+      q(p.platform || ""),
+      q(p.type     || ""),
+      q(date),
+      q(captionClean),
       p.reach || 0,
       p.impressions || 0,
-      p.likes || 0,
+      p.likes    || 0,
       p.comments || 0,
-      p.shares || 0,
-      p.saves || 0,
+      p.shares   || 0,
+      p.saves    || 0,
       totalEng,
       p.engagementRate || 0,
-      p.clicks || 0,
     ].join(",");
   });
 
@@ -257,11 +256,10 @@ async function exportPostsToPDF(posts: any[], brandName: string, dateFrom: Date,
     { h: "Type",      w: 20, a: "left"  },
     { h: "Date",      w: 30, a: "left"  },
     { h: "Caption",   w: 87, a: "left"  },
-    { h: "Reach",     w: 22, a: "right" },
-    { h: "Eng.",      w: 20, a: "right" },
-    { h: "Eng. Rate", w: 24, a: "right" },
-    { h: "Clicks",    w: 22, a: "right" },
-    { h: "Likes",     w: 20, a: "right" },
+    { h: "Reach",     w: 24, a: "right" },
+    { h: "Eng.",      w: 22, a: "right" },
+    { h: "Eng. Rate", w: 26, a: "right" },
+    { h: "Likes",     w: 22, a: "right" },
   ]; // total = 269 = tableW ✓
 
   const rowH   = 7.5;
@@ -367,25 +365,22 @@ async function exportPostsToPDF(posts: any[], brandName: string, dateFrom: Date,
       (p.reach || 0) === 0 ? "—" : (p.reach || 0).toLocaleString(),
       totalEng.toLocaleString(),
       `${(p.engagementRate || 0)}%`,
-      (p.clicks || 0).toLocaleString(),
       (p.likes  || 0).toLocaleString(),
     ], idx % 2 === 0);
   });
 
   // Totals row
-  const sumReach  = posts.reduce((s, p) => s + (p.reach || 0), 0);
-  const sumEng    = posts.reduce((s, p) => s + (p.likes||0)+(p.comments||0)+(p.shares||0)+(p.saves||0), 0);
-  const avgRate   = (posts.reduce((s, p) => s + (p.engagementRate||0), 0) / posts.length).toFixed(2);
-  const sumClicks = posts.reduce((s, p) => s + (p.clicks||0), 0);
-  const sumLikes  = posts.reduce((s, p) => s + (p.likes||0), 0);
+  const sumReach = posts.reduce((s, p) => s + (p.reach || 0), 0);
+  const sumEng   = posts.reduce((s, p) => s + (p.likes||0)+(p.comments||0)+(p.shares||0)+(p.saves||0), 0);
+  const avgRate  = (posts.reduce((s, p) => s + (p.engagementRate||0), 0) / posts.length).toFixed(2);
+  const sumLikes = posts.reduce((s, p) => s + (p.likes||0), 0);
 
   if (y + rowH <= footerY - 6) {
     drawRow([
       "TOTALS", `${posts.length} posts`, "", "",
-      sumReach  === 0 ? "—" : sumReach.toLocaleString(),
+      sumReach === 0 ? "—" : sumReach.toLocaleString(),
       sumEng.toLocaleString(),
       `${avgRate}% avg`,
-      sumClicks.toLocaleString(),
       sumLikes.toLocaleString(),
     ], false, true);
   }
@@ -891,7 +886,6 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
                 <SortHeader label="Reach" field="reach" className="text-right" />
                 <SortHeader label="Engagements" field="totalEngagements" className="text-right" />
                 <SortHeader label="Eng. Rate" field="engagementRate" className="text-right" />
-                <SortHeader label="Clicks" field="clicks" className="text-right" />
                 <TableHead className="text-xs w-10 pr-6"></TableHead>
               </TableRow>
             </TableHeader>
@@ -934,7 +928,6 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
                           {(post.engagementRate || 0)}%
                         </span>
                       </TableCell>
-                      <TableCell className="text-right text-sm tabular-nums">{(post.clicks || 0).toLocaleString()}</TableCell>
                       <TableCell className="text-right pr-6">
                         {permalink && (
                           <a href={permalink} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="inline-flex text-muted-foreground hover:text-foreground">
@@ -945,7 +938,7 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
                     </TableRow>
                     {isExpanded && (
                       <TableRow key={`${post.id}-detail`} className="bg-muted/30">
-                        <TableCell colSpan={9} className="p-4 pl-6">
+                        <TableCell colSpan={8} className="p-4 pl-6">
                           <p className="mb-2 text-sm">{post.caption}</p>
                           <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
                             <span>Likes: {(post.likes || 0).toLocaleString()}</span>
@@ -967,7 +960,6 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
                   <TableCell className="text-right tabular-nums text-sm">{postTotals.reach.toLocaleString()}</TableCell>
                   <TableCell className="text-right tabular-nums text-sm">{postTotals.engagements.toLocaleString()}</TableCell>
                   <TableCell className="text-right tabular-nums text-sm">{postTotals.avgEngRate}%</TableCell>
-                  <TableCell className="text-right tabular-nums text-sm">{postTotals.clicks.toLocaleString()}</TableCell>
                   <TableCell className="pr-6"></TableCell>
                 </TableRow>
               </TableFooter>
