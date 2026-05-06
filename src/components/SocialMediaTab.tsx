@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useFirstLoad } from "@/hooks/useFirstLoad";
 import { WaterFillLoader } from "@/components/WaterFillLoader";
 import {
@@ -13,6 +13,7 @@ import {
 import {
   TrendingUp, TrendingDown, Facebook, Instagram, Linkedin, ChevronDown, ChevronUp,
   ExternalLink, HelpCircle, Users, Eye, MousePointer, Activity, BarChart2, Share2,
+  Download, FileText, Sheet,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { AIRecommendations } from "./AIRecommendations";
@@ -192,6 +193,128 @@ function quarterKey(date: Date): string {
   return `Q${q} ${date.getFullYear()}`;
 }
 
+/* ── Export helpers ── */
+function exportPostsToCSV(posts: any[], brandName: string, dateFrom: Date, dateTo: Date) {
+  const headers = ["Platform", "Type", "Date", "Caption", "Reach", "Impressions", "Likes", "Comments", "Shares", "Saves", "Engagements", "Eng. Rate (%)", "Clicks"];
+  const rows = posts.map((p: any) => {
+    const totalEng = (p.likes || 0) + (p.comments || 0) + (p.shares || 0) + (p.saves || 0);
+    const date = new Date(p.publishedAt).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+    const caption = `"${(p.caption || "").replace(/"/g, '""')}"`;
+    return [
+      p.platform,
+      p.type,
+      date,
+      caption,
+      p.reach || 0,
+      p.impressions || 0,
+      p.likes || 0,
+      p.comments || 0,
+      p.shares || 0,
+      p.saves || 0,
+      totalEng,
+      p.engagementRate || 0,
+      p.clicks || 0,
+    ].join(",");
+  });
+
+  const csv = "﻿" + [headers.join(","), ...rows].join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${brandName}_social_posts_${format(dateFrom, "yyyy-MM-dd")}_${format(dateTo, "yyyy-MM-dd")}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function exportPostsToPDF(posts: any[], brandName: string, dateFrom: Date, dateTo: Date) {
+  const { jsPDF } = await import("jspdf");
+  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const margin = 12;
+  const colWidths = [22, 18, 26, 74, 18, 18, 20, 18, 16];
+  const headers = ["Platform", "Type", "Date", "Caption", "Reach", "Eng.", "Eng.Rate", "Clicks", "Likes"];
+  const rowH = 7;
+  const headerH = 8;
+
+  // Header bar
+  doc.setFillColor(15, 23, 42);
+  doc.rect(0, 0, pageW, 18, "F");
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(11);
+  doc.setFont("helvetica", "bold");
+  doc.text(`${brandName} — Social Media Posts`, margin, 11);
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "normal");
+  doc.text(`${format(dateFrom, "MMM d, yyyy")} – ${format(dateTo, "MMM d, yyyy")}  ·  ${posts.length} posts`, pageW - margin, 11, { align: "right" });
+
+  let y = 24;
+
+  const drawTableHeader = () => {
+    doc.setFillColor(243, 244, 246);
+    doc.rect(margin, y, pageW - margin * 2, headerH, "F");
+    doc.setTextColor(80, 80, 80);
+    doc.setFontSize(7.5);
+    doc.setFont("helvetica", "bold");
+    let x = margin + 2;
+    headers.forEach((h, i) => {
+      doc.text(h, x, y + 5.5);
+      x += colWidths[i];
+    });
+    y += headerH;
+  };
+
+  drawTableHeader();
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(7);
+
+  posts.forEach((p: any, idx: number) => {
+    if (y + rowH > pageH - 12) {
+      doc.addPage();
+      y = 14;
+      drawTableHeader();
+    }
+
+    const totalEng = (p.likes || 0) + (p.comments || 0) + (p.shares || 0) + (p.saves || 0);
+    const date = new Date(p.publishedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    const caption = (p.caption || "").slice(0, 55) + ((p.caption || "").length > 55 ? "…" : "");
+    const cells = [
+      p.platform,
+      p.type,
+      date,
+      caption,
+      (p.reach || 0).toLocaleString(),
+      totalEng.toLocaleString(),
+      `${p.engagementRate || 0}%`,
+      (p.clicks || 0).toLocaleString(),
+      (p.likes || 0).toLocaleString(),
+    ];
+
+    if (idx % 2 === 0) {
+      doc.setFillColor(249, 250, 251);
+      doc.rect(margin, y, pageW - margin * 2, rowH, "F");
+    }
+
+    doc.setTextColor(30, 30, 30);
+    let x = margin + 2;
+    cells.forEach((cell, i) => {
+      doc.text(String(cell), x, y + 4.8);
+      x += colWidths[i];
+    });
+    y += rowH;
+  });
+
+  // Footer
+  doc.setFontSize(7);
+  doc.setTextColor(150, 150, 150);
+  doc.text(`Generated ${format(new Date(), "MMM d, yyyy, h:mm a")}  ·  ABG Brand Performance Hub`, pageW / 2, pageH - 5, { align: "center" });
+
+  doc.save(`${brandName}_social_posts_${format(dateFrom, "yyyy-MM-dd")}_${format(dateTo, "yyyy-MM-dd")}.pdf`);
+}
+
 export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -203,6 +326,8 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
   const [currentPage, setCurrentPage] = useState(1);
   const [expandedPost, setExpandedPost] = useState<string | null>(null);
   const [granularity, setGranularity] = useState<Granularity>("day");
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
   const pageSize = 10;
 
   const hasSocialMedia = socialMediaBrandNames.includes(brand.name);
@@ -245,6 +370,17 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
   }, [brand.name, dateFrom.getTime(), dateTo.getTime(), platformFilter]);
 
   useEffect(() => { setCurrentPage(1); }, [brand.name]);
+
+  useEffect(() => {
+    if (!exportMenuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setExportMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [exportMenuOpen]);
 
   const sortedPosts = useMemo(() => {
     if (!data?.posts) return [];
@@ -606,7 +742,49 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
       })()}
 
       {/* ── Post Performance Table ── */}
-      <ChartCard title="Post Performance" subtitle="All posts sorted by selected column">
+      <ChartCard
+        title="Post Performance"
+        subtitle="All posts sorted by selected column"
+        headerRight={
+          sortedPosts.length > 0 ? (
+            <div className="relative" ref={exportMenuRef}>
+              <button
+                onClick={() => setExportMenuOpen((v) => !v)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground shadow-sm hover:bg-muted transition-colors"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Export
+                <ChevronDown className={`h-3 w-3 opacity-60 transition-transform ${exportMenuOpen ? "rotate-180" : ""}`} />
+              </button>
+              {exportMenuOpen && (
+                <div className="absolute right-0 top-full z-50 mt-1.5 w-44 rounded-xl border border-border bg-card shadow-lg overflow-hidden">
+                  <button
+                    onClick={() => { exportPostsToCSV(sortedPosts, brand.name, dateFrom, dateTo); setExportMenuOpen(false); }}
+                    className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm hover:bg-muted transition-colors"
+                  >
+                    <Sheet className="h-4 w-4 text-emerald-600" />
+                    <div>
+                      <div className="font-medium">Excel / CSV</div>
+                      <div className="text-[10px] text-muted-foreground">{sortedPosts.length} rows</div>
+                    </div>
+                  </button>
+                  <div className="border-t border-border" />
+                  <button
+                    onClick={() => { exportPostsToPDF(sortedPosts, brand.name, dateFrom, dateTo); setExportMenuOpen(false); }}
+                    className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm hover:bg-muted transition-colors"
+                  >
+                    <FileText className="h-4 w-4 text-red-500" />
+                    <div>
+                      <div className="font-medium">PDF</div>
+                      <div className="text-[10px] text-muted-foreground">Landscape A4</div>
+                    </div>
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : undefined
+        }
+      >
         <div className="-mx-6 -mb-6 overflow-hidden rounded-b-2xl">
           <Table>
             <TableHeader>
