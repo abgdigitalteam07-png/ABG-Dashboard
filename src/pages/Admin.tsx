@@ -6,6 +6,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Popover, PopoverContent, PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -22,6 +26,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   ArrowLeft, Users, UserCheck, UserX, Activity, MoreHorizontal,
   Send, Download, ChevronLeft, ChevronRight, BarChart2, Eye, LogIn,
+  Filter, X,
 } from "lucide-react";
 import { format, formatDistanceToNow, subDays, eachDayOfInterval, startOfDay } from "date-fns";
 
@@ -58,27 +63,58 @@ interface Invitation {
   created_at: string;
 }
 
+type OnlineStatus = "online" | "recent" | "offline" | "never";
+
+function getOnlineStatus(lastSeen: string | null): OnlineStatus {
+  if (!lastSeen) return "never";
+  const diff = Date.now() - new Date(lastSeen).getTime();
+  if (diff < 15 * 60 * 1000) return "online";
+  if (diff < 24 * 60 * 60 * 1000) return "recent";
+  return "offline";
+}
+
+function OnlineDot({ status }: { status: OnlineStatus }) {
+  const cfg = {
+    online: { color: "bg-green-500", label: "Online now" },
+    recent: { color: "bg-yellow-400", label: "Active today" },
+    offline: { color: "bg-gray-300", label: "Offline" },
+    never: { color: "bg-gray-200", label: "Never logged in" },
+  }[status];
+  return (
+    <span className="flex items-center gap-1.5" title={cfg.label}>
+      <span className={`inline-block h-2 w-2 rounded-full ${cfg.color} ${status === "online" ? "animate-pulse" : ""}`} />
+      <span className="text-xs text-muted-foreground">{cfg.label}</span>
+    </span>
+  );
+}
+
 export default function Admin() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+  const [currentUserEmail, setCurrentUserEmail] = useState<string>("");
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const [loginsLast7, setLoginsLast7] = useState(0);
   const [activeAdminTab, setActiveAdminTab] = useState<"users" | "usage">("users");
 
-  // Filters
+  // User management filters
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [roleFilter, setRoleFilter] = useState("all");
   const [domainFilter, setDomainFilter] = useState("all");
 
-  // Activity filters
+  // Activity log filters
   const [activityUserFilter, setActivityUserFilter] = useState("all");
   const [activityActionFilter, setActivityActionFilter] = useState("all");
   const [activityPage, setActivityPage] = useState(1);
   const activityPerPage = 25;
+
+  // Email multi-select filter for usage tab
+  const [emailFilterMode, setEmailFilterMode] = useState<"include" | "exclude">("exclude");
+  const [emailFilterSelected, setEmailFilterSelected] = useState<Set<string>>(new Set());
+  const [emailFilterOpen, setEmailFilterOpen] = useState(false);
 
   // Invite form
   const [inviteName, setInviteName] = useState("");
@@ -110,7 +146,6 @@ export default function Admin() {
       .limit(500);
     if (logs) setActivity(logs as ActivityEntry[]);
 
-    // Logins last 7 days
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     const { count } = await supabase
@@ -128,6 +163,7 @@ export default function Admin() {
         navigate("/", { replace: true });
         return;
       }
+      setCurrentUserEmail(session.user.email || "");
       setIsAdmin(true);
       fetchData();
     });
@@ -168,6 +204,78 @@ export default function Admin() {
 
   const activityTotalPages = Math.max(1, Math.ceil(filteredActivity.length / activityPerPage));
   const paginatedActivity = filteredActivity.slice((activityPage - 1) * activityPerPage, activityPage * activityPerPage);
+
+  // All known emails (profiles + current user + activity emails)
+  const allKnownEmails = useMemo(() => {
+    const set = new Set<string>();
+    users.forEach((u) => set.add(u.email));
+    if (currentUserEmail) set.add(currentUserEmail);
+    activity.forEach((a) => set.add(a.email));
+    return [...set].sort();
+  }, [users, currentUserEmail, activity]);
+
+  // Per-user summary — includes every registered user + current user, even with zero activity
+  const userUsage = useMemo(() => {
+    const map: Record<string, {
+      email: string; logins: number; views: number;
+      lastSeen: string | null; brands: Set<string>; tabs: Set<string>;
+    }> = {};
+
+    // Seed from user_profiles so users with no activity still appear
+    for (const u of users) {
+      map[u.email] = {
+        email: u.email, logins: 0, views: 0,
+        lastSeen: u.last_login_at ?? null,
+        brands: new Set(), tabs: new Set(),
+      };
+    }
+    // Always include current admin user
+    if (currentUserEmail && !map[currentUserEmail]) {
+      map[currentUserEmail] = {
+        email: currentUserEmail, logins: 0, views: 0,
+        lastSeen: null, brands: new Set(), tabs: new Set(),
+      };
+    }
+    // Fill in activity data
+    for (const a of activity) {
+      if (!map[a.email]) {
+        map[a.email] = {
+          email: a.email, logins: 0, views: 0,
+          lastSeen: a.created_at, brands: new Set(), tabs: new Set(),
+        };
+      }
+      const u = map[a.email];
+      if (a.action === "login") u.logins++;
+      if (a.action === "page_view") {
+        u.views++;
+        if (a.metadata?.brand) u.brands.add(a.metadata.brand);
+        if (a.metadata?.tab) u.tabs.add(a.metadata.tab);
+      }
+      if (u.lastSeen === null || a.created_at > u.lastSeen) u.lastSeen = a.created_at;
+    }
+    return Object.values(map).sort((a, b) => {
+      const sa = getOnlineStatus(a.lastSeen);
+      const sb = getOnlineStatus(b.lastSeen);
+      const order = { online: 0, recent: 1, offline: 2, never: 3 };
+      if (order[sa] !== order[sb]) return order[sa] - order[sb];
+      return b.views - a.views;
+    });
+  }, [activity, users, currentUserEmail]);
+
+  // Apply email filter to user usage
+  const filteredUserUsage = useMemo(() => {
+    if (emailFilterSelected.size === 0) return userUsage;
+    if (emailFilterMode === "include") return userUsage.filter((u) => emailFilterSelected.has(u.email));
+    return userUsage.filter((u) => !emailFilterSelected.has(u.email));
+  }, [userUsage, emailFilterMode, emailFilterSelected]);
+
+  const toggleEmailFilter = (email: string) => {
+    setEmailFilterSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(email)) next.delete(email); else next.add(email);
+      return next;
+    });
+  };
 
   const handleInvite = async () => {
     const trimmedEmail = inviteEmail.trim().toLowerCase();
@@ -293,7 +401,6 @@ export default function Admin() {
     return eachDayOfInterval({ start: subDays(today, 29), end: today }).reverse();
   }, []);
 
-  // Per-day breakdown: date → { unique users, total views, logins, rows }
   const dailyUsage = useMemo(() => {
     return last30Days.map((day) => {
       const dayStr = format(day, "yyyy-MM-dd");
@@ -305,23 +412,6 @@ export default function Admin() {
     });
   }, [activity, last30Days]);
 
-  // Per-user summary
-  const userUsage = useMemo(() => {
-    const map: Record<string, { email: string; logins: number; views: number; lastSeen: string; brands: Set<string>; tabs: Set<string> }> = {};
-    for (const a of activity) {
-      if (!map[a.email]) map[a.email] = { email: a.email, logins: 0, views: 0, lastSeen: a.created_at, brands: new Set(), tabs: new Set() };
-      const u = map[a.email];
-      if (a.action === "login") u.logins++;
-      if (a.action === "page_view") {
-        u.views++;
-        if (a.metadata?.brand) u.brands.add(a.metadata.brand);
-        if (a.metadata?.tab) u.tabs.add(a.metadata.tab);
-      }
-      if (a.created_at > u.lastSeen) u.lastSeen = a.created_at;
-    }
-    return Object.values(map).sort((a, b) => b.views - a.views);
-  }, [activity]);
-
   if (isAdmin === null) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -332,6 +422,7 @@ export default function Admin() {
 
   const activeUsers = users.filter((u) => u.is_active).length;
   const deactivatedUsers = users.filter((u) => !u.is_active).length;
+  const onlineNow = userUsage.filter((u) => getOnlineStatus(u.lastSeen) === "online").length;
 
   return (
     <div className="min-h-screen bg-background">
@@ -349,7 +440,6 @@ export default function Admin() {
       <main className="max-w-[1400px] mx-auto px-4 py-6 space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold text-foreground">Admin Panel</h1>
-          {/* Tab switcher */}
           <div className="flex rounded-xl border border-border bg-muted/40 p-1 gap-1">
             {([
               { id: "users", label: "Users & Activity", icon: Users },
@@ -373,17 +463,138 @@ export default function Admin() {
         {/* ══ DAILY USAGE TAB ══ */}
         {activeAdminTab === "usage" && (
           <div className="space-y-6">
+            {/* Email filter bar */}
+            <div className="flex items-center gap-3 flex-wrap">
+              <Popover open={emailFilterOpen} onOpenChange={setEmailFilterOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="flex items-center gap-2">
+                    <Filter className="h-3.5 w-3.5" />
+                    Filter by email
+                    {emailFilterSelected.size > 0 && (
+                      <span className="ml-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
+                        {emailFilterSelected.size}
+                      </span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80 p-3" align="start">
+                  <div className="space-y-3">
+                    {/* Mode toggle */}
+                    <div className="flex items-center gap-2 rounded-lg border p-1">
+                      <button
+                        onClick={() => setEmailFilterMode("include")}
+                        className={`flex-1 rounded-md px-3 py-1 text-xs font-medium transition-all ${
+                          emailFilterMode === "include" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        Show only selected
+                      </button>
+                      <button
+                        onClick={() => setEmailFilterMode("exclude")}
+                        className={`flex-1 rounded-md px-3 py-1 text-xs font-medium transition-all ${
+                          emailFilterMode === "exclude" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        Exclude selected
+                      </button>
+                    </div>
+
+                    {/* Email list with checkboxes */}
+                    <div className="max-h-64 overflow-y-auto space-y-1">
+                      {allKnownEmails.map((email) => (
+                        <label
+                          key={email}
+                          className="flex items-center gap-2.5 rounded-md px-2 py-1.5 hover:bg-muted/60 cursor-pointer"
+                        >
+                          <Checkbox
+                            checked={emailFilterSelected.has(email)}
+                            onCheckedChange={() => toggleEmailFilter(email)}
+                            className="h-3.5 w-3.5"
+                          />
+                          <span className="text-xs truncate flex-1">{email}</span>
+                          {email === currentUserEmail && (
+                            <span className="text-[10px] font-semibold text-primary bg-primary/10 rounded-full px-1.5 py-0.5">You</span>
+                          )}
+                        </label>
+                      ))}
+                      {allKnownEmails.length === 0 && (
+                        <p className="text-xs text-muted-foreground px-2 py-3 text-center">No users yet</p>
+                      )}
+                    </div>
+
+                    {/* Quick actions */}
+                    <div className="flex gap-2 border-t pt-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="flex-1 text-xs"
+                        onClick={() => {
+                          setEmailFilterSelected(new Set([currentUserEmail]));
+                          setEmailFilterMode("exclude");
+                        }}
+                      >
+                        Exclude me
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="flex-1 text-xs"
+                        onClick={() => setEmailFilterSelected(new Set())}
+                      >
+                        Clear all
+                      </Button>
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+
+              {/* Active filter chips */}
+              {emailFilterSelected.size > 0 && (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-xs text-muted-foreground">
+                    {emailFilterMode === "include" ? "Showing:" : "Hiding:"}
+                  </span>
+                  {[...emailFilterSelected].map((email) => (
+                    <span
+                      key={email}
+                      className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium"
+                    >
+                      {email}
+                      <button onClick={() => toggleEmailFilter(email)} className="hover:text-destructive">
+                        <X className="h-3 w-3" />
+                      </button>
+                    </span>
+                  ))}
+                  <button
+                    onClick={() => setEmailFilterSelected(new Set())}
+                    className="text-xs text-muted-foreground hover:text-foreground underline"
+                  >
+                    Clear
+                  </button>
+                </div>
+              )}
+            </div>
+
             {/* Per-user summary */}
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-base flex items-center gap-2">
-                  <Users className="h-4 w-4" /> User Activity Summary (last 500 events)
+                  <Users className="h-4 w-4" /> Who's Logged In — All Users
+                  <span className="ml-auto text-xs font-normal text-muted-foreground">
+                    {onlineNow > 0 && (
+                      <span className="inline-flex items-center gap-1 text-green-600 font-medium">
+                        <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse inline-block" />
+                        {onlineNow} online now
+                      </span>
+                    )}
+                  </span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-0">
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/40">
+                      <TableHead>Status</TableHead>
                       <TableHead>User</TableHead>
                       <TableHead className="text-center w-24">Logins</TableHead>
                       <TableHead className="text-center w-24">Page Views</TableHead>
@@ -393,38 +604,70 @@ export default function Admin() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {userUsage.length === 0 ? (
-                      <TableRow><TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">No activity recorded yet.</TableCell></TableRow>
-                    ) : userUsage.map((u) => (
-                      <TableRow key={u.email} className="hover:bg-muted/40">
-                        <TableCell className="font-medium">{u.email}</TableCell>
-                        <TableCell className="text-center">
-                          <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2.5 py-0.5 text-xs font-semibold text-green-700">
-                            <LogIn className="h-3 w-3" /> {u.logins}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-700">
-                            <Eye className="h-3 w-3" /> {u.views}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground max-w-[200px]">
-                          {[...u.brands].join(", ") || "—"}
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground">
-                          {[...u.tabs].join(", ") || "—"}
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
-                          {formatDistanceToNow(new Date(u.lastSeen), { addSuffix: true })}
+                    {filteredUserUsage.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">
+                          No users match the current filter.
                         </TableCell>
                       </TableRow>
-                    ))}
+                    ) : filteredUserUsage.map((u) => {
+                      const status = getOnlineStatus(u.lastSeen);
+                      const isMe = u.email === currentUserEmail;
+                      return (
+                        <TableRow
+                          key={u.email}
+                          className={`hover:bg-muted/40 ${status === "never" ? "opacity-60" : ""}`}
+                        >
+                          <TableCell>
+                            <OnlineDot status={status} />
+                          </TableCell>
+                          <TableCell className="font-medium">
+                            <span className="flex items-center gap-2">
+                              {u.email}
+                              {isMe && (
+                                <span className="text-[10px] font-semibold text-primary bg-primary/10 rounded-full px-1.5 py-0.5">You</span>
+                              )}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {u.logins > 0 ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2.5 py-0.5 text-xs font-semibold text-green-700">
+                                <LogIn className="h-3 w-3" /> {u.logins}
+                              </span>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {u.views > 0 ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-700">
+                                <Eye className="h-3 w-3" /> {u.views}
+                              </span>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground max-w-[200px]">
+                            {[...u.brands].join(", ") || "—"}
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {[...u.tabs].join(", ") || "—"}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                            {u.lastSeen
+                              ? formatDistanceToNow(new Date(u.lastSeen), { addSuffix: true })
+                              : <span className="text-xs italic text-muted-foreground/60">Never logged in</span>
+                            }
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </CardContent>
             </Card>
 
-            {/* Daily breakdown — last 30 days */}
+            {/* Daily breakdown */}
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="text-base flex items-center gap-2">
@@ -584,12 +827,25 @@ export default function Admin() {
                   ))}
                   {filteredUsers.map((u) => (
                     <TableRow key={u.id} className="hover:bg-muted/60">
-                      <TableCell className="font-medium">{u.full_name || "—"}</TableCell>
+                      <TableCell className="font-medium">
+                        <span className="flex items-center gap-2">
+                          {u.full_name || "—"}
+                          {u.email === currentUserEmail && (
+                            <span className="text-[10px] font-semibold text-primary bg-primary/10 rounded-full px-1.5 py-0.5">You</span>
+                          )}
+                        </span>
+                      </TableCell>
                       <TableCell>{u.email}</TableCell>
                       <TableCell>{u.domain}</TableCell>
                       <TableCell><Badge variant="outline" className="text-xs">{u.role}</Badge></TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        {u.last_login_at ? formatDistanceToNow(new Date(u.last_login_at), { addSuffix: true }) : "Never"}
+                        {u.last_login_at ? (
+                          <span title={format(new Date(u.last_login_at), "MMM d, yyyy, h:mm a")}>
+                            {formatDistanceToNow(new Date(u.last_login_at), { addSuffix: true })}
+                          </span>
+                        ) : (
+                          <span className="italic text-muted-foreground/60 text-xs">Never logged in</span>
+                        )}
                       </TableCell>
                       <TableCell>
                         {u.is_active ? (
@@ -653,7 +909,7 @@ export default function Admin() {
                 <SelectContent>
                   <SelectItem value="all">All Users</SelectItem>
                   {[...new Set(activity.map((a) => a.email))].sort().map((e) => (
-                    <SelectItem key={e} value={e}>{e}</SelectItem>
+                    <SelectItem key={e} value={e}>{e}{e === currentUserEmail ? " (You)" : ""}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -680,10 +936,23 @@ export default function Admin() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {paginatedActivity.map((a) => (
+                  {paginatedActivity.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={4} className="py-8 text-center text-sm text-muted-foreground">
+                        No activity recorded yet. Activity will appear here as users log in and navigate the dashboard.
+                      </TableCell>
+                    </TableRow>
+                  ) : paginatedActivity.map((a) => (
                     <TableRow key={a.id} className="hover:bg-muted/60">
                       <TableCell className="text-sm whitespace-nowrap">{format(new Date(a.created_at), "MMM d, yyyy, h:mm a")}</TableCell>
-                      <TableCell className="text-sm">{a.email}</TableCell>
+                      <TableCell className="text-sm">
+                        <span className="flex items-center gap-1.5">
+                          {a.email}
+                          {a.email === currentUserEmail && (
+                            <span className="text-[10px] font-semibold text-primary bg-primary/10 rounded-full px-1.5 py-0.5">You</span>
+                          )}
+                        </span>
+                      </TableCell>
                       <TableCell>{actionBadge(a.action)}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{metadataDetail(a.action, a.metadata)}</TableCell>
                     </TableRow>
