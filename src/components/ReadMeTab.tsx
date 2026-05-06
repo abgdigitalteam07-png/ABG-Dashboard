@@ -3,9 +3,9 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from "@/components/ui/table";
 import {
   Check, Minus, Search, BookOpen, BarChart3, Mail, Share2,
-  TrendingUp, Users, MousePointer, Eye, Send, Instagram, Facebook,
+  TrendingUp, Users, MousePointer, Eye, Send, Facebook,
   Globe, Percent, ArrowUpDown, FileText, Clock, UserCheck, AlertCircle,
-  ThumbsUp, RefreshCw, Star, Zap,
+  ThumbsUp, RefreshCw, Star, Zap, Building2, MapPin, ShieldAlert, Contact,
 } from "lucide-react";
 import { brands, Brand } from "@/lib/brands";
 
@@ -92,6 +92,22 @@ const emailMetrics: MetricDef[] = [
   { name: "Lifecycle Stage Breakdown", description: "Contact distribution across HubSpot stages: Subscriber → Lead → MQL → SQL → Opportunity → Customer.", icon: ArrowUpDown, iconBg: "bg-amber-600" },
 ];
 
+const crmMetrics: MetricDef[] = [
+  { name: "Total Contacts Created", description: "New contacts added to HubSpot during the selected period — represents inbound lead volume.", icon: Users, iconBg: "bg-teal-600" },
+  { name: "Assigned to Dealer", description: "Contacts where a dealer has been matched and assigned. Indicates how many leads are being actively followed up.", icon: UserCheck, iconBg: "bg-emerald-600" },
+  { name: "Not Assigned", description: "Contacts with no dealer linked yet. These represent coverage gaps or routing delays that need attention.", icon: AlertCircle, iconBg: "bg-red-500" },
+  { name: "New Contacts Over Time", description: "Trend chart of daily lead creation — useful for spotting campaign spikes, seasonal patterns, or drop-offs.", icon: TrendingUp, iconBg: "bg-teal-500" },
+  { name: "Lead Source Breakdown", description: "Where leads are coming from — Organic Search, Direct, Referral, Email, Social, etc. Shows which channels drive acquisition.", icon: BarChart3, iconBg: "bg-cyan-600" },
+  { name: "Lifecycle Stage Distribution", description: "How contacts are spread across HubSpot stages: Lead → MQL → SQL → Opportunity → Customer. Tracks pipeline progression.", icon: ArrowUpDown, iconBg: "bg-indigo-500" },
+  { name: "Full Coverage States", description: "US states where every lead has a dealer assigned — all contacts are being handled.", icon: Check, iconBg: "bg-emerald-500" },
+  { name: "Partial States", description: "States with mixed coverage — some leads assigned, some not. Dealer capacity may need review.", icon: ShieldAlert, iconBg: "bg-blue-500" },
+  { name: "Gap States", description: "States that have leads but no dealer assigned at all. Priority targets for dealer recruitment.", icon: MapPin, iconBg: "bg-slate-500" },
+  { name: "Dealer Coverage by State", description: "US map showing coverage status per state: dark teal = fully covered, medium teal = partial, pink = gap, light = no contacts.", icon: Globe, iconBg: "bg-teal-700" },
+  { name: "Top Coverage Gaps", description: "States ranked by number of unassigned leads — highest-priority locations for dealer acquisition.", icon: AlertCircle, iconBg: "bg-rose-500" },
+  { name: "Assigned Dealer Details", description: "Table of dealers who received leads in the period, sorted by volume. Shows dealer name, state, brand, and lead count.", icon: Building2, iconBg: "bg-slate-600" },
+  { name: "Brand Breakdown", description: "For accounts spanning multiple brands (e.g. Vita Spa, American Whirlpool, MAAX Sauna), shows metrics split by brand side by side.", icon: Contact, iconBg: "bg-violet-600" },
+];
+
 const socialMetrics: MetricDef[] = [
   { name: "Followers", description: "Total number of accounts following the brand page at the end of the selected period.", icon: Users, iconBg: "bg-pink-500" },
   { name: "Impressions", description: "Total times content was displayed in a feed or search — includes repeated views by the same person.", icon: Eye, iconBg: "bg-purple-500" },
@@ -159,9 +175,10 @@ export function ReadMeTab({ brand }: ReadMeTabProps) {
             </p>
             <div className="mt-4 flex flex-wrap gap-3">
               {[
-                { label: "Analytics & Search", color: "bg-blue-100 text-blue-700", icon: BarChart3 },
-                { label: "Email Marketing", color: "bg-orange-100 text-orange-700", icon: Mail },
+                { label: "Google Analytics & Search Console", color: "bg-blue-100 text-blue-700", icon: BarChart3 },
+                { label: "Emails", color: "bg-orange-100 text-orange-700", icon: Mail },
                 { label: "Social Media", color: "bg-emerald-100 text-emerald-700", icon: Share2 },
+                { label: "HubSpot CRM", color: "bg-teal-100 text-teal-700", icon: Building2 },
               ].map(({ label, color, icon: Icon }) => (
                 <span key={label} className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${color}`}>
                   <Icon className="h-3 w-3" /> {label}
@@ -169,6 +186,48 @@ export function ReadMeTab({ brand }: ReadMeTabProps) {
               ))}
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* ── Grayed-out tab notice ── */}
+      <div className="rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800 px-5 py-4 flex items-start gap-3">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-400">
+          <AlertCircle className="h-4 w-4 text-white" />
+        </div>
+        <div>
+          <p className="text-sm font-bold text-amber-800 dark:text-amber-300">Grayed-out tabs = Coming in the next phase</p>
+          <p className="mt-1 text-xs text-amber-700/80 dark:text-amber-400 leading-relaxed">
+            If a tab appears grayed out and is not clickable for a specific brand, it means that data source has not yet been connected for that brand.
+            These integrations are planned for the next phase of the rollout. Hover over a grayed tab to see which data source is missing.
+          </p>
+        </div>
+      </div>
+
+      {/* ── Tab overview ── */}
+      <div>
+        <div className="mb-4 flex items-center gap-2 border-b pb-3">
+          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary">
+            <BookOpen className="h-3.5 w-3.5 text-white" />
+          </div>
+          <h3 className="text-sm font-bold tracking-wide uppercase text-foreground">What's in Each Tab</h3>
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {[
+            { icon: BarChart3, color: "bg-blue-600", label: "Google Analytics & Search Console", desc: "Website traffic, sessions, page views, top pages, search queries, impressions, CTR, and keyword rankings from GA4 + GSC." },
+            { icon: Share2, color: "bg-emerald-600", label: "Social Media", desc: "Facebook & Instagram performance — followers, reach, impressions, engagement rate, clicks, and post-level stats via Meta." },
+            { icon: Mail, color: "bg-orange-500", label: "Emails", desc: "HubSpot email campaign metrics — sends, open rate, click rate, bounces, unsubscribes, and lifecycle stage breakdown." },
+            { icon: Building2, color: "bg-teal-600", label: "HubSpot CRM", desc: "Wholesale lead data — total contacts, dealer assignments, coverage by state, lead source breakdown, and dealer performance." },
+          ].map(({ icon: Icon, color, label, desc }) => (
+            <div key={label} className="rounded-xl border border-border bg-card p-4 flex gap-3">
+              <div className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${color}`}>
+                <Icon className="h-4 w-4 text-white" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-foreground leading-snug">{label}</p>
+                <p className="mt-1 text-xs text-muted-foreground leading-relaxed">{desc}</p>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -197,6 +256,13 @@ export function ReadMeTab({ brand }: ReadMeTabProps) {
         icon={Share2} iconCls="text-emerald-600" color="bg-emerald-600"
         label="Social Media (Meta — Facebook & Instagram)"
         metrics={socialMetrics}
+      />
+
+      {/* ── HubSpot CRM ── */}
+      <Section
+        icon={Building2} iconCls="text-teal-600" color="bg-teal-600"
+        label="HubSpot CRM (Wholesale Lead & Dealer Coverage)"
+        metrics={crmMetrics}
       />
 
       {/* ── Brand Connection Matrix ── */}
