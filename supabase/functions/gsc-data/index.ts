@@ -82,16 +82,30 @@ Deno.serve(async (req) => {
 
     const accessToken = await getAccessToken(saJson);
 
+    // Compute previous period (same duration, immediately before current period)
+    const startMs = new Date(startDate).getTime();
+    const endMs = new Date(endDate).getTime();
+    const durationMs = endMs - startMs;
+    const prevEndDate = new Date(startMs - 86400000).toISOString().slice(0, 10);
+    const prevStartDate = new Date(startMs - 86400000 - durationMs).toISOString().slice(0, 10);
+
+    const pctDelta = (current: number, prev: number) =>
+      prev === 0 ? 0 : parseFloat(((current - prev) / prev * 100).toFixed(1));
+
     const apiUrl = "https://www.googleapis.com/webmasters/v3/sites/" +
       encodeURIComponent(siteUrl) + "/searchAnalytics/query";
 
     const authHeader = { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" };
 
-    // Run all queries in parallel
-    const [summaryRes, dailyRes, queriesRes, oppRes, landingPagesRes] = await Promise.all([
+    // Run all queries in parallel (including previous period summary)
+    const [summaryRes, prevSummaryRes, dailyRes, queriesRes, oppRes, landingPagesRes] = await Promise.all([
       fetch(apiUrl, {
         method: "POST", headers: authHeader,
         body: JSON.stringify({ startDate, endDate, dimensions: [], rowLimit: 1 }),
+      }),
+      fetch(apiUrl, {
+        method: "POST", headers: authHeader,
+        body: JSON.stringify({ startDate: prevStartDate, endDate: prevEndDate, dimensions: [], rowLimit: 1 }),
       }),
       fetch(apiUrl, {
         method: "POST", headers: authHeader,
@@ -125,18 +139,28 @@ Deno.serve(async (req) => {
       throw new Error(`GSC API error: ${errText}`);
     }
 
-    const [summaryData, dailyData, queriesData] = await Promise.all([
+    const [summaryData, prevSummaryData, dailyData, queriesData] = await Promise.all([
       summaryRes.json(),
+      prevSummaryRes.ok ? prevSummaryRes.json() : Promise.resolve({ rows: [] }),
       dailyRes.ok ? dailyRes.json() : Promise.resolve({ rows: [] }),
       queriesRes.ok ? queriesRes.json() : Promise.resolve({ rows: [] }),
     ]);
 
     let totalClicks = 0, totalImpressions = 0, averageCTR = 0, averagePosition = 0;
+    let prevClicks = 0, prevImpressions = 0, prevCTR = 0, prevPosition = 0;
+
     if (summaryData.rows?.[0]) {
       totalClicks = summaryData.rows[0].clicks;
       totalImpressions = summaryData.rows[0].impressions;
       averageCTR = parseFloat((summaryData.rows[0].ctr * 100).toFixed(1));
       averagePosition = parseFloat(summaryData.rows[0].position.toFixed(1));
+    }
+
+    if (prevSummaryData.rows?.[0]) {
+      prevClicks = prevSummaryData.rows[0].clicks;
+      prevImpressions = prevSummaryData.rows[0].impressions;
+      prevCTR = parseFloat((prevSummaryData.rows[0].ctr * 100).toFixed(1));
+      prevPosition = parseFloat(prevSummaryData.rows[0].position.toFixed(1));
     }
 
     const clicksImpressionsOverTime = (dailyData.rows || [])
@@ -186,13 +210,14 @@ Deno.serve(async (req) => {
 
     return new Response(JSON.stringify({
       totalClicks,
-      totalClicksDelta: 0,
+      totalClicksDelta: pctDelta(totalClicks, prevClicks),
       totalImpressions,
-      totalImpressionsDelta: 0,
+      totalImpressionsDelta: pctDelta(totalImpressions, prevImpressions),
       averageCTR,
-      averageCTRDelta: 0,
+      averageCTRDelta: pctDelta(averageCTR, prevCTR),
       averagePosition,
-      averagePositionDelta: 0,
+      // For position: lower is better, so invert the delta so green = improvement
+      averagePositionDelta: prevPosition === 0 ? 0 : parseFloat(((prevPosition - averagePosition) / prevPosition * 100).toFixed(1)),
       clicksImpressionsOverTime,
       topQueries,
       opportunityQueries,

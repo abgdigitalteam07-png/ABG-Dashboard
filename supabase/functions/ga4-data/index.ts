@@ -179,7 +179,18 @@ Deno.serve(async (req) => {
 
     const accessToken = await getAccessToken(saJson);
 
+    // Compute previous period (same duration, immediately before current period)
+    const startMs = new Date(startDate).getTime();
+    const endMs = new Date(endDate).getTime();
+    const durationMs = endMs - startMs;
+    const prevEndDate = new Date(startMs - 86400000).toISOString().slice(0, 10);
+    const prevStartDate = new Date(startMs - 86400000 - durationMs).toISOString().slice(0, 10);
+
+    const pctDelta = (current: number, prev: number) =>
+      prev === 0 ? 0 : parseFloat(((current - prev) / prev * 100).toFixed(1));
+
     let totalSessions = 0, totalPageViews = 0, totalActiveUsers = 0, totalOrganicSessions = 0;
+    let prevSessions = 0, prevPageViews = 0, prevActiveUsers = 0, prevOrganicSessions = 0;
     const dailyMap: Record<string, { sessions: number; activeUsers: number; views: number }> = {};
     const pageMap: Record<string, { sessions: number; views: number; avgDuration: number; count: number }> = {};
     const deviceMap: Record<string, number> = {};
@@ -189,7 +200,11 @@ Deno.serve(async (req) => {
       // Run reports sequentially with a small gap to avoid Google rate limiting / "Sorry" page
       const summary = await safeRunReport(accessToken, pid, startDate, endDate, ["sessions", "screenPageViews", "active1DayUsers"], []);
       await wait(350);
+      const prevSummary = await safeRunReport(accessToken, pid, prevStartDate, prevEndDate, ["sessions", "screenPageViews", "active1DayUsers"], []);
+      await wait(350);
       const organic = await safeRunReport(accessToken, pid, startDate, endDate, ["sessions"], ["sessionDefaultChannelGroup"]);
+      await wait(350);
+      const prevOrganic = await safeRunReport(accessToken, pid, prevStartDate, prevEndDate, ["sessions"], ["sessionDefaultChannelGroup"]);
       await wait(350);
       const daily = await safeRunReport(accessToken, pid, startDate, endDate, ["sessions", "active1DayUsers", "screenPageViews"], ["date"]);
       await wait(350);
@@ -207,10 +222,25 @@ Deno.serve(async (req) => {
         totalActiveUsers += parseInt(vals[2].value) || 0;
       }
 
+      // Previous period summary
+      if (prevSummary.rows?.[0]) {
+        const vals = prevSummary.rows[0].metricValues;
+        prevSessions += parseInt(vals[0].value) || 0;
+        prevPageViews += parseInt(vals[1].value) || 0;
+        prevActiveUsers += parseInt(vals[2].value) || 0;
+      }
+
       // Organic sessions
       for (const row of organic.rows || []) {
         if (row.dimensionValues[0].value === "Organic Search") {
           totalOrganicSessions += parseInt(row.metricValues[0].value) || 0;
+        }
+      }
+
+      // Previous period organic sessions
+      for (const row of prevOrganic.rows || []) {
+        if (row.dimensionValues[0].value === "Organic Search") {
+          prevOrganicSessions += parseInt(row.metricValues[0].value) || 0;
         }
       }
 
@@ -300,13 +330,13 @@ Deno.serve(async (req) => {
 
     return new Response(JSON.stringify({
       sessions: totalSessions,
-      sessionsDelta: 0,
+      sessionsDelta: pctDelta(totalSessions, prevSessions),
       organicSessions: totalOrganicSessions,
-      organicSessionsDelta: 0,
+      organicSessionsDelta: pctDelta(totalOrganicSessions, prevOrganicSessions),
       pageViews: totalPageViews,
-      pageViewsDelta: 0,
+      pageViewsDelta: pctDelta(totalPageViews, prevPageViews),
       activeUsers1Day: totalActiveUsers,
-      activeUsers1DayDelta: 0,
+      activeUsers1DayDelta: pctDelta(totalActiveUsers, prevActiveUsers),
       sessionsOverTime,
       activeUsersOverTime,
       topPages,
