@@ -17,7 +17,7 @@ import {
   subYears,
   differenceInCalendarDays,
 } from "date-fns";
-import { CalendarIcon, ChevronDown } from "lucide-react";
+import { CalendarIcon, ChevronDown, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -153,14 +153,25 @@ function getPresetRange(id: PresetId): { from: Date; to: Date } | null {
   }
 }
 
+// "start" = waiting for the user to pick a start date
+// "end"   = start is picked, waiting for user to pick (or accept) the end date
+type SelectionPhase = "start" | "end";
+
 export function DateRangePicker({ from, to, onChange }: DateRangePickerProps) {
   const [open, setOpen] = useState(false);
   const [selectedPreset, setSelectedPreset] = useState<PresetId>("last60");
   const [range, setRange] = useState<{ from: Date; to?: Date }>({ from, to });
+  const [phase, setPhase] = useState<SelectionPhase>("start");
 
+  // Sync external changes into local state
   useEffect(() => {
     setRange({ from, to });
   }, [from, to]);
+
+  // Reset phase each time the popover opens
+  useEffect(() => {
+    if (open) setPhase("start");
+  }, [open]);
 
   const handlePreset = (id: PresetId) => {
     setSelectedPreset(id);
@@ -172,15 +183,29 @@ export function DateRangePicker({ from, to, onChange }: DateRangePickerProps) {
     }
   };
 
+  const handleApply = () => {
+    if (range.from && range.to) {
+      onChange(range.from, range.to);
+      setOpen(false);
+      setPhase("start");
+    }
+  };
+
   const presetLabel =
     ALL_PRESETS.find((p) => p.id === selectedPreset)?.label ?? "Custom range";
 
-  const isSelecting = range.from && !range.to;
+  // In "end" phase show only the start (so react-day-picker waits for end click)
+  const calendarSelected =
+    phase === "end"
+      ? { from: range.from, to: undefined }
+      : { from: range.from, to: range.to };
 
   const dayCount =
     range.from && range.to
       ? differenceInCalendarDays(range.to, range.from) + 1
       : null;
+
+  const currentYear = new Date().getFullYear();
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -209,7 +234,7 @@ export function DateRangePicker({ from, to, onChange }: DateRangePickerProps) {
         </Button>
       </PopoverTrigger>
 
-      <PopoverContent align="end" className="w-[800px] p-0 shadow-xl overflow-hidden">
+      <PopoverContent align="end" className="w-[820px] p-0 shadow-xl overflow-hidden">
         {/* ── Header ── */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/30">
           <div className="flex items-center gap-2">
@@ -217,17 +242,33 @@ export function DateRangePicker({ from, to, onChange }: DateRangePickerProps) {
             <span className="text-sm font-semibold text-foreground">Date Range</span>
           </div>
           <div className="flex items-center gap-3">
-            {isSelecting && (
-              <span className="text-[11px] font-medium text-amber-600 dark:text-amber-400 animate-pulse">
-                Pick an end date
+            {/* Phase hint */}
+            {selectedPreset === "custom" && (
+              <span className={cn(
+                "text-[11px] font-medium animate-pulse",
+                phase === "start" ? "text-blue-600 dark:text-blue-400" : "text-amber-600 dark:text-amber-400"
+              )}>
+                {phase === "start" ? "① Click a start date" : "② Click an end date (or Apply to use month end)"}
               </span>
             )}
+
+            {/* Range badge */}
             <div className="flex items-center gap-1.5 rounded-lg bg-background border border-border px-3 py-1.5 text-xs shadow-sm">
-              <span className="font-semibold text-foreground tabular-nums">
+              <span className={cn(
+                "font-semibold tabular-nums",
+                phase === "start" && selectedPreset === "custom"
+                  ? "text-blue-600 underline decoration-dotted"
+                  : "text-foreground"
+              )}>
                 {format(range.from, "MMM d, yyyy")}
               </span>
               <span className="text-muted-foreground/60 mx-0.5">→</span>
-              <span className="font-semibold text-foreground tabular-nums">
+              <span className={cn(
+                "font-semibold tabular-nums",
+                phase === "end" && selectedPreset === "custom"
+                  ? "text-amber-600 underline decoration-dotted"
+                  : "text-foreground"
+              )}>
                 {range.to ? format(range.to, "MMM d, yyyy") : "—"}
               </span>
               {dayCount !== null && (
@@ -244,7 +285,7 @@ export function DateRangePicker({ from, to, onChange }: DateRangePickerProps) {
 
         <div className="flex">
           {/* ── Preset sidebar ── */}
-          <div className="w-52 border-r border-border py-3 overflow-y-auto" style={{ maxHeight: 380 }}>
+          <div className="w-52 border-r border-border py-3 overflow-y-auto" style={{ maxHeight: 420 }}>
             {PRESET_GROUPS.map((group, gi) => (
               <div key={group.label} className={cn("mb-1", gi > 0 && "mt-2")}>
                 <p className="px-3 pb-1 pt-0.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50">
@@ -263,14 +304,10 @@ export function DateRangePicker({ from, to, onChange }: DateRangePickerProps) {
                     )}
                     style={{ width: "calc(100% - 12px)" }}
                   >
-                    <span
-                      className={cn(
-                        "h-1.5 w-1.5 rounded-full shrink-0 transition-all duration-150",
-                        selectedPreset === preset.id
-                          ? "bg-primary scale-125"
-                          : "bg-border"
-                      )}
-                    />
+                    <span className={cn(
+                      "h-1.5 w-1.5 rounded-full shrink-0 transition-all duration-150",
+                      selectedPreset === preset.id ? "bg-primary scale-125" : "bg-border"
+                    )} />
                     {preset.label}
                   </button>
                 ))}
@@ -280,7 +317,7 @@ export function DateRangePicker({ from, to, onChange }: DateRangePickerProps) {
             {/* Custom range option */}
             <div className="border-t border-border mt-2 pt-2">
               <button
-                onClick={() => setSelectedPreset("custom")}
+                onClick={() => { setSelectedPreset("custom"); setPhase("start"); }}
                 className={cn(
                   "flex w-full items-center gap-2.5 rounded-md mx-1.5 px-2.5 py-1.5 text-left text-sm transition-colors",
                   "hover:bg-muted",
@@ -290,14 +327,10 @@ export function DateRangePicker({ from, to, onChange }: DateRangePickerProps) {
                 )}
                 style={{ width: "calc(100% - 12px)" }}
               >
-                <span
-                  className={cn(
-                    "h-1.5 w-1.5 rounded-full shrink-0 transition-all duration-150",
-                    selectedPreset === "custom"
-                      ? "bg-primary scale-125"
-                      : "bg-border"
-                  )}
-                />
+                <span className={cn(
+                  "h-1.5 w-1.5 rounded-full shrink-0 transition-all duration-150",
+                  selectedPreset === "custom" ? "bg-primary scale-125" : "bg-border"
+                )} />
                 Custom range
               </button>
             </div>
@@ -307,31 +340,30 @@ export function DateRangePicker({ from, to, onChange }: DateRangePickerProps) {
           <div className="flex-1 p-3">
             <Calendar
               mode="range"
-              selected={{ from: range.from, to: range.to }}
+              selected={calendarSelected}
+              month={range.from}
+              captionLayout="dropdown-buttons"
+              fromYear={2020}
+              toYear={currentYear}
               onSelect={(selectedRange) => {
                 if (!selectedRange?.from) return;
                 setSelectedPreset("custom");
 
-                // When from and to are the same date, the user only clicked a start date.
-                // Keep the picker open so they can pick the end date.
-                const sameDay =
-                  selectedRange.to &&
-                  format(selectedRange.from, "yyyy-MM-dd") ===
-                    format(selectedRange.to, "yyyy-MM-dd");
-
-                if (sameDay) {
-                  setRange({ from: selectedRange.from, to: undefined });
-                  return;
-                }
-
-                setRange({ from: selectedRange.from, to: selectedRange.to });
-                if (selectedRange.to) {
-                  onChange(selectedRange.from, selectedRange.to);
-                  setOpen(false);
+                if (phase === "start") {
+                  // First click: set start date, auto-fill end to last day of that month
+                  const newFrom = selectedRange.from;
+                  setRange({ from: newFrom, to: endOfMonth(newFrom) });
+                  setPhase("end");
+                } else {
+                  // Second click: user is picking a custom end date
+                  if (selectedRange.to) {
+                    setRange({ from: range.from, to: selectedRange.to });
+                  }
+                  // Stay in "end" phase — user clicks Apply to confirm
                 }
               }}
               numberOfMonths={2}
-              className="pointer-events-auto"
+              className="pointer-events-auto [&_.rdp-caption_label]:hidden [&_.rdp-dropdown_select]:text-xs [&_.rdp-dropdown_select]:font-medium [&_.rdp-dropdown_select]:rounded-md [&_.rdp-dropdown_select]:border [&_.rdp-dropdown_select]:border-border [&_.rdp-dropdown_select]:bg-background [&_.rdp-dropdown_select]:px-2 [&_.rdp-dropdown_select]:py-1 [&_.rdp-dropdown_select]:cursor-pointer [&_.rdp-dropdown_select]:hover:bg-muted [&_.rdp-caption_dropdowns]:flex [&_.rdp-caption_dropdowns]:gap-1.5 [&_.rdp-caption_dropdowns]:items-center"
             />
           </div>
         </div>
@@ -339,16 +371,29 @@ export function DateRangePicker({ from, to, onChange }: DateRangePickerProps) {
         {/* ── Footer ── */}
         <div className="border-t border-border px-4 py-2.5 bg-muted/20 flex items-center justify-between">
           <p className="text-[11px] text-muted-foreground">
-            {isSelecting
-              ? "Click a date on the calendar to complete the range"
-              : "Select a preset or click dates on the calendar"}
+            {selectedPreset === "custom"
+              ? phase === "start"
+                ? "Use the month/year dropdowns to navigate, then click your start date"
+                : "End date defaults to last day of the month — click any date to change it"
+              : "Select a preset or click Custom range to pick specific dates"}
           </p>
-          <button
-            onClick={() => setOpen(false)}
-            className="text-[11px] font-medium text-primary hover:underline"
-          >
-            Done
-          </button>
+          <div className="flex items-center gap-2">
+            {selectedPreset === "custom" && phase === "end" && range.from && range.to && (
+              <button
+                onClick={handleApply}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-1.5 text-[11px] font-semibold text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
+              >
+                <Check className="h-3 w-3" />
+                Apply {format(range.from, "MMM d")} – {format(range.to, "MMM d, yyyy")}
+              </button>
+            )}
+            <button
+              onClick={() => setOpen(false)}
+              className="text-[11px] font-medium text-muted-foreground hover:text-foreground"
+            >
+              Cancel
+            </button>
+          </div>
         </div>
       </PopoverContent>
     </Popover>
