@@ -1112,58 +1112,6 @@ function SourceBreakdownCard({
         </div>
       </div>
 
-      {/* ── Bar rows ── */}
-      <div className="px-6 pt-5 pb-3 space-y-5">
-        {chartData.map((d) => {
-          const delta = d.prev > 0 ? ((d.curr - d.prev) / d.prev) * 100 : null;
-          const up = delta !== null && delta > 0.4;
-          const dn = delta !== null && delta < -0.4;
-          const currPct = Math.max((d.curr / maxVal) * 100, d.curr > 0 ? 1 : 0);
-          const prevPct = Math.max((d.prev / maxVal) * 100, d.prev > 0 ? 1 : 0);
-          return (
-            <div key={d.key}>
-              {/* Label row */}
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: d.color }} />
-                  <span className="text-xs font-semibold text-foreground truncate">{d.name}</span>
-                </div>
-                <div className="flex items-center gap-2 shrink-0 ml-3">
-                  <span className="text-xs font-black tabular-nums text-foreground">{d.curr.toLocaleString()}</span>
-                  <span className="text-[11px] text-muted-foreground tabular-nums">/ {d.prev.toLocaleString()}</span>
-                  {delta !== null ? (
-                    <span className={cn(
-                      "inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums",
-                      up  ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400" :
-                      dn  ? "bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400" :
-                            "bg-muted text-muted-foreground",
-                    )}>
-                      {up ? "▲" : dn ? "▼" : "→"}{up ? "+" : ""}{delta.toFixed(1)}%
-                    </span>
-                  ) : (
-                    <span className="text-[10px] text-muted-foreground/40 font-mono">new</span>
-                  )}
-                </div>
-              </div>
-              {/* Current bar — vivid source color, full height */}
-              <div className="relative h-4 w-full rounded-full bg-muted/40 overflow-hidden mb-1">
-                <div
-                  className="absolute inset-y-0 left-0 rounded-full transition-all duration-700 ease-out"
-                  style={{ width: `${currPct}%`, background: d.color }}
-                />
-              </div>
-              {/* Previous bar — uniform slate, half height */}
-              <div className="relative h-2 w-full rounded-full bg-muted/30 overflow-hidden">
-                <div
-                  className="absolute inset-y-0 left-0 rounded-full transition-all duration-700 ease-out bg-[#94A3B8]/60"
-                  style={{ width: `${prevPct}%` }}
-                />
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
       {/* ── Summary table ── */}
       <div className="px-4 pb-5 pt-2">
         <div className="overflow-x-auto rounded-xl border border-border">
