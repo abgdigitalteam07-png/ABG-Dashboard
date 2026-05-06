@@ -34,8 +34,8 @@ interface CRMChatPanelProps {
 }
 
 const SUGGESTIONS = [
-  { icon: "📊", text: "Compare current period with previous period", prompt: "Compare the current period with the previous period. Show me the difference in total leads, assigned, and unassigned. Break down the change by lead source and explain the reason for any increase or decrease in each source." },
-  { icon: "📅", text: "Compare current period with last year", prompt: "Compare the current period with the same period last year. Show me the difference in total leads, assigned, and unassigned. Break down the change by lead source and explain the reason for any increase or decrease in each source." },
+  { icon: "📊", text: "Compare current period with previous period", prompt: "Compare the current period with the previous period. Keep it short — only highlight the top lead sources (Organic Search, Direct, Referral) with their % change, for example: Organic Search +21.9%, Direct +24.9%. Then in 1-2 sentences explain the likely reason for the biggest change. No tables, no full breakdowns." },
+  { icon: "📅", text: "Compare current period with last year", prompt: "Compare the current period with the same period last year. Keep it short — only highlight the top lead sources (Organic Search, Direct, Referral) with their % change, for example: Organic Search +21.9%, Direct -56.1%. Then in 1-2 sentences explain the likely reason for the biggest change. No tables, no full breakdowns." },
 ];
 
 function nowTime() {
