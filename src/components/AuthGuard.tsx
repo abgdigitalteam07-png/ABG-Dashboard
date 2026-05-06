@@ -83,12 +83,13 @@ export function AuthGuard({ children }: AuthGuardProps) {
             action: "login",
             metadata: {},
           });
-          // Upsert profile — creates row for first-time magic-link users without overwriting is_active
+          // Upsert profile — creates row for first-time magic-link users without overwriting is_active or role
           const userEmail = session.user.email || "";
           const userDomain = userEmail.split("@")[1] || "";
+          const defaultRole = userEmail === "mali@americanbathgroup.com" ? "admin" : "viewer";
           supabase.from("user_profiles").upsert(
-            { id: session.user.id, email: userEmail, domain: userDomain, last_login_at: now },
-            { onConflict: "id" }
+            { id: session.user.id, email: userEmail, domain: userDomain, role: defaultRole, last_login_at: now },
+            { onConflict: "id", ignoreDuplicates: false }
           );
         }
 
