@@ -14,7 +14,7 @@ export function MetricTooltip({ description, children }: MetricTooltipProps) {
         </TooltipTrigger>
         <TooltipContent
           side="bottom"
-          className="w-[220px] text-xs leading-relaxed text-left font-normal normal-case tracking-normal"
+          className="max-w-[220px] whitespace-normal text-xs leading-relaxed text-left font-normal normal-case tracking-normal"
         >
           {description}
         </TooltipContent>
