@@ -605,7 +605,7 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
       {/* ── KPI Stats ── */}
       <section className="space-y-5">
         <SectionHeader icon={BarChart2} label="Overview" color="bg-pink-600" />
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
           <StatCard title="Total Followers" value={formatNumber(totalFollowers)} delta={avgFollowerGrowth}
             icon={Users} iconBg="bg-blue-50" iconColor="text-blue-600" />
           <StatCard title="Total Reach" value={formatNumber(overview.totalReach)} delta={reachDelta}
