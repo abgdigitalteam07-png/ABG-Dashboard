@@ -191,6 +191,12 @@ export function DateRangePicker({ from, to, onChange }: DateRangePickerProps) {
   const [selectedPreset, setSelectedPreset] = useState<PresetId>("last60");
   const [range, setRange] = useState<{ from: Date; to?: Date }>({ from, to });
   const [phase, setPhase] = useState<SelectionPhase>("start");
+  const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" && window.innerWidth < 640);
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 640);
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, []);
   // Separate navigation month so goToMonth isn't overridden by the controlled range.from
   const [calendarMonth, setCalendarMonth] = useState<Date>(from);
 
@@ -246,15 +252,15 @@ export function DateRangePicker({ from, to, onChange }: DateRangePickerProps) {
         >
           <CalendarIcon className="h-3.5 w-3.5 shrink-0" />
           <span className="font-semibold">{presetLabel}</span>
-          <span className="text-primary-foreground/35 select-none">·</span>
-          <span className="text-primary-foreground/60 tabular-nums">
+          <span className="hidden sm:inline text-primary-foreground/35 select-none">·</span>
+          <span className="hidden sm:inline text-primary-foreground/60 tabular-nums">
             {format(from, "MMM d")} – {format(to, "MMM d, yyyy")}
           </span>
           <ChevronDown className={cn("h-3 w-3 opacity-60 ml-0.5 transition-transform duration-200", open && "rotate-180")} />
         </Button>
       </PopoverTrigger>
 
-      <PopoverContent align="end" className="w-[800px] p-0 shadow-xl overflow-hidden">
+      <PopoverContent align="end" className="w-[calc(100vw-16px)] sm:w-[800px] p-0 shadow-xl overflow-hidden">
 
         {/* ── Header ── */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/30">
@@ -300,49 +306,70 @@ export function DateRangePicker({ from, to, onChange }: DateRangePickerProps) {
           </div>
         </div>
 
-        <div className="flex">
+        <div className="flex flex-col sm:flex-row">
           {/* ── Preset sidebar ── */}
-          <div className="w-52 border-r border-border py-3 overflow-y-auto" style={{ maxHeight: 400 }}>
-            {PRESET_GROUPS.map((group, gi) => (
-              <div key={group.label} className={cn("mb-1", gi > 0 && "mt-2")}>
-                <p className="px-3 pb-1 pt-0.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50">
-                  {group.label}
-                </p>
-                {group.items.map((preset) => (
-                  <button
-                    key={preset.id}
-                    onClick={() => handlePreset(preset.id)}
-                    className={cn(
-                      "flex w-full items-center gap-2.5 rounded-md mx-1.5 px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-muted",
-                      selectedPreset === preset.id ? "bg-primary/10 text-primary font-semibold" : "text-foreground"
-                    )}
-                    style={{ width: "calc(100% - 12px)" }}
-                  >
-                    <span className={cn(
-                      "h-1.5 w-1.5 rounded-full shrink-0 transition-all",
-                      selectedPreset === preset.id ? "bg-primary scale-125" : "bg-border"
-                    )} />
-                    {preset.label}
-                  </button>
-                ))}
-              </div>
-            ))}
+          {/* Mobile: horizontal chip strip; Desktop: vertical sidebar */}
+          <div className="sm:w-52 border-b sm:border-b-0 sm:border-r border-border sm:py-3">
+            {/* Mobile chip strip */}
+            <div className="flex sm:hidden gap-2 overflow-x-auto px-3 py-2.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {PRESET_GROUPS.flatMap((g) => g.items).concat([{ id: "custom" as PresetId, label: "Custom" }]).map((preset) => (
+                <button
+                  key={preset.id}
+                  onClick={() => preset.id === "custom" ? (setSelectedPreset("custom"), setPhase("start")) : handlePreset(preset.id as PresetId)}
+                  className={cn(
+                    "shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                    selectedPreset === preset.id
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border bg-background text-foreground hover:bg-muted"
+                  )}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
 
-            <div className="border-t border-border mt-2 pt-2">
-              <button
-                onClick={() => { setSelectedPreset("custom"); setPhase("start"); }}
-                className={cn(
-                  "flex w-full items-center gap-2.5 rounded-md mx-1.5 px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-muted",
-                  isCustom ? "bg-primary/10 text-primary font-semibold" : "text-foreground"
-                )}
-                style={{ width: "calc(100% - 12px)" }}
-              >
-                <span className={cn(
-                  "h-1.5 w-1.5 rounded-full shrink-0 transition-all",
-                  isCustom ? "bg-primary scale-125" : "bg-border"
-                )} />
-                Custom range
-              </button>
+            {/* Desktop vertical list */}
+            <div className="hidden sm:block overflow-y-auto" style={{ maxHeight: 400 }}>
+              {PRESET_GROUPS.map((group, gi) => (
+                <div key={group.label} className={cn("mb-1", gi > 0 && "mt-2")}>
+                  <p className="px-3 pb-1 pt-0.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50">
+                    {group.label}
+                  </p>
+                  {group.items.map((preset) => (
+                    <button
+                      key={preset.id}
+                      onClick={() => handlePreset(preset.id)}
+                      className={cn(
+                        "flex w-full items-center gap-2.5 rounded-md mx-1.5 px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-muted",
+                        selectedPreset === preset.id ? "bg-primary/10 text-primary font-semibold" : "text-foreground"
+                      )}
+                      style={{ width: "calc(100% - 12px)" }}
+                    >
+                      <span className={cn(
+                        "h-1.5 w-1.5 rounded-full shrink-0 transition-all",
+                        selectedPreset === preset.id ? "bg-primary scale-125" : "bg-border"
+                      )} />
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              ))}
+              <div className="border-t border-border mt-2 pt-2">
+                <button
+                  onClick={() => { setSelectedPreset("custom"); setPhase("start"); }}
+                  className={cn(
+                    "flex w-full items-center gap-2.5 rounded-md mx-1.5 px-2.5 py-1.5 text-left text-sm transition-colors hover:bg-muted",
+                    isCustom ? "bg-primary/10 text-primary font-semibold" : "text-foreground"
+                  )}
+                  style={{ width: "calc(100% - 12px)" }}
+                >
+                  <span className={cn(
+                    "h-1.5 w-1.5 rounded-full shrink-0 transition-all",
+                    isCustom ? "bg-primary scale-125" : "bg-border"
+                  )} />
+                  Custom range
+                </button>
+              </div>
             </div>
           </div>
 
@@ -367,7 +394,7 @@ export function DateRangePicker({ from, to, onChange }: DateRangePickerProps) {
                   }
                 }
               }}
-              numberOfMonths={2}
+              numberOfMonths={isMobile ? 1 : 2}
               className="pointer-events-auto"
               // Custom caption with month/year dropdowns — only in custom mode
               components={isCustom ? { Caption: CustomCaption } : undefined}

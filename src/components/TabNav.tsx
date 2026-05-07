@@ -8,25 +8,28 @@ interface TabNavProps {
 
 export function TabNav({ tabs, activeTab, onTabChange }: TabNavProps) {
   return (
-    <nav className="flex gap-8 border-b border-border bg-card px-6">
-      {tabs.map((tab) => (
-        <button
-          key={tab.id}
-          disabled={tab.disabled}
-          title={tab.disabled ? tab.tooltip : undefined}
-          onClick={() => !tab.disabled && onTabChange(tab.id)}
-          className={cn(
-            "relative py-3.5 text-sm font-medium transition-colors",
-            tab.disabled
-              ? "cursor-not-allowed text-muted-foreground/50"
-              : activeTab === tab.id
-              ? "text-accent after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-accent"
-              : "text-muted-foreground hover:text-foreground"
-          )}
-        >
-          {tab.label}
-        </button>
-      ))}
+    <nav className="border-b border-border bg-card">
+      <div className="flex overflow-x-auto scroll-smooth px-3 md:px-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            disabled={tab.disabled}
+            title={tab.disabled ? tab.tooltip : undefined}
+            onClick={() => !tab.disabled && onTabChange(tab.id)}
+            className={cn(
+              "relative shrink-0 whitespace-nowrap py-3 text-xs font-medium transition-colors md:py-3.5 md:text-sm",
+              "px-3 md:px-0 md:mr-8 first:pl-0",
+              tab.disabled
+                ? "cursor-not-allowed text-muted-foreground/50"
+                : activeTab === tab.id
+                ? "text-accent after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-accent"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
     </nav>
   );
 }
