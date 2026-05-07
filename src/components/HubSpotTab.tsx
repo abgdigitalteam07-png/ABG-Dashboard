@@ -131,7 +131,7 @@ function FunnelCard({
 /* ── SVG Arrow connectors ── */
 function HArrow() {
   return (
-    <div className="hidden items-center lg:flex">
+    <div className="hidden items-center md:flex">
       <ArrowRight className="h-5 w-5 text-muted-foreground" />
     </div>
   );
@@ -454,14 +454,14 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
       <section className="space-y-5">
         <SectionHeader icon={Mail} label="Email Funnel" color="bg-orange-500" />
 
-        <div className="grid grid-cols-2 gap-3 lg:flex lg:items-center lg:gap-0">
-          <div className="lg:flex-1"><FunnelCard label="Sent" value={fmt(d.totalEmailsSent)} sub={`${d.totalEmails} emails`} delta={dl.sent} /></div>
+        <div className="grid grid-cols-2 gap-3 md:flex md:items-center md:gap-0">
+          <div className="md:flex-1"><FunnelCard label="Sent" value={fmt(d.totalEmailsSent)} sub={`${d.totalEmails} emails`} delta={dl.sent} /></div>
           <HArrow />
-          <div className="lg:flex-1"><FunnelCard label="Delivered" value={fmt(d.totalDelivered ?? 0)} delta={dl.delivered} /></div>
+          <div className="md:flex-1"><FunnelCard label="Delivered" value={fmt(d.totalDelivered ?? 0)} delta={dl.delivered} /></div>
           <HArrow />
-          <div className="lg:flex-1"><FunnelCard label="Opens" value={fmt(d.totalOpens)} delta={dl.opens} /></div>
+          <div className="md:flex-1"><FunnelCard label="Opens" value={fmt(d.totalOpens)} delta={dl.opens} /></div>
           <HArrow />
-          <div className="lg:flex-1"><FunnelCard label="Clicks" value={fmt(d.totalClicks)} delta={dl.clicks} /></div>
+          <div className="md:flex-1"><FunnelCard label="Clicks" value={fmt(d.totalClicks)} delta={dl.clicks} /></div>
         </div>
         <VArrow />
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

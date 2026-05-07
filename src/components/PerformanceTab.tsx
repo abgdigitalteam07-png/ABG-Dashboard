@@ -209,7 +209,7 @@ export function PerformanceTab({ brand, dateFrom, dateTo }: PerformanceTabProps)
           <SectionHeader icon={Activity} label="Google Analytics" color="bg-blue-600" />
 
           {/* KPI grid */}
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
             <StatCard loading={loading} title="Sessions" value={fmt(ga4?.sessions)} delta={ga4?.sessionsDelta}
               icon={Users} iconBg="bg-blue-50" iconColor="text-blue-600" tooltip={METRIC_DEFINITIONS["Sessions"]} />
             <StatCard loading={loading} title="Organic Sessions" value={fmt(ga4?.organicSessions)} delta={ga4?.organicSessionsDelta}
@@ -222,7 +222,7 @@ export function PerformanceTab({ brand, dateFrom, dateTo }: PerformanceTabProps)
 
           {/* Charts */}
           {!loading && ga4 && (
-            <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
               <ChartCard title="Sessions Over Time" subtitle="Daily visit volume">
                 <ResponsiveContainer width="100%" height={240}>
                   <AreaChart data={ga4.sessionsOverTime} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
@@ -322,7 +322,7 @@ export function PerformanceTab({ brand, dateFrom, dateTo }: PerformanceTabProps)
         <section className="space-y-5">
           <SectionHeader icon={Search} label="Google Search Console" color="bg-violet-600" />
 
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
             <StatCard loading={loading} title="Total Clicks" value={fmt(gsc?.totalClicks)} delta={gsc?.totalClicksDelta}
               icon={MousePointer} iconBg="bg-violet-50" iconColor="text-violet-600" tooltip={METRIC_DEFINITIONS["Total Clicks"]} />
             <StatCard loading={loading} title="Impressions" value={fmt(gsc?.totalImpressions)} delta={gsc?.totalImpressionsDelta}

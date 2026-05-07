@@ -49,7 +49,7 @@ export function DashboardHeader({
         <div className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 pointer-events-none">
           <img
             src={ABG_LOGO_URL}
-            className="w-[200px] sm:w-[280px] md:w-[350px] h-auto"
+            className="w-[200px] sm:w-[280px] md:w-[240px] lg:w-[350px] h-auto"
             alt="American Bath Group"
           />
           <h1 className="text-sm font-bold tracking-wide text-primary-foreground lg:text-lg whitespace-nowrap">
