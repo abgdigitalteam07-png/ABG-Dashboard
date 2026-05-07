@@ -605,7 +605,7 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
       {/* ── KPI Stats ── */}
       <section className="space-y-5">
         <SectionHeader icon={BarChart2} label="Overview" color="bg-pink-600" />
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
           <StatCard title="Total Followers" value={formatNumber(totalFollowers)} delta={avgFollowerGrowth}
             icon={Users} iconBg="bg-blue-50" iconColor="text-blue-600" />
           <StatCard title="Total Reach" value={formatNumber(overview.totalReach)} delta={reachDelta}
@@ -688,7 +688,7 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
       {/* ── Content Performance Charts ── */}
       <section className="space-y-5">
         <SectionHeader icon={BarChart2} label="Content Performance" color="bg-violet-600" />
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
           <ChartCard title="Performance by Content Type" subtitle="Average engagement rate per content type">
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={contentPerformance.byType} layout="vertical" margin={{ left: 20 }}>
@@ -787,7 +787,7 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
         return (
           <section className="space-y-5">
             <SectionHeader icon={TrendingUp} label="Top Performing Posts" color="bg-amber-500" />
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5">
               {top5.map((post: any, i: number) => {
                 const totalEng = (post.likes || 0) + (post.comments || 0) + (post.shares || 0) + (post.saves || 0);
                 const Icon = post.platform === "facebook" ? Facebook : Instagram;
