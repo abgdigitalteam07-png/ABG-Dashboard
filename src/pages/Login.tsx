@@ -65,18 +65,6 @@ export default function Login() {
         return;
       }
 
-      const { data: { session: activeSession } } = await supabase.auth.getSession();
-      if (activeSession) {
-        const now = new Date().toISOString();
-        supabase.from("user_activity_log").insert({
-          user_id: activeSession.user.id,
-          email: activeSession.user.email || trimmed,
-          action: "login",
-          metadata: {},
-        });
-        supabase.from("user_profiles").update({ last_login_at: now }).eq("id", activeSession.user.id);
-      }
-
       setSending(false);
       navigate("/", { replace: true });
     } catch (err: any) {

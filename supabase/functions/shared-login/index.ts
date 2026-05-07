@@ -1,9 +1,28 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
+import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+// Upserts the user profile row and inserts a login activity entry.
+// Uses the service-role client so this bypasses RLS entirely — no silent failures.
+async function logLoginActivity(adminClient: SupabaseClient, userId: string, email: string) {
+  const now = new Date().toISOString();
+  const domain = email.split("@")[1] || "";
+
+  await adminClient.from("user_profiles").upsert(
+    { id: userId, email, domain, last_login_at: now },
+    { onConflict: "id" }
+  );
+
+  await adminClient.from("user_activity_log").insert({
+    user_id: userId,
+    email,
+    action: "login",
+    metadata: {},
+  });
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -55,13 +74,14 @@ Deno.serve(async (req) => {
     });
 
     if (!signInError && signInData.session) {
+      await logLoginActivity(adminClient, signInData.session.user.id, email);
       return new Response(JSON.stringify({ session: signInData.session }), {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // Check if user exists
+    // Check if user exists (password may have changed)
     const { data: userList } = await adminClient.auth.admin.listUsers();
     const existingUser = userList?.users?.find(
       (u) => u.email?.toLowerCase() === email.toLowerCase()
@@ -83,6 +103,7 @@ Deno.serve(async (req) => {
         });
       }
 
+      await logLoginActivity(adminClient, retryData.session!.user.id, email);
       return new Response(JSON.stringify({ session: retryData.session }), {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -90,7 +111,7 @@ Deno.serve(async (req) => {
     }
 
     // New user — create account automatically
-    const { data: signUpData, error: signUpError } = await adminClient.auth.admin.createUser({
+    const { error: signUpError } = await adminClient.auth.admin.createUser({
       email,
       password: internalPassword,
       email_confirm: true,
@@ -115,6 +136,7 @@ Deno.serve(async (req) => {
       });
     }
 
+    await logLoginActivity(adminClient, finalData.session!.user.id, email);
     return new Response(JSON.stringify({ session: finalData.session }), {
       status: 200,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
