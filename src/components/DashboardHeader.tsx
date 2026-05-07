@@ -67,14 +67,14 @@ export function DashboardHeader({
     </header>
 
     {/* ── Tablet header (md to lg): two rows, no absolute overlap ── */}
-    <header className="bg-primary px-5 py-3 hidden md:block lg:hidden">
-      <div className="flex flex-col items-center gap-1 pt-1">
+    <header className="bg-primary px-5 pt-2 pb-2 hidden md:block lg:hidden">
+      <div className="flex flex-col items-center gap-1">
         <img
           src={ABG_LOGO_URL}
           className="h-auto w-[220px]"
           alt="American Bath Group"
         />
-        <p className="text-[11px] font-bold tracking-widest text-primary-foreground/80 uppercase">
+        <p className="text-[12px] font-bold tracking-widest text-primary-foreground/80 uppercase">
           US Wholesale Digital Dashboard
         </p>
       </div>
