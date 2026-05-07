@@ -13,7 +13,7 @@ export function MetricTooltip({ description, children }: MetricTooltipProps) {
           <span className="cursor-default inline-block w-fit">{children}</span>
         </TooltipTrigger>
         <TooltipContent
-          side="bottom"
+          side="top"
           className="max-w-[220px] whitespace-normal text-xs leading-relaxed text-left font-normal normal-case tracking-normal"
         >
           {description}
