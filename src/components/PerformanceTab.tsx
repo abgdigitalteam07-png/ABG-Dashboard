@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { TrafficAcquisitionTable } from "./TrafficAcquisitionTable";
 import { AIRecommendations } from "./AIRecommendations";
+import { MetricTooltip, METRIC_DEFINITIONS } from "./MetricTooltip";
 import { format } from "date-fns";
 
 interface PerformanceTabProps {
@@ -45,9 +46,10 @@ interface StatCardProps {
   iconColor: string;
   iconBg: string;
   loading?: boolean;
+  tooltip?: string;
 }
 
-function StatCard({ title, value, delta, icon: Icon, iconColor, iconBg, loading }: StatCardProps) {
+function StatCard({ title, value, delta, icon: Icon, iconColor, iconBg, loading, tooltip }: StatCardProps) {
   if (loading) {
     return (
       <div className="rounded-2xl border border-border bg-card p-5">
@@ -79,7 +81,9 @@ function StatCard({ title, value, delta, icon: Icon, iconColor, iconBg, loading 
         )}
       </div>
       <p className="mt-4 text-2xl font-bold tabular-nums tracking-tight text-foreground">{value}</p>
-      <p className="mt-0.5 text-xs font-medium text-muted-foreground">{title}</p>
+      <p className="mt-0.5 text-xs font-medium text-muted-foreground">
+        {tooltip ? <MetricTooltip description={tooltip}>{title}</MetricTooltip> : title}
+      </p>
     </div>
   );
 }
@@ -207,13 +211,13 @@ export function PerformanceTab({ brand, dateFrom, dateTo }: PerformanceTabProps)
           {/* KPI grid */}
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
             <StatCard loading={loading} title="Sessions" value={fmt(ga4?.sessions)} delta={ga4?.sessionsDelta}
-              icon={Users} iconBg="bg-blue-50" iconColor="text-blue-600" />
+              icon={Users} iconBg="bg-blue-50" iconColor="text-blue-600" tooltip={METRIC_DEFINITIONS["Sessions"]} />
             <StatCard loading={loading} title="Organic Sessions" value={fmt(ga4?.organicSessions)} delta={ga4?.organicSessionsDelta}
-              icon={TrendingUp} iconBg="bg-indigo-50" iconColor="text-indigo-600" />
+              icon={TrendingUp} iconBg="bg-indigo-50" iconColor="text-indigo-600" tooltip={METRIC_DEFINITIONS["Organic Sessions"]} />
             <StatCard loading={loading} title="Page Views" value={fmt(ga4?.pageViews)} delta={ga4?.pageViewsDelta}
-              icon={Eye} iconBg="bg-violet-50" iconColor="text-violet-600" />
+              icon={Eye} iconBg="bg-violet-50" iconColor="text-violet-600" tooltip={METRIC_DEFINITIONS["Page Views"]} />
             <StatCard loading={loading} title="1-Day Active Users" value={fmt(ga4?.activeUsers1Day)} delta={ga4?.activeUsers1DayDelta}
-              icon={Activity} iconBg="bg-sky-50" iconColor="text-sky-600" />
+              icon={Activity} iconBg="bg-sky-50" iconColor="text-sky-600" tooltip={METRIC_DEFINITIONS["1-Day Active Users"]} />
           </div>
 
           {/* Charts */}
@@ -320,13 +324,13 @@ export function PerformanceTab({ brand, dateFrom, dateTo }: PerformanceTabProps)
 
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
             <StatCard loading={loading} title="Total Clicks" value={fmt(gsc?.totalClicks)} delta={gsc?.totalClicksDelta}
-              icon={MousePointer} iconBg="bg-violet-50" iconColor="text-violet-600" />
+              icon={MousePointer} iconBg="bg-violet-50" iconColor="text-violet-600" tooltip={METRIC_DEFINITIONS["Total Clicks"]} />
             <StatCard loading={loading} title="Impressions" value={fmt(gsc?.totalImpressions)} delta={gsc?.totalImpressionsDelta}
-              icon={Globe} iconBg="bg-purple-50" iconColor="text-purple-600" />
+              icon={Globe} iconBg="bg-purple-50" iconColor="text-purple-600" tooltip={METRIC_DEFINITIONS["Impressions"]} />
             <StatCard loading={loading} title="Avg CTR" value={gsc ? `${gsc.averageCTR}%` : "—"} delta={gsc?.averageCTRDelta}
-              icon={Percent} iconBg="bg-fuchsia-50" iconColor="text-fuchsia-600" />
+              icon={Percent} iconBg="bg-fuchsia-50" iconColor="text-fuchsia-600" tooltip={METRIC_DEFINITIONS["Avg CTR"]} />
             <StatCard loading={loading} title="Avg Position" value={gsc ? gsc.averagePosition.toFixed(1) : "—"} delta={gsc?.averagePositionDelta}
-              icon={BarChart2} iconBg="bg-pink-50" iconColor="text-pink-600" />
+              icon={BarChart2} iconBg="bg-pink-50" iconColor="text-pink-600" tooltip={METRIC_DEFINITIONS["Avg Position"]} />
           </div>
 
           {!loading && gsc && (

@@ -4,6 +4,7 @@ import { Brand } from "@/lib/brands";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { MetricTooltip, METRIC_DEFINITIONS } from "./MetricTooltip";
 
 interface TrafficAcquisitionTableProps {
   brand: Brand;
@@ -150,20 +151,25 @@ export function TrafficAcquisitionTable({ brand, dateFrom, dateTo }: TrafficAcqu
   const totalEngaged = totals?.engagedSessions ?? 1;
   const totalEvents = totals?.eventCount ?? 1;
 
-  const HeaderCell = ({ col, label, right }: { col: SortKey; label: string; right?: boolean }) => (
-    <th
-      className={cn(
-        "px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-primary-foreground/80 cursor-pointer select-none whitespace-nowrap hover:text-primary-foreground transition-colors",
-        right ? "text-right" : "text-left"
-      )}
-      onClick={() => toggleSort(col)}
-    >
-      <span className={cn("inline-flex items-center gap-1", right && "justify-end w-full")}>
-        {label}
-        <SortIcon col={col} sortKey={sortKey} sortAsc={sortAsc} />
-      </span>
-    </th>
-  );
+  const HeaderCell = ({ col, label, right }: { col: SortKey; label: string; right?: boolean }) => {
+    const definition = METRIC_DEFINITIONS[label];
+    return (
+      <th
+        className={cn(
+          "px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-primary-foreground/80 cursor-pointer select-none whitespace-nowrap hover:text-primary-foreground transition-colors",
+          right ? "text-right" : "text-left"
+        )}
+        onClick={() => toggleSort(col)}
+      >
+        <span className={cn("inline-flex items-center gap-1", right && "justify-end w-full")}>
+          {definition ? (
+            <MetricTooltip description={definition}>{label}</MetricTooltip>
+          ) : label}
+          <SortIcon col={col} sortKey={sortKey} sortAsc={sortAsc} />
+        </span>
+      </th>
+    );
+  };
 
   return (
     <section className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
@@ -214,7 +220,7 @@ export function TrafficAcquisitionTable({ brand, dateFrom, dateTo }: TrafficAcqu
                 <HeaderCell col="avgSessionDuration" label="Avg. Time" right />
                 <HeaderCell col="eventsPerSession" label="Events / Session" right />
                 <th className="px-4 py-3 text-[11px] font-semibold uppercase tracking-wider text-primary-foreground/80 text-right whitespace-nowrap">
-                  Event Count
+                  <MetricTooltip description={METRIC_DEFINITIONS["Event Count"]}>Event Count</MetricTooltip>
                 </th>
                 <HeaderCell col="newUsers" label="New Users" right />
                 <HeaderCell col="returningUsers" label="Returning" right />
