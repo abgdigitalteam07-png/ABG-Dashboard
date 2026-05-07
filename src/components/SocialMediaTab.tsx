@@ -643,9 +643,6 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
                   <div><span className="text-xs text-muted-foreground">Engagements</span><p className="font-semibold tabular-nums">{formatNumber(pb.engagements || 0)}</p></div>
                   <div><span className="text-xs text-muted-foreground">Engagement Rate</span><p className="font-semibold tabular-nums">{pb.engagementRate || 0}%</p></div>
                 </div>
-                <div className="mt-3">
-                  <Badge variant="secondary" className="text-xs">Top: {pb.topPostType}</Badge>
-                </div>
               </div>
             );
           })}
