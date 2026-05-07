@@ -423,9 +423,14 @@ Deno.serve(async (req) => {
 
       const topPostType = (arr: any[]) => {
         if (!arr.length) return "image";
-        const counts: Record<string, number> = {};
-        for (const p of arr) counts[p.type] = (counts[p.type] || 0) + 1;
-        return Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
+        const engMap: Record<string, { total: number; count: number }> = {};
+        for (const p of arr) {
+          if (!engMap[p.type]) engMap[p.type] = { total: 0, count: 0 };
+          engMap[p.type].total += p.engagementRate;
+          engMap[p.type].count++;
+        }
+        return Object.entries(engMap)
+          .sort((a, b) => (b[1].total / b[1].count) - (a[1].total / a[1].count))[0][0];
       };
 
       clearTimeout(timeoutId);
