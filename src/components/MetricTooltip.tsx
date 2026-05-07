@@ -7,14 +7,14 @@ interface MetricTooltipProps {
 
 export function MetricTooltip({ description, children }: MetricTooltipProps) {
   return (
-    <TooltipProvider delayDuration={3000}>
+    <TooltipProvider delayDuration={2000}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="cursor-default">{children}</span>
+          <span className="cursor-default inline-block w-fit">{children}</span>
         </TooltipTrigger>
         <TooltipContent
           side="bottom"
-          className="max-w-[240px] text-xs leading-relaxed text-left font-normal normal-case tracking-normal"
+          className="w-[220px] text-xs leading-relaxed text-left font-normal normal-case tracking-normal"
         >
           {description}
         </TooltipContent>
