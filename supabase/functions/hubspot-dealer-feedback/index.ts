@@ -55,31 +55,43 @@ function dateToMs(dateStr: string): number {
   return new Date(dateStr + "T00:00:00.000Z").getTime();
 }
 
+const MAX_DATE_MS = 8.64e15;
+
+function toValidMs(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  const raw = typeof value === "string" ? value.trim() : value;
+  if (raw === "") return null;
+
+  const numeric = Number(raw);
+  const parsed = Number.isFinite(numeric) && numeric > 0 ? numeric : new Date(String(raw)).getTime();
+
+  return Number.isFinite(parsed) && parsed > 0 && Math.abs(parsed) <= MAX_DATE_MS ? parsed : null;
+}
+
+function toIsoDateKey(value: unknown): string | null {
+  const ms = toValidMs(value);
+  return ms == null ? null : new Date(ms).toISOString().split("T")[0];
+}
+
 // Returns the lifecycle-stage response date for a contact (null = no dealer feedback detected)
 function getResponseDate(props: Record<string, any>, createMs: number): number | null {
   const stage = (props.lifecyclestage || "").toLowerCase();
   let dateMs: number | null = null;
 
-  const toMs = (v: any): number => {
-    if (v == null || v === "") return NaN;
-    const n = Number(v);
-    return Number.isFinite(n) && n > 0 ? n : new Date(v).getTime();
-  };
-
   if (stage === "customer" && props.hs_lifecyclestage_customer_date) {
-    dateMs = toMs(props.hs_lifecyclestage_customer_date);
+    dateMs = toValidMs(props.hs_lifecyclestage_customer_date);
   } else if (stage === "opportunity" && props.hs_lifecyclestage_opportunity_date) {
-    dateMs = toMs(props.hs_lifecyclestage_opportunity_date);
+    dateMs = toValidMs(props.hs_lifecyclestage_opportunity_date);
   } else if (stage === "other" && props.hs_lifecyclestage_other_date) {
-    dateMs = toMs(props.hs_lifecyclestage_other_date);
+    dateMs = toValidMs(props.hs_lifecyclestage_other_date);
   } else if (stage === "lead" && props.hs_lifecyclestage_lead_date) {
-    const leadMs = toMs(props.hs_lifecyclestage_lead_date);
+    const leadMs = toValidMs(props.hs_lifecyclestage_lead_date);
     // Only count as dealer feedback if the lead stage was set >1 day after contact creation
     // (i.e. it was explicitly updated by the dealer form, not the default "lead" at creation)
-    if (leadMs - createMs > 86_400_000) dateMs = leadMs;
+    if (leadMs != null && leadMs - createMs > 86_400_000) dateMs = leadMs;
   }
 
-  return dateMs != null && Number.isFinite(dateMs) ? dateMs : null;
+  return dateMs;
 }
 
 function daysToResponseBucket(days: number): string {
@@ -175,15 +187,8 @@ Deno.serve(async (req) => {
         const props = contact.properties || {};
         if (!matchesBrand(props, brandTokens)) continue;
 
-        const rawCreate = props.createdate;
-        let createMs = 0;
-        if (rawCreate != null && rawCreate !== "") {
-          const n = Number(rawCreate);
-          createMs = Number.isFinite(n) && n > 0 ? n : new Date(rawCreate).getTime();
-        }
-        const dateKey = Number.isFinite(createMs) && createMs > 0
-          ? new Date(createMs).toISOString().split("T")[0]
-          : null;
+        const createMs = toValidMs(props.createdate) ?? 0;
+        const dateKey = toIsoDateKey(props.createdate);
 
         // Skip known data-spike date for American Whirlpool
         if (brandName === "American Whirlpool" && dateKey === "2025-11-19") continue;
