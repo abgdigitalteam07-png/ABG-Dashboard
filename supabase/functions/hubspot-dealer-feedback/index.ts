@@ -187,15 +187,8 @@ Deno.serve(async (req) => {
         const props = contact.properties || {};
         if (!matchesBrand(props, brandTokens)) continue;
 
-        const rawCreate = props.createdate;
-        let createMs = 0;
-        if (rawCreate != null && rawCreate !== "") {
-          const n = Number(rawCreate);
-          createMs = Number.isFinite(n) && n > 0 ? n : new Date(rawCreate).getTime();
-        }
-        const dateKey = Number.isFinite(createMs) && createMs > 0
-          ? new Date(createMs).toISOString().split("T")[0]
-          : null;
+        const createMs = toValidMs(props.createdate) ?? 0;
+        const dateKey = toIsoDateKey(props.createdate);
 
         // Skip known data-spike date for American Whirlpool
         if (brandName === "American Whirlpool" && dateKey === "2025-11-19") continue;
