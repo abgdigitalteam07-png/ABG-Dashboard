@@ -73,25 +73,30 @@ function toIsoDateKey(value: unknown): string | null {
   return ms == null ? null : new Date(ms).toISOString().split("T")[0];
 }
 
-// Returns the lifecycle-stage response date for a contact (null = no dealer feedback detected)
-function getResponseDate(props: Record<string, any>, createMs: number): number | null {
+// Returns dealer-feedback status for a contact.
+// customer / other / opportunity are NEVER HubSpot defaults — stage alone confirms dealer responded.
+// The date is optional and used only for response-timing analysis.
+// lead is the default stage, so we require date evidence that it was explicitly set by the form.
+function getResponse(props: Record<string, any>, createMs: number): { stage: string; ms: number | null } | null {
   const stage = (props.lifecyclestage || "").toLowerCase();
-  let dateMs: number | null = null;
 
-  if (stage === "customer" && props.hs_lifecyclestage_customer_date) {
-    dateMs = toValidMs(props.hs_lifecyclestage_customer_date);
-  } else if (stage === "opportunity" && props.hs_lifecyclestage_opportunity_date) {
-    dateMs = toValidMs(props.hs_lifecyclestage_opportunity_date);
-  } else if (stage === "other" && props.hs_lifecyclestage_other_date) {
-    dateMs = toValidMs(props.hs_lifecyclestage_other_date);
-  } else if (stage === "lead" && props.hs_lifecyclestage_lead_date) {
+  if (stage === "customer") {
+    return { stage, ms: toValidMs(props.hs_lifecyclestage_customer_date) };
+  }
+  if (stage === "opportunity") {
+    return { stage, ms: toValidMs(props.hs_lifecyclestage_opportunity_date) };
+  }
+  if (stage === "other") {
+    return { stage, ms: toValidMs(props.hs_lifecyclestage_other_date) };
+  }
+  if (stage === "lead") {
     const leadMs = toValidMs(props.hs_lifecyclestage_lead_date);
-    // Only count as dealer feedback if the lead stage was set >1 day after contact creation
-    // (i.e. it was explicitly updated by the dealer form, not the default "lead" at creation)
-    if (leadMs != null && leadMs - createMs > 86_400_000) dateMs = leadMs;
+    if (leadMs != null && createMs > 0 && leadMs - createMs > 86_400_000) {
+      return { stage, ms: leadMs };
+    }
   }
 
-  return dateMs;
+  return null;
 }
 
 function daysToResponseBucket(days: number): string {
@@ -195,22 +200,20 @@ Deno.serve(async (req) => {
 
         totalContacts++;
 
-        const stage = (props.lifecyclestage || "").toLowerCase();
-        const responseMs = getResponseDate(props, createMs);
-        const hasResponse = responseMs !== null;
-        const stageKey = hasResponse && STAGE_META[stage] ? stage : "none";
+        const response = getResponse(props, createMs);
+        const stageKey = response ? response.stage : "none";
 
         stageCounts[stageKey]++;
 
         // Daily trend — only for contacts with confirmed dealer feedback
-        if (hasResponse && dateKey && STAGE_META[stage]) {
+        if (response && dateKey) {
           if (!dailyMap[dateKey]) dailyMap[dateKey] = { customer: 0, other: 0, opportunity: 0, lead: 0 };
-          dailyMap[dateKey][stage as keyof typeof dailyMap[string]]++;
+          dailyMap[dateKey][response.stage as keyof typeof dailyMap[string]]++;
         }
 
-        // Response timing
-        if (hasResponse && createMs > 0 && responseMs) {
-          const days = Math.max(0, Math.round((responseMs - createMs) / 86_400_000));
+        // Response timing (only when we have a valid date)
+        if (response?.ms && createMs > 0) {
+          const days = Math.max(0, Math.round((response.ms - createMs) / 86_400_000));
           const bucket = daysToResponseBucket(days);
           timingBuckets[bucket] = (timingBuckets[bucket] || 0) + 1;
         }
@@ -227,9 +230,9 @@ Deno.serve(async (req) => {
             };
           }
           dealerMap[dealerEmail].total++;
-          if (hasResponse && STAGE_META[stage]) {
+          if (response) {
             dealerMap[dealerEmail].responded++;
-            dealerMap[dealerEmail][stage as "customer" | "other" | "opportunity" | "lead"]++;
+            dealerMap[dealerEmail][response.stage as "customer" | "other" | "opportunity" | "lead"]++;
           }
         }
       }
