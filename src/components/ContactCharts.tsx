@@ -718,12 +718,7 @@ export function ContactCharts({
                           {dealer.zip || "—"}
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <div className="flex flex-col items-end gap-1">
-                            <span className="font-black tabular-nums text-foreground text-sm">{dealer.count.toLocaleString()}</span>
-                            <div className="h-1.5 w-24 rounded-full bg-muted overflow-hidden">
-                              <div className="h-full rounded-full bg-[#3B82F6]" style={{ width: `${pct}%` }} />
-                            </div>
-                          </div>
+                          <span className="font-black tabular-nums text-foreground text-sm">{dealer.count.toLocaleString()}</span>
                         </td>
                         {dealerFeedbackMap && (() => {
                           const fb = dealerFeedbackMap[dealer.email];
