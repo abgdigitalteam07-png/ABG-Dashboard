@@ -85,12 +85,14 @@ function getBenchmarkLabel(metric: string, value: number): string {
 // ─── date extraction using hs_publish_date ───
 
 function extractPublishDate(email: any): string | null {
-  const hsPublishDate = email?.hs_publish_date;
-  if (hsPublishDate) {
-    const d = new Date(hsPublishDate);
-    if (!isNaN(d.getTime())) return d.toISOString().split("T")[0];
-  }
-  const candidates = [email?.publishDate, email?.publishedAt, email?.updatedAt];
+  // Check top-level AND properties.hs_publish_date (HubSpot v3 returns it in properties)
+  const candidates = [
+    email?.properties?.hs_publish_date,
+    email?.hs_publish_date,
+    email?.publishDate,
+    email?.publishedAt,
+    email?.updatedAt,
+  ];
   for (const c of candidates) {
     if (!c) continue;
     const d = new Date(typeof c === "number" ? (c < 1e12 ? c * 1000 : c) : c);
@@ -204,13 +206,9 @@ async function fetchAllEmails(token: string): Promise<any[]> {
 
     try {
       const res = await hubspotFetch(url, token);
-      const results: any[] = res.results || [];
-      // Only keep emails that have been sent or are processing/scheduled — skip pure drafts
-      const sent = results.filter((e: any) => {
-        const st = (e.state || e.properties?.state || "").toUpperCase();
-        return st === "SENT" || st === "PROCESSING" || st === "SCHEDULED" || st === "PUBLISHED";
-      });
-      all.push(...sent);
+      // Push all results — drafts are excluded downstream by date filter
+      // (they have no publishDate so extractPublishDate returns null → filtered out)
+      all.push(...(res.results || []));
       if (res.paging?.next?.after) {
         after = res.paging.next.after;
         page++;
