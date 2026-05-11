@@ -958,9 +958,13 @@ Deno.serve(async (req) => {
       );
       console.log(`Secondary brand filter by segment names: ${brandFiltered.length} emails matched for "${brandName}"`);
     } else {
-      // Primary account: filter by businessUnitId.
-      // HubSpot v3 may return businessUnitId at the top level OR inside properties —
-      // check both so emails are never silently dropped due to field placement.
+      // Primary account: filter by businessUnitId (top-level or inside properties).
+      // Log the first few BU IDs seen so mismatches are visible in Supabase logs.
+      const sampleBuIds = allRawEmails.slice(0, 5).map((e: any) =>
+        String(e.businessUnitId ?? e.properties?.businessUnitId ?? "null")
+      );
+      console.log(`Sample businessUnitIds from API: [${sampleBuIds.join(", ")}]`);
+
       for (const email of allRawEmails) {
         const rawBuId = email.businessUnitId ?? email.properties?.businessUnitId ?? null;
         const emailBuId = rawBuId !== null && rawBuId !== undefined ? String(rawBuId) : null;
@@ -968,7 +972,19 @@ Deno.serve(async (req) => {
           brandFiltered.push(email);
         }
       }
-      console.log(`Primary brand filter: ${brandFiltered.length} emails matched for "${brandName}" (buIds: ${JSON.stringify(buIds)})`);
+      console.log(`Primary brand filter (BU ID): ${brandFiltered.length} matched for "${brandName}" (expected buIds: ${JSON.stringify(buIds)})`);
+
+      // Fallback: if businessUnitId matching found nothing, try the HubSpot `brand`
+      // property label (e.g. "Maidstone | DXV" contains "maidstone").
+      // This handles brands whose emails don't have businessUnitId populated in HubSpot.
+      if (brandFiltered.length === 0) {
+        const nameToken = brandName.toLowerCase();
+        brandFiltered = allRawEmails.filter((email: any) => {
+          const brandProp = (email.properties?.brand || email.brand || "").toLowerCase();
+          return brandProp.includes(nameToken);
+        });
+        console.log(`Primary brand filter (brand label fallback): ${brandFiltered.length} matched for "${brandName}"`);
+      }
     }
 
     console.log(`Total emails after brand filter: ${brandFiltered.length}`);
