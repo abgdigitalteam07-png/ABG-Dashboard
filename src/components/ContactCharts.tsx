@@ -323,14 +323,27 @@ export function ContactCharts({
   // dealerAssignedTotal > 0 but dealerBreakdown is undefined means old function version
   const dealerBreakdownPending = dealerAssignedTotal > 0 && !data?.dealerBreakdown;
   const filteredDealers = useMemo(() => {
-    setDealerPage(0); // reset page on search change
-    return dealerSearch.trim()
+    setDealerPage(0);
+    const list = dealerSearch.trim()
       ? dealerBreakdown.filter(d =>
           d.email.toLowerCase().includes(dealerSearch.toLowerCase()) ||
           d.name.toLowerCase().includes(dealerSearch.toLowerCase()) ||
           d.state.toLowerCase().includes(dealerSearch.toLowerCase()),
         )
-      : dealerBreakdown;
+      : [...dealerBreakdown];
+
+    // When feedback data is present, sort by conversion rate (customer+other+opportunity / total)
+    if (dealerFeedbackMap) {
+      list.sort((a, b) => {
+        const fa = dealerFeedbackMap[a.email];
+        const fb = dealerFeedbackMap[b.email];
+        const convA = fa && a.count > 0 ? (fa.customer + fa.other + fa.opportunity) / a.count : -1;
+        const convB = fb && b.count > 0 ? (fb.customer + fb.other + fb.opportunity) / b.count : -1;
+        return convB - convA;
+      });
+    }
+
+    return list;
   }, [dealerBreakdown, dealerSearch]);
 
   const totalDealerPages = Math.ceil(filteredDealers.length / DEALER_PAGE_SIZE);
@@ -676,11 +689,11 @@ export function ContactCharts({
                       <span className="flex items-center justify-end gap-1.5"><TrendingUp className="h-3 w-3" />Leads</span>
                     </th>
                     {dealerFeedbackMap && <>
-                      <th className="px-3 py-3 text-right font-bold text-[10px] uppercase tracking-widest text-muted-foreground whitespace-nowrap">Rate</th>
-                      <th className="px-3 py-3 text-right font-bold text-[10px] uppercase tracking-widest text-emerald-600 whitespace-nowrap">Customer</th>
-                      <th className="px-3 py-3 text-right font-bold text-[10px] uppercase tracking-widest text-amber-500 whitespace-nowrap">Other</th>
-                      <th className="px-3 py-3 text-right font-bold text-[10px] uppercase tracking-widest text-blue-500 whitespace-nowrap">Opportunity</th>
-                      <th className="px-3 py-3 text-right font-bold text-[10px] uppercase tracking-widest text-violet-500 whitespace-nowrap">Lead</th>
+                      <th className="px-3 py-3 text-right font-bold text-[10px] uppercase tracking-widest text-muted-foreground whitespace-nowrap" title="% of leads that converted (customer + other + opportunity)">Conv. %</th>
+                      <th className="px-3 py-3 text-right font-bold text-[10px] uppercase tracking-widest text-emerald-600 whitespace-nowrap" title="Lifecycle stage: customer">Customer %</th>
+                      <th className="px-3 py-3 text-right font-bold text-[10px] uppercase tracking-widest text-amber-500 whitespace-nowrap" title="Lifecycle stage: other">Other %</th>
+                      <th className="px-3 py-3 text-right font-bold text-[10px] uppercase tracking-widest text-blue-500 whitespace-nowrap" title="Lifecycle stage: opportunity">Oppty %</th>
+                      <th className="px-3 py-3 text-right font-bold text-[10px] uppercase tracking-widest text-violet-500 whitespace-nowrap" title="Still lead — not yet converted">Lead</th>
                     </>}
                   </tr>
                 </thead>
@@ -722,6 +735,7 @@ export function ContactCharts({
                         </td>
                         {dealerFeedbackMap && (() => {
                           const fb = dealerFeedbackMap[dealer.email];
+                          const total = dealer.count || 1;
                           if (!fb) return <>
                             <td className="px-3 py-3 text-right text-[10px] text-muted-foreground/40 whitespace-nowrap">—</td>
                             <td className="px-3 py-3 text-right text-[10px] text-muted-foreground/40 whitespace-nowrap">—</td>
@@ -729,17 +743,31 @@ export function ContactCharts({
                             <td className="px-3 py-3 text-right text-[10px] text-muted-foreground/40 whitespace-nowrap">—</td>
                             <td className="px-3 py-3 text-right text-[10px] text-muted-foreground/40 whitespace-nowrap">—</td>
                           </>;
-                          const rateColor = fb.responseRate >= 60 ? "text-emerald-600 dark:text-emerald-400"
-                            : fb.responseRate >= 30 ? "text-amber-600 dark:text-amber-400"
+                          // Conversion = customer + other + opportunity (lead = not converted)
+                          const converted = fb.customer + fb.other + fb.opportunity;
+                          const convPct = Math.round((converted / total) * 100);
+                          const custPct = Math.round((fb.customer / total) * 100);
+                          const otherPct = Math.round((fb.other / total) * 100);
+                          const opptyPct = Math.round((fb.opportunity / total) * 100);
+                          const convColor = convPct >= 50 ? "text-emerald-600 dark:text-emerald-400"
+                            : convPct >= 20 ? "text-amber-600 dark:text-amber-400"
                             : "text-red-500 dark:text-red-400";
                           return <>
                             <td className="px-3 py-3 text-right whitespace-nowrap">
-                              <span className={`text-[11px] font-bold tabular-nums ${rateColor}`}>{fb.responseRate}%</span>
+                              <span className={`text-[11px] font-bold tabular-nums ${convColor}`}>{convPct}%</span>
                             </td>
-                            <td className="px-3 py-3 text-right text-[11px] tabular-nums text-emerald-600 dark:text-emerald-400 whitespace-nowrap font-semibold">{fb.customer || "—"}</td>
-                            <td className="px-3 py-3 text-right text-[11px] tabular-nums text-amber-500 whitespace-nowrap font-semibold">{fb.other || "—"}</td>
-                            <td className="px-3 py-3 text-right text-[11px] tabular-nums text-blue-500 whitespace-nowrap font-semibold">{fb.opportunity || "—"}</td>
-                            <td className="px-3 py-3 text-right text-[11px] tabular-nums text-violet-500 whitespace-nowrap font-semibold">{fb.lead || "—"}</td>
+                            <td className="px-3 py-3 text-right text-[11px] tabular-nums text-emerald-600 dark:text-emerald-400 whitespace-nowrap font-semibold">
+                              {custPct > 0 ? `${custPct}%` : "—"}
+                            </td>
+                            <td className="px-3 py-3 text-right text-[11px] tabular-nums text-amber-500 whitespace-nowrap font-semibold">
+                              {otherPct > 0 ? `${otherPct}%` : "—"}
+                            </td>
+                            <td className="px-3 py-3 text-right text-[11px] tabular-nums text-blue-500 whitespace-nowrap font-semibold">
+                              {opptyPct > 0 ? `${opptyPct}%` : "—"}
+                            </td>
+                            <td className="px-3 py-3 text-right text-[11px] tabular-nums text-violet-500 whitespace-nowrap font-semibold">
+                              {fb.lead > 0 ? fb.lead : "—"}
+                            </td>
                           </>;
                         })()}
                       </tr>
