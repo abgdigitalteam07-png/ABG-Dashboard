@@ -12,6 +12,7 @@ import { ContactCharts } from "@/components/ContactCharts";
 import { AIRecommendations } from "./AIRecommendations";
 import { CRMComparisonSection } from "./CRMComparisonTab";
 import { CRMChatPanel } from "./CRMChatPanel";
+import { DealerFeedbackSection } from "./DealerFeedbackSection";
 
 
 interface HubSpotCRMTabProps {
@@ -369,6 +370,11 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo, userEmail = "" }: HubSp
           overrideTimeSeries={isSecondaryBrand ? (secondaryStats?.timeSeries ?? undefined) : undefined}
         />
       </section>
+
+      {/* ═══ Dealer Lead Feedback — American Whirlpool only ═══ */}
+      {brand.id === "american-whirlpool" && (
+        <DealerFeedbackSection brand={brand} dateFrom={dateFrom} dateTo={dateTo} />
+      )}
 
       <AIRecommendations
         tabName="hubspot_crm"
