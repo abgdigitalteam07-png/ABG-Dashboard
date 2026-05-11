@@ -133,7 +133,7 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo, userEmail = "" }: HubSp
 
   // Dealer feedback map: email → stage counts + response rate (secondary brands only)
   const [dealerFeedbackMap, setDealerFeedbackMap] = useState<Record<string, {
-    customer: number; other: number; opportunity: number; lead: number;
+    total: number; customer: number; other: number; opportunity: number; lead: number;
     responded: number; responseRate: number;
   }> | null>(null);
 
@@ -149,7 +149,7 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo, userEmail = "" }: HubSp
       if (cancelled) return;
       const map: Record<string, any> = {};
       for (const d of (result?.dealerBreakdown ?? [])) {
-        map[d.email] = { customer: d.customer, other: d.other, opportunity: d.opportunity, lead: d.lead, responded: d.responded, responseRate: d.responseRate };
+        map[d.email] = { total: d.total, customer: d.customer, other: d.other, opportunity: d.opportunity, lead: d.lead, responded: d.responded, responseRate: d.responseRate };
       }
       setDealerFeedbackMap(map);
     }).catch(() => { /* silent — feedback columns simply won't show */ });

@@ -43,6 +43,7 @@ interface DealerRow {
 }
 
 interface DealerFeedback {
+  total: number;
   customer: number;
   other: number;
   opportunity: number;
@@ -337,8 +338,8 @@ export function ContactCharts({
       list.sort((a, b) => {
         const fa = dealerFeedbackMap[a.email];
         const fb = dealerFeedbackMap[b.email];
-        const convA = fa && a.count > 0 ? (fa.customer + fa.other + fa.opportunity) / a.count : -1;
-        const convB = fb && b.count > 0 ? (fb.customer + fb.other + fb.opportunity) / b.count : -1;
+        const convA = fa ? (fa.customer + fa.other + fa.opportunity) / (fa.total || a.count || 1) : -1;
+        const convB = fb ? (fb.customer + fb.other + fb.opportunity) / (fb.total || b.count || 1) : -1;
         return convB - convA;
       });
     }
@@ -734,7 +735,7 @@ export function ContactCharts({
                         </td>
                         {dealerFeedbackMap && (() => {
                           const fb = dealerFeedbackMap[dealer.email];
-                          const total = dealer.count || 1;
+                          const total = fb?.total || dealer.count || 1;
                           if (!fb) return <>
                             <td className="px-3 py-3 text-right text-[10px] text-muted-foreground/40 whitespace-nowrap">—</td>
                             <td className="px-3 py-3 text-right text-[10px] text-muted-foreground/40 whitespace-nowrap">—</td>
