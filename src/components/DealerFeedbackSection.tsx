@@ -7,9 +7,6 @@ import { MessageSquare, CheckCircle2, TrendingUp, Users } from "lucide-react";
 import { callFunction } from "@/lib/api-client";
 import { Brand } from "@/lib/brands";
 import { format } from "date-fns";
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from "@/components/ui/table";
 import { WaterFillLoader } from "@/components/WaterFillLoader";
 
 interface DealerFeedbackSectionProps {
@@ -152,7 +149,6 @@ export function DealerFeedbackSection({ brand, dateFrom, dateTo }: DealerFeedbac
     feedbackRate = 0,
     stageDistribution = [],
     responseTimingBuckets = [],
-    dealerBreakdown = [],
     dailyTrend = [],
   } = data;
 
@@ -165,7 +161,6 @@ export function DealerFeedbackSection({ brand, dateFrom, dateTo }: DealerFeedbac
   const hasDailyData = dailyTrend.length > 0;
 
   // Top 10 dealers by total leads
-  const topDealers = dealerBreakdown.slice(0, 10);
 
   return (
     <section className="space-y-5">
@@ -185,7 +180,7 @@ export function DealerFeedbackSection({ brand, dateFrom, dateTo }: DealerFeedbac
         <KpiCard icon={Users}          label="Total Leads"        value={fmt(totalContacts)} sub="Contacts sent to dealers" color="#3B82F6" />
         <KpiCard icon={MessageSquare}  label="Feedback Received"  value={fmt(feedbackCount)} sub="Dealers who responded"    color="#8B5CF6" />
         <KpiCard icon={CheckCircle2}   label="Response Rate"      value={`${Math.round(feedbackRate * 100)}%`} sub="Of all leads in period" color="#10B981" />
-        <KpiCard icon={TrendingUp}     label="Bought AW"          value={`${customerRate.toFixed(1)}%`} sub={`${fmt(customerCount)} confirmed sales`} color="#F59E0B" />
+        <KpiCard icon={TrendingUp}     label="Customer"           value={`${customerRate.toFixed(1)}%`} sub={`${fmt(customerCount)} confirmed customers`} color="#F59E0B" />
       </div>
 
       {/* Stage distribution + timing */}
@@ -282,78 +277,15 @@ export function DealerFeedbackSection({ brand, dateFrom, dateTo }: DealerFeedbac
                 labelFormatter={d => { try { return format(new Date(d), "MMM d, yyyy"); } catch { return d; } }}
               />
               <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
-              <Area dataKey="customer"    name="Bought AW"      stroke={STAGE_COLORS.customer}    fill={`url(#fg-customer)`}    strokeWidth={1.5} dot={false} />
-              <Area dataKey="other"       name="Bought Other"   stroke={STAGE_COLORS.other}       fill={`url(#fg-other)`}       strokeWidth={1.5} dot={false} />
-              <Area dataKey="opportunity" name="Service/Parts"  stroke={STAGE_COLORS.opportunity} fill={`url(#fg-opportunity)`} strokeWidth={1.5} dot={false} />
-              <Area dataKey="lead"        name="Still Shopping" stroke={STAGE_COLORS.lead}        fill={`url(#fg-lead)`}        strokeWidth={1.5} dot={false} />
+              <Area dataKey="customer"    name="Customer"    stroke={STAGE_COLORS.customer}    fill={`url(#fg-customer)`}    strokeWidth={1.5} dot={false} />
+              <Area dataKey="other"       name="Other"       stroke={STAGE_COLORS.other}       fill={`url(#fg-other)`}       strokeWidth={1.5} dot={false} />
+              <Area dataKey="opportunity" name="Opportunity"  stroke={STAGE_COLORS.opportunity} fill={`url(#fg-opportunity)`} strokeWidth={1.5} dot={false} />
+              <Area dataKey="lead"        name="Lead"        stroke={STAGE_COLORS.lead}        fill={`url(#fg-lead)`}        strokeWidth={1.5} dot={false} />
             </AreaChart>
           </ResponsiveContainer>
         </ChartCard>
       )}
 
-      {/* Dealer breakdown table */}
-      {topDealers.length > 0 && (
-        <ChartCard
-          title="Dealer Response Breakdown"
-          subtitle="Top 10 dealers by lead volume — click headers to sort. Response rate = forms submitted ÷ leads assigned."
-        >
-          <div className="overflow-x-auto -mx-6 px-6">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="text-xs">Dealer</TableHead>
-                  <TableHead className="text-xs text-right">Total Leads</TableHead>
-                  <TableHead className="text-xs text-right">Responded</TableHead>
-                  <TableHead className="text-xs text-right">Response Rate</TableHead>
-                  <TableHead className="text-xs text-right" style={{ color: STAGE_COLORS.customer }}>Bought AW</TableHead>
-                  <TableHead className="text-xs text-right" style={{ color: STAGE_COLORS.other }}>Other Brand</TableHead>
-                  <TableHead className="text-xs text-right" style={{ color: STAGE_COLORS.opportunity }}>Service/Parts</TableHead>
-                  <TableHead className="text-xs text-right" style={{ color: STAGE_COLORS.lead }}>Still Shopping</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {topDealers.map((dealer: any) => (
-                  <TableRow key={dealer.email} className="hover:bg-muted/30 transition-colors">
-                    <TableCell className="py-2">
-                      <p className="text-xs font-semibold text-foreground leading-tight">
-                        {dealer.name || dealer.email}
-                      </p>
-                      {dealer.name && (
-                        <p className="text-[10px] text-muted-foreground leading-tight">{dealer.email}</p>
-                      )}
-                      {dealer.state && (
-                        <span className="mt-0.5 inline-block rounded bg-muted px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-muted-foreground">
-                          {dealer.state}
-                        </span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right text-xs tabular-nums">{dealer.total.toLocaleString()}</TableCell>
-                    <TableCell className="text-right text-xs tabular-nums">{dealer.responded.toLocaleString()}</TableCell>
-                    <TableCell className="text-right text-xs tabular-nums">
-                      <span className={`font-semibold ${
-                        dealer.responseRate >= 60 ? "text-emerald-600 dark:text-emerald-400" :
-                        dealer.responseRate >= 30 ? "text-amber-600 dark:text-amber-400" :
-                        "text-red-600 dark:text-red-400"
-                      }`}>
-                        {dealer.responseRate}%
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right text-xs tabular-nums">{dealer.customer.toLocaleString()}</TableCell>
-                    <TableCell className="text-right text-xs tabular-nums">{dealer.other.toLocaleString()}</TableCell>
-                    <TableCell className="text-right text-xs tabular-nums">{dealer.opportunity.toLocaleString()}</TableCell>
-                    <TableCell className="text-right text-xs tabular-nums">{dealer.lead.toLocaleString()}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-          {dealerBreakdown.length > 10 && (
-            <p className="mt-3 text-center text-[11px] text-muted-foreground">
-              Showing top 10 of {dealerBreakdown.length} dealers by lead volume.
-            </p>
-          )}
-        </ChartCard>
-      )}
     </section>
   );
 }

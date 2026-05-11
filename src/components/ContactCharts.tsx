@@ -42,6 +42,15 @@ interface DealerRow {
   count: number;
 }
 
+interface DealerFeedback {
+  customer: number;
+  other: number;
+  opportunity: number;
+  lead: number;
+  responded: number;
+  responseRate: number;
+}
+
 interface ContactChartsProps {
   brand: Brand;
   dateFrom: Date;
@@ -66,6 +75,7 @@ interface ContactChartsProps {
   overrideAssignedTotal?: number;
   overrideUnassignedTotal?: number;
   overrideTimeSeries?: Record<string, number>;
+  dealerFeedbackMap?: Record<string, DealerFeedback>;
 }
 
 type Granularity = "day" | "week" | "month" | "quarter";
@@ -292,6 +302,7 @@ export function ContactCharts({
   overrideAssignedTotal,
   overrideUnassignedTotal,
   overrideTimeSeries,
+  dealerFeedbackMap,
 }: ContactChartsProps) {
   const [granularity, setGranularity] = useState<Granularity>("week");
   const [dealerSearch, setDealerSearch] = useState("");
@@ -661,9 +672,16 @@ export function ContactCharts({
                       <span className="flex items-center gap-1.5"><MapPin className="h-3 w-3" />State</span>
                     </th>
                     <th className="px-4 py-3 text-left font-bold text-[10px] uppercase tracking-widest text-muted-foreground hidden md:table-cell">ZIP</th>
-                    <th className="px-4 py-3 text-right font-bold text-[10px] uppercase tracking-widest text-muted-foreground">
+                    <th className="px-4 py-3 text-right font-bold text-[10px] uppercase tracking-widest text-muted-foreground whitespace-nowrap">
                       <span className="flex items-center justify-end gap-1.5"><TrendingUp className="h-3 w-3" />Leads</span>
                     </th>
+                    {dealerFeedbackMap && <>
+                      <th className="px-3 py-3 text-right font-bold text-[10px] uppercase tracking-widest text-muted-foreground whitespace-nowrap">Rate</th>
+                      <th className="px-3 py-3 text-right font-bold text-[10px] uppercase tracking-widest text-emerald-600 whitespace-nowrap">Customer</th>
+                      <th className="px-3 py-3 text-right font-bold text-[10px] uppercase tracking-widest text-amber-500 whitespace-nowrap">Other</th>
+                      <th className="px-3 py-3 text-right font-bold text-[10px] uppercase tracking-widest text-blue-500 whitespace-nowrap">Opportunity</th>
+                      <th className="px-3 py-3 text-right font-bold text-[10px] uppercase tracking-widest text-violet-500 whitespace-nowrap">Lead</th>
+                    </>}
                   </tr>
                 </thead>
                 <tbody>
@@ -707,6 +725,28 @@ export function ContactCharts({
                             </div>
                           </div>
                         </td>
+                        {dealerFeedbackMap && (() => {
+                          const fb = dealerFeedbackMap[dealer.email];
+                          if (!fb) return <>
+                            <td className="px-3 py-3 text-right text-[10px] text-muted-foreground/40 whitespace-nowrap">—</td>
+                            <td className="px-3 py-3 text-right text-[10px] text-muted-foreground/40 whitespace-nowrap">—</td>
+                            <td className="px-3 py-3 text-right text-[10px] text-muted-foreground/40 whitespace-nowrap">—</td>
+                            <td className="px-3 py-3 text-right text-[10px] text-muted-foreground/40 whitespace-nowrap">—</td>
+                            <td className="px-3 py-3 text-right text-[10px] text-muted-foreground/40 whitespace-nowrap">—</td>
+                          </>;
+                          const rateColor = fb.responseRate >= 60 ? "text-emerald-600 dark:text-emerald-400"
+                            : fb.responseRate >= 30 ? "text-amber-600 dark:text-amber-400"
+                            : "text-red-500 dark:text-red-400";
+                          return <>
+                            <td className="px-3 py-3 text-right whitespace-nowrap">
+                              <span className={`text-[11px] font-bold tabular-nums ${rateColor}`}>{fb.responseRate}%</span>
+                            </td>
+                            <td className="px-3 py-3 text-right text-[11px] tabular-nums text-emerald-600 dark:text-emerald-400 whitespace-nowrap font-semibold">{fb.customer || "—"}</td>
+                            <td className="px-3 py-3 text-right text-[11px] tabular-nums text-amber-500 whitespace-nowrap font-semibold">{fb.other || "—"}</td>
+                            <td className="px-3 py-3 text-right text-[11px] tabular-nums text-blue-500 whitespace-nowrap font-semibold">{fb.opportunity || "—"}</td>
+                            <td className="px-3 py-3 text-right text-[11px] tabular-nums text-violet-500 whitespace-nowrap font-semibold">{fb.lead || "—"}</td>
+                          </>;
+                        })()}
                       </tr>
                     );
                   })}

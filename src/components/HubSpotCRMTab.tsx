@@ -5,7 +5,7 @@ import { WaterFillLoader } from "@/components/WaterFillLoader";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
-import { fetchHubSpotData } from "@/lib/api-client";
+import { fetchHubSpotData, callFunction } from "@/lib/api-client";
 import { Brand } from "@/lib/brands";
 import { Users, TrendingUp, UserCheck, UserX, RefreshCw } from "lucide-react";
 import { ContactCharts } from "@/components/ContactCharts";
@@ -129,8 +129,32 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo, userEmail = "" }: HubSp
   const showLoader = useFirstLoad(loading);
 
   const [secondaryStats, setSecondaryStats] = useState<SecondaryStats | null>(null);
-  // Reset lifted stats when brand or date range changes
   useEffect(() => { setSecondaryStats(null); }, [brand.id, dateFrom.getTime(), dateTo.getTime()]);
+
+  // Dealer feedback map: email → stage counts + response rate (secondary brands only)
+  const [dealerFeedbackMap, setDealerFeedbackMap] = useState<Record<string, {
+    customer: number; other: number; opportunity: number; lead: number;
+    responded: number; responseRate: number;
+  }> | null>(null);
+
+  useEffect(() => {
+    if (!isSecondaryBrand) return;
+    let cancelled = false;
+    setDealerFeedbackMap(null);
+    callFunction("hubspot-dealer-feedback", {
+      brandName: brand.name,
+      startDate: dateFrom.toISOString().split("T")[0],
+      endDate: dateTo.toISOString().split("T")[0],
+    }).then((result: any) => {
+      if (cancelled) return;
+      const map: Record<string, any> = {};
+      for (const d of (result?.dealerBreakdown ?? [])) {
+        map[d.email] = { customer: d.customer, other: d.other, opportunity: d.opportunity, lead: d.lead, responded: d.responded, responseRate: d.responseRate };
+      }
+      setDealerFeedbackMap(map);
+    }).catch(() => { /* silent — feedback columns simply won't show */ });
+    return () => { cancelled = true; };
+  }, [brand.id, isSecondaryBrand, dateFrom.getTime(), dateTo.getTime()]);
 
   useEffect(() => {
     let cancelled = false;
@@ -368,11 +392,12 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo, userEmail = "" }: HubSp
           overrideAssignedTotal={isSecondaryBrand ? (secondaryStats?.assigned ?? undefined) : undefined}
           overrideUnassignedTotal={isSecondaryBrand ? (secondaryStats?.unassigned ?? undefined) : undefined}
           overrideTimeSeries={isSecondaryBrand ? (secondaryStats?.timeSeries ?? undefined) : undefined}
+          dealerFeedbackMap={isSecondaryBrand ? (dealerFeedbackMap ?? undefined) : undefined}
         />
       </section>
 
-      {/* ═══ Dealer Lead Feedback — American Whirlpool only ═══ */}
-      {brand.id === "american-whirlpool" && (
+      {/* ═══ Dealer Lead Feedback — all secondary brands ═══ */}
+      {isSecondaryBrand && (
         <DealerFeedbackSection brand={brand} dateFrom={dateFrom} dateTo={dateTo} />
       )}
 
