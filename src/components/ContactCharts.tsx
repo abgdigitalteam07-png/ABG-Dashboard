@@ -689,11 +689,10 @@ export function ContactCharts({
                       <span className="flex items-center justify-end gap-1.5"><TrendingUp className="h-3 w-3" />Leads</span>
                     </th>
                     {dealerFeedbackMap && <>
-                      <th className="px-3 py-3 text-right font-bold text-[10px] uppercase tracking-widest text-muted-foreground whitespace-nowrap" title="% of leads that converted (customer + other + opportunity)">Conv. %</th>
-                      <th className="px-3 py-3 text-right font-bold text-[10px] uppercase tracking-widest text-emerald-600 whitespace-nowrap" title="Lifecycle stage: customer">Customer %</th>
-                      <th className="px-3 py-3 text-right font-bold text-[10px] uppercase tracking-widest text-amber-500 whitespace-nowrap" title="Lifecycle stage: other">Other %</th>
-                      <th className="px-3 py-3 text-right font-bold text-[10px] uppercase tracking-widest text-blue-500 whitespace-nowrap" title="Lifecycle stage: opportunity">Oppty %</th>
-                      <th className="px-3 py-3 text-right font-bold text-[10px] uppercase tracking-widest text-violet-500 whitespace-nowrap" title="Still lead — not yet converted">Lead</th>
+                      <th className="px-3 py-3 text-right font-bold text-[10px] uppercase tracking-widest text-emerald-600 whitespace-nowrap" title="Lifecycle stage: customer">Customer</th>
+                      <th className="px-3 py-3 text-right font-bold text-[10px] uppercase tracking-widest text-amber-500 whitespace-nowrap" title="Lifecycle stage: other">Other</th>
+                      <th className="px-3 py-3 text-right font-bold text-[10px] uppercase tracking-widest text-blue-500 whitespace-nowrap" title="Lifecycle stage: opportunity">Opportunity</th>
+                      <th className="px-3 py-3 text-right font-bold text-[10px] uppercase tracking-widest text-muted-foreground whitespace-nowrap" title="(customer + other + opportunity) / leads sent">Feedback %</th>
                     </>}
                   </tr>
                 </thead>
@@ -741,32 +740,24 @@ export function ContactCharts({
                             <td className="px-3 py-3 text-right text-[10px] text-muted-foreground/40 whitespace-nowrap">—</td>
                             <td className="px-3 py-3 text-right text-[10px] text-muted-foreground/40 whitespace-nowrap">—</td>
                             <td className="px-3 py-3 text-right text-[10px] text-muted-foreground/40 whitespace-nowrap">—</td>
-                            <td className="px-3 py-3 text-right text-[10px] text-muted-foreground/40 whitespace-nowrap">—</td>
                           </>;
-                          // Conversion = customer + other + opportunity (lead = not converted)
                           const converted = fb.customer + fb.other + fb.opportunity;
-                          const convPct = Math.round((converted / total) * 100);
-                          const custPct = Math.round((fb.customer / total) * 100);
-                          const otherPct = Math.round((fb.other / total) * 100);
-                          const opptyPct = Math.round((fb.opportunity / total) * 100);
-                          const convColor = convPct >= 50 ? "text-emerald-600 dark:text-emerald-400"
-                            : convPct >= 20 ? "text-amber-600 dark:text-amber-400"
+                          const feedbackPct = Math.round((converted / total) * 100);
+                          const feedbackColor = feedbackPct >= 50 ? "text-emerald-600 dark:text-emerald-400"
+                            : feedbackPct >= 20 ? "text-amber-600 dark:text-amber-400"
                             : "text-red-500 dark:text-red-400";
                           return <>
-                            <td className="px-3 py-3 text-right whitespace-nowrap">
-                              <span className={`text-[11px] font-bold tabular-nums ${convColor}`}>{convPct}%</span>
-                            </td>
                             <td className="px-3 py-3 text-right text-[11px] tabular-nums text-emerald-600 dark:text-emerald-400 whitespace-nowrap font-semibold">
-                              {custPct > 0 ? `${custPct}%` : "—"}
+                              {fb.customer > 0 ? fb.customer : "—"}
                             </td>
                             <td className="px-3 py-3 text-right text-[11px] tabular-nums text-amber-500 whitespace-nowrap font-semibold">
-                              {otherPct > 0 ? `${otherPct}%` : "—"}
+                              {fb.other > 0 ? fb.other : "—"}
                             </td>
                             <td className="px-3 py-3 text-right text-[11px] tabular-nums text-blue-500 whitespace-nowrap font-semibold">
-                              {opptyPct > 0 ? `${opptyPct}%` : "—"}
+                              {fb.opportunity > 0 ? fb.opportunity : "—"}
                             </td>
-                            <td className="px-3 py-3 text-right text-[11px] tabular-nums text-violet-500 whitespace-nowrap font-semibold">
-                              {fb.lead > 0 ? fb.lead : "—"}
+                            <td className="px-3 py-3 text-right whitespace-nowrap">
+                              <span className={`text-[11px] font-bold tabular-nums ${feedbackColor}`}>{feedbackPct}%</span>
                             </td>
                           </>;
                         })()}
