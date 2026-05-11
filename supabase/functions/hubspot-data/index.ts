@@ -118,7 +118,7 @@ const BRAND_TO_BU: Record<string, string[]> = {
   IMI: ["1982890"],
   "Laurel Mountain": ["1982879"],
   MAAX: ["1982891"],
-  Maidstone: ["1982892"],
+  Maidstone: ["3564950"],
   Neptune: ["1690061"],
   RBS: ["1982893"],
   Swan: ["843133"],
