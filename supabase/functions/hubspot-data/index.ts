@@ -183,7 +183,11 @@ function emailMatchesSecondaryBrand(email: any, brandName: string, listIdToName:
   return keywords.some((kw) => emailName.includes(kw));
 }
 
-// ─── fetch all published emails ───
+// ─── fetch all sent/published emails ───
+// NOTE: Do NOT use isPublished=true — in HubSpot v3, SENT emails have state=SENT
+// (not PUBLISHED), so isPublished=true silently drops all sent one-time emails.
+// We fetch without that filter and rely on date-range filtering downstream.
+// businessUnitId is explicitly requested so it is always present in the response.
 
 async function fetchAllEmails(token: string): Promise<any[]> {
   const all: any[] = [];
@@ -192,14 +196,21 @@ async function fetchAllEmails(token: string): Promise<any[]> {
 
   while (page < 50) {
     let url =
-      "/marketing/v3/emails?limit=100&orderBy=-publishDate&isPublished=true" +
+      "/marketing/v3/emails?limit=100&orderBy=-publishDate" +
       "&property=hs_publish_date&property=hs_published_by_name&property=brand" +
-      "&property=state&property=subcategory&property=hs_email_included_list_ids";
+      "&property=state&property=subcategory&property=hs_email_included_list_ids" +
+      "&property=businessUnitId";
     if (after) url += `&after=${after}`;
 
     try {
       const res = await hubspotFetch(url, token);
-      all.push(...(res.results || []));
+      const results: any[] = res.results || [];
+      // Only keep emails that have been sent or are processing/scheduled — skip pure drafts
+      const sent = results.filter((e: any) => {
+        const st = (e.state || e.properties?.state || "").toUpperCase();
+        return st === "SENT" || st === "PROCESSING" || st === "SCHEDULED" || st === "PUBLISHED";
+      });
+      all.push(...sent);
       if (res.paging?.next?.after) {
         after = res.paging.next.after;
         page++;
@@ -212,7 +223,7 @@ async function fetchAllEmails(token: string): Promise<any[]> {
     }
   }
 
-  console.log(`Fetched ${all.length} published emails via v3 API`);
+  console.log(`Fetched ${all.length} sent/published emails via v3 API`);
   return all;
 }
 
@@ -291,7 +302,8 @@ async function computeStats(
 
         const publishDate = extractPublishDate(email) ?? "";
         const sender = email?.publishedByName || "";
-        const emailBuId = String(email.businessUnitId ?? "0");
+        const rawBuId2 = email.businessUnitId ?? email.properties?.businessUnitId ?? "0";
+        const emailBuId = String(rawBuId2);
         const displayBrand = BU_TO_BRAND[emailBuId] || brandName;
 
         const state = email?.state || email?.properties?.state || "PUBLISHED";
@@ -407,7 +419,7 @@ Deno.serve(async (req) => {
       const allEmails = await fetchAllEmails(token);
       const buMap: Record<string, { fromNames: Set<string>; names: string[] }> = {};
       for (const email of allEmails) {
-        const buId = email.businessUnitId || "none";
+        const buId = String(email.businessUnitId ?? email.properties?.businessUnitId ?? "none");
         if (!buMap[buId]) buMap[buId] = { fromNames: new Set(), names: [] };
         buMap[buId].fromNames.add(email?.from?.fromName || "Unknown");
         if (buMap[buId].names.length < 3) buMap[buId].names.push(email?.name || "Untitled");
@@ -946,13 +958,17 @@ Deno.serve(async (req) => {
       );
       console.log(`Secondary brand filter by segment names: ${brandFiltered.length} emails matched for "${brandName}"`);
     } else {
-      // Primary account: filter by businessUnitId
+      // Primary account: filter by businessUnitId.
+      // HubSpot v3 may return businessUnitId at the top level OR inside properties —
+      // check both so emails are never silently dropped due to field placement.
       for (const email of allRawEmails) {
-        const emailBuId = String(email.businessUnitId ?? "0");
-        if (buIds && buIds.includes(emailBuId)) {
+        const rawBuId = email.businessUnitId ?? email.properties?.businessUnitId ?? null;
+        const emailBuId = rawBuId !== null && rawBuId !== undefined ? String(rawBuId) : null;
+        if (buIds && emailBuId !== null && buIds.includes(emailBuId)) {
           brandFiltered.push(email);
         }
       }
+      console.log(`Primary brand filter: ${brandFiltered.length} emails matched for "${brandName}" (buIds: ${JSON.stringify(buIds)})`);
     }
 
     console.log(`Total emails after brand filter: ${brandFiltered.length}`);
