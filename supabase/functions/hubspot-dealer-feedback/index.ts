@@ -60,20 +60,26 @@ function getResponseDate(props: Record<string, any>, createMs: number): number |
   const stage = (props.lifecyclestage || "").toLowerCase();
   let dateMs: number | null = null;
 
+  const toMs = (v: any): number => {
+    if (v == null || v === "") return NaN;
+    const n = Number(v);
+    return Number.isFinite(n) && n > 0 ? n : new Date(v).getTime();
+  };
+
   if (stage === "customer" && props.hs_lifecyclestage_customer_date) {
-    dateMs = Number(props.hs_lifecyclestage_customer_date);
+    dateMs = toMs(props.hs_lifecyclestage_customer_date);
   } else if (stage === "opportunity" && props.hs_lifecyclestage_opportunity_date) {
-    dateMs = Number(props.hs_lifecyclestage_opportunity_date);
+    dateMs = toMs(props.hs_lifecyclestage_opportunity_date);
   } else if (stage === "other" && props.hs_lifecyclestage_other_date) {
-    dateMs = Number(props.hs_lifecyclestage_other_date);
+    dateMs = toMs(props.hs_lifecyclestage_other_date);
   } else if (stage === "lead" && props.hs_lifecyclestage_lead_date) {
-    const leadMs = Number(props.hs_lifecyclestage_lead_date);
+    const leadMs = toMs(props.hs_lifecyclestage_lead_date);
     // Only count as dealer feedback if the lead stage was set >1 day after contact creation
     // (i.e. it was explicitly updated by the dealer form, not the default "lead" at creation)
     if (leadMs - createMs > 86_400_000) dateMs = leadMs;
   }
 
-  return dateMs;
+  return dateMs != null && Number.isFinite(dateMs) ? dateMs : null;
 }
 
 function daysToResponseBucket(days: number): string {
