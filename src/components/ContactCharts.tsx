@@ -730,9 +730,20 @@ export function ContactCharts({
                         <td className="px-4 py-3 hidden md:table-cell text-muted-foreground font-mono text-[10px]">
                           {dealer.zip || "—"}
                         </td>
+                        {dealerFeedbackMap && (() => {
+                          const fb = dealerFeedbackMap[dealer.email];
+                          const total = fb?.total || dealer.count || 1;
+                          return (
+                            <td className="px-4 py-3 text-right">
+                              <span className="font-black tabular-nums text-foreground text-sm">{total.toLocaleString()}</span>
+                            </td>
+                          );
+                        })()}
+                        {!dealerFeedbackMap && (
                         <td className="px-4 py-3 text-right">
                           <span className="font-black tabular-nums text-foreground text-sm">{dealer.count.toLocaleString()}</span>
                         </td>
+                        )}
                         {dealerFeedbackMap && (() => {
                           const fb = dealerFeedbackMap[dealer.email];
                           const total = fb?.total || dealer.count || 1;
