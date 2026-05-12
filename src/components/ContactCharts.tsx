@@ -76,7 +76,8 @@ interface ContactChartsProps {
   overrideAssignedTotal?: number;
   overrideUnassignedTotal?: number;
   overrideTimeSeries?: Record<string, number>;
-  dealerFeedbackMap?: Record<string, DealerFeedback>;
+  /** undefined = primary brand (no feedback columns); null = secondary brand loading; object = loaded */
+  dealerFeedbackMap?: Record<string, DealerFeedback> | null;
 }
 
 type Granularity = "day" | "week" | "month" | "quarter";
@@ -688,7 +689,7 @@ export function ContactCharts({
                     <th className="px-4 py-3 text-right font-bold text-[10px] uppercase tracking-widest text-muted-foreground whitespace-nowrap">
                       <span className="flex items-center justify-end gap-1.5"><TrendingUp className="h-3 w-3" />Leads</span>
                     </th>
-                    {dealerFeedbackMap && <>
+                    {dealerFeedbackMap !== undefined && <>
                       <th className="px-3 py-3 text-right font-bold text-[10px] uppercase tracking-widest text-emerald-600 whitespace-nowrap" title="Lifecycle stage: customer">Customer</th>
                       <th className="px-3 py-3 text-right font-bold text-[10px] uppercase tracking-widest text-amber-500 whitespace-nowrap" title="Lifecycle stage: other">Other</th>
                       <th className="px-3 py-3 text-right font-bold text-[10px] uppercase tracking-widest text-blue-500 whitespace-nowrap" title="Lifecycle stage: opportunity">Opportunity</th>
@@ -729,23 +730,25 @@ export function ContactCharts({
                         <td className="px-4 py-3 hidden md:table-cell text-muted-foreground font-mono text-[10px]">
                           {dealer.zip || "—"}
                         </td>
-                        {dealerFeedbackMap ? (() => {
-                          const fb = dealerFeedbackMap[dealer.email];
-                          // Use fb.total when available — the feedback function filters by brand
-                          // so its per-dealer total is more accurate than dealer.count (which may
-                          // include contacts from other brands assigned to the same dealer).
+                        {(() => {
+                          // When feedback map is loaded, use fb.total (brand-filtered, more accurate).
+                          // When null (loading) or undefined (primary brand), fall back to dealer.count.
+                          const fb = dealerFeedbackMap != null ? dealerFeedbackMap[dealer.email] : undefined;
                           const leadsCount = fb?.total ?? dealer.count;
                           return (
                             <td className="px-4 py-3 text-right">
                               <span className="font-black tabular-nums text-foreground text-sm">{leadsCount.toLocaleString()}</span>
                             </td>
                           );
-                        })() : (
-                          <td className="px-4 py-3 text-right">
-                            <span className="font-black tabular-nums text-foreground text-sm">{dealer.count.toLocaleString()}</span>
-                          </td>
-                        )}
-                        {dealerFeedbackMap && (() => {
+                        })()}
+                        {dealerFeedbackMap !== undefined && (() => {
+                          // null = still loading → show skeleton pulse cells
+                          if (dealerFeedbackMap === null) return <>
+                            <td className="px-3 py-3 text-right whitespace-nowrap"><Skeleton className="h-3 w-6 ml-auto" /></td>
+                            <td className="px-3 py-3 text-right whitespace-nowrap"><Skeleton className="h-3 w-6 ml-auto" /></td>
+                            <td className="px-3 py-3 text-right whitespace-nowrap"><Skeleton className="h-3 w-6 ml-auto" /></td>
+                            <td className="px-3 py-3 text-right whitespace-nowrap"><Skeleton className="h-3 w-8 ml-auto" /></td>
+                          </>;
                           const fb = dealerFeedbackMap[dealer.email];
                           // Denominator: same fb.total for consistency with the LEADS display.
                           const total = fb?.total || dealer.count || 1;

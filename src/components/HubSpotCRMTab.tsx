@@ -392,7 +392,7 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo, userEmail = "" }: HubSp
           overrideAssignedTotal={isSecondaryBrand ? (secondaryStats?.assigned ?? undefined) : undefined}
           overrideUnassignedTotal={isSecondaryBrand ? (secondaryStats?.unassigned ?? undefined) : undefined}
           overrideTimeSeries={isSecondaryBrand ? (secondaryStats?.timeSeries ?? undefined) : undefined}
-          dealerFeedbackMap={isSecondaryBrand ? (dealerFeedbackMap ?? undefined) : undefined}
+          dealerFeedbackMap={isSecondaryBrand ? dealerFeedbackMap : undefined}
         />
       </section>
 
