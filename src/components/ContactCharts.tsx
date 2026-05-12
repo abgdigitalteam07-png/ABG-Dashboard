@@ -669,9 +669,8 @@ export function ContactCharts({
         ) : dealerBreakdown.length === 0 ? (
           <p className="py-12 text-center text-sm text-muted-foreground">No assigned dealers for {brand.name} in this period</p>
         ) : (
-          <div className="flex flex-col lg:flex-row gap-0">
-            {/* ── Left: table ─────────────────────────────────────────── */}
-            <div className="flex-1 overflow-x-auto">
+          <div>
+            <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-border bg-muted/30">
@@ -817,67 +816,6 @@ export function ContactCharts({
               )}
             </div>
 
-            {/* ── Right: Top 10 bar chart ──────────────────────────────── */}
-            {dealerBreakdown.length >= 3 && (
-              <div className="lg:w-[340px] shrink-0 border-t lg:border-t-0 lg:border-l border-border p-4 flex flex-col gap-3">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-1">
-                  Top 10 Dealers by Lead Volume
-                </p>
-                <ResponsiveContainer width="100%" height={Math.min(dealerBreakdown.slice(0, 10).length * 36, 360)}>
-                  <BarChart
-                    data={dealerBreakdown.slice(0, 10).map(d => ({
-                      name: d.name || d.email.split("@")[0],
-                      count: d.count,
-                      state: d.state,
-                    }))}
-                    layout="vertical"
-                    margin={{ left: 0, right: 36, top: 4, bottom: 4 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={gridColor} />
-                    <XAxis type="number" tick={axisStyle} tickLine={false} axisLine={false} allowDecimals={false} />
-                    <YAxis
-                      type="category"
-                      dataKey="name"
-                      tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))", textAnchor: "end" }}
-                      width={140}
-                      tickLine={false}
-                      axisLine={false}
-                      tickFormatter={v => v.length > 20 ? v.slice(0, 19) + "…" : v}
-                    />
-                    <Tooltip
-                      cursor={{ fill: "hsl(var(--muted)/0.4)" }}
-                      content={({ active, payload }) => {
-                        if (!active || !payload?.length) return null;
-                        const d = payload[0]?.payload;
-                        return (
-                          <div className="rounded-xl border border-border bg-card shadow-xl px-3 py-2.5 text-xs space-y-1">
-                            <p className="font-bold text-foreground">{d?.name}</p>
-                            {d?.state && <p className="text-muted-foreground">State: <span className="font-semibold text-foreground">{d.state}</span></p>}
-                            <p className="text-muted-foreground">Leads: <span className="font-black text-[#3B82F6]">{payload[0]?.value?.toLocaleString()}</span></p>
-                          </div>
-                        );
-                      }}
-                    />
-                    <Bar dataKey="count" radius={[0, 4, 4, 0]} maxBarSize={24}>
-                      {dealerBreakdown.slice(0, 10).map((_, i) => (
-                        <Cell key={i} fill={
-                          i === 0 ? "#3B82F6" :
-                          i === 1 ? "#60A5FA" :
-                          i === 2 ? "#93C5FD" :
-                          "hsl(var(--muted-foreground)/0.25)"
-                        } />
-                      ))}
-                      <LabelList
-                        dataKey="count"
-                        position="right"
-                        style={{ fontSize: 10, fill: "hsl(var(--muted-foreground))", fontVariantNumeric: "tabular-nums" }}
-                        formatter={(v: number) => v.toLocaleString()}
-                      />
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            )}
           </div>
         )}
       </div>}

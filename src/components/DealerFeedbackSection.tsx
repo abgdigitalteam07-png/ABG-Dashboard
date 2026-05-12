@@ -183,74 +183,42 @@ export function DealerFeedbackSection({ brand, dateFrom, dateTo }: DealerFeedbac
         <KpiCard icon={TrendingUp}     label="Customer"           value={`${customerRate.toFixed(1)}%`} sub={`${fmt(customerCount)} confirmed customers`} color="#F59E0B" />
       </div>
 
-      {/* Stage distribution + timing */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* Donut — stage breakdown */}
-        <ChartCard
-          title="Lead Outcome Breakdown"
-          subtitle="Distribution of lifecycle stages set by dealers via the feedback form"
-        >
-          {donutData.length > 0 ? (
-            <div className="flex flex-col gap-4">
-              <ResponsiveContainer width="100%" height={220}>
-                <PieChart>
-                  <Pie
-                    data={donutData}
-                    dataKey="count"
-                    nameKey="label"
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={90}
-                    paddingAngle={2}
-                  >
-                    {donutData.map((entry: any) => (
-                      <Cell key={entry.stage} fill={STAGE_COLORS[entry.stage] ?? entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip content={<ChartTooltip />} />
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="grid grid-cols-2 gap-2">
-                {donutData.map((entry: any) => (
-                  <div key={entry.stage} className="flex items-center gap-2 rounded-lg bg-muted/40 px-3 py-2">
-                    <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: STAGE_COLORS[entry.stage] ?? entry.color }} />
-                    <div className="min-w-0">
-                      <p className="text-[11px] font-semibold text-foreground truncate">{entry.label}</p>
-                      <p className="text-[10px] text-muted-foreground">
-                        {entry.count.toLocaleString()}
-                        {totalContacts > 0 && ` · ${((entry.count / totalContacts) * 100).toFixed(1)}%`}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <p className="py-10 text-center text-sm text-muted-foreground">No feedback data for this period.</p>
-          )}
-        </ChartCard>
-
-        {/* Bar — response timing */}
-        <ChartCard
-          title="Response Timing"
-          subtitle="When dealers submitted feedback relative to when the lead was created"
-        >
-          {hasTimingData ? (
-            <ResponsiveContainer width="100%" height={340}>
-              <BarChart data={responseTimingBuckets} margin={{ left: 0, right: 8, top: 4, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
-                <XAxis dataKey="bucket" tick={{ ...axisStyle, fontSize: 10 }} tickLine={false} axisLine={false} />
-                <YAxis tick={axisStyle} tickLine={false} axisLine={false} allowDecimals={false} />
+      {/* Stage distribution — donut */}
+      <ChartCard
+        title="Lead Outcome Breakdown"
+        subtitle="Distribution of lifecycle stages set by dealers via the feedback form"
+      >
+        {donutData.length > 0 ? (
+          <div className="flex flex-col sm:flex-row gap-6 items-center">
+            <ResponsiveContainer width={220} height={220}>
+              <PieChart>
+                <Pie data={donutData} dataKey="count" nameKey="label" cx="50%" cy="50%" innerRadius={60} outerRadius={90} paddingAngle={2}>
+                  {donutData.map((entry: any) => (
+                    <Cell key={entry.stage} fill={STAGE_COLORS[entry.stage] ?? entry.color} />
+                  ))}
+                </Pie>
                 <Tooltip content={<ChartTooltip />} />
-                <Bar dataKey="count" name="Responses" fill={TIMING_COLOR} radius={[4, 4, 0, 0]} />
-              </BarChart>
+              </PieChart>
             </ResponsiveContainer>
-          ) : (
-            <p className="py-10 text-center text-sm text-muted-foreground">No timing data available for this period.</p>
-          )}
-        </ChartCard>
-      </div>
+            <div className="grid grid-cols-2 gap-2 flex-1">
+              {donutData.map((entry: any) => (
+                <div key={entry.stage} className="flex items-center gap-2 rounded-lg bg-muted/40 px-3 py-2">
+                  <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ background: STAGE_COLORS[entry.stage] ?? entry.color }} />
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-semibold text-foreground truncate">{entry.label}</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {entry.count.toLocaleString()}
+                      {totalContacts > 0 && ` · ${((entry.count / totalContacts) * 100).toFixed(1)}%`}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <p className="py-10 text-center text-sm text-muted-foreground">No feedback data for this period.</p>
+        )}
+      </ChartCard>
 
       {/* Daily trend */}
       {hasDailyData && (

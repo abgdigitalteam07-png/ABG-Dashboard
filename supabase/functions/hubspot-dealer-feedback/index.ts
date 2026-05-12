@@ -205,10 +205,13 @@ Deno.serve(async (req) => {
 
         stageCounts[stageKey]++;
 
-        // Daily trend — only for contacts with confirmed dealer feedback
-        if (response && dateKey) {
+        // Daily trend — confirmed feedback stages + all "lead" stage contacts
+        // (lead = Still Shopping / not yet converted, always show its actual count)
+        const rawStage = (props.lifecyclestage || "").toLowerCase();
+        const trendStage = response ? response.stage : (rawStage === "lead" ? "lead" : null);
+        if (trendStage && dateKey) {
           if (!dailyMap[dateKey]) dailyMap[dateKey] = { customer: 0, other: 0, opportunity: 0, lead: 0 };
-          dailyMap[dateKey][response.stage as keyof typeof dailyMap[string]]++;
+          dailyMap[dateKey][trendStage as keyof typeof dailyMap[string]]++;
         }
 
         // Response timing (only when we have a valid date)
