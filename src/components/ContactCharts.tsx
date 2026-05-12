@@ -338,8 +338,8 @@ export function ContactCharts({
       list.sort((a, b) => {
         const fa = dealerFeedbackMap[a.email];
         const fb = dealerFeedbackMap[b.email];
-        const convA = fa ? (fa.customer + fa.other + fa.opportunity) / (fa.total || a.count || 1) : -1;
-        const convB = fb ? (fb.customer + fb.other + fb.opportunity) / (fb.total || b.count || 1) : -1;
+        const convA = fa ? (fa.customer + fa.other + fa.opportunity) / (fa.total || 1) : -1;
+        const convB = fb ? (fb.customer + fb.other + fb.opportunity) / (fb.total || 1) : -1;
         return convB - convA;
       });
     }
@@ -729,14 +729,26 @@ export function ContactCharts({
                         <td className="px-4 py-3 hidden md:table-cell text-muted-foreground font-mono text-[10px]">
                           {dealer.zip || "—"}
                         </td>
-                        <td className="px-4 py-3 text-right">
-                          <span className="font-black tabular-nums text-foreground text-sm">{dealer.count.toLocaleString()}</span>
-                        </td>
+                        {dealerFeedbackMap ? (() => {
+                          const fb = dealerFeedbackMap[dealer.email];
+                          // Use fb.total when available — the feedback function filters by brand
+                          // so its per-dealer total is more accurate than dealer.count (which may
+                          // include contacts from other brands assigned to the same dealer).
+                          const leadsCount = fb?.total ?? dealer.count;
+                          return (
+                            <td className="px-4 py-3 text-right">
+                              <span className="font-black tabular-nums text-foreground text-sm">{leadsCount.toLocaleString()}</span>
+                            </td>
+                          );
+                        })() : (
+                          <td className="px-4 py-3 text-right">
+                            <span className="font-black tabular-nums text-foreground text-sm">{dealer.count.toLocaleString()}</span>
+                          </td>
+                        )}
                         {dealerFeedbackMap && (() => {
                           const fb = dealerFeedbackMap[dealer.email];
-                          // Always use dealer.count as denominator — it is the authoritative
-                          // "contacts sent to this dealer" from the main contacts function.
-                          const total = dealer.count || 1;
+                          // Denominator: same fb.total for consistency with the LEADS display.
+                          const total = fb?.total || dealer.count || 1;
                           if (!fb) return <>
                             <td className="px-3 py-3 text-right text-[10px] text-muted-foreground/40 whitespace-nowrap">—</td>
                             <td className="px-3 py-3 text-right text-[10px] text-muted-foreground/40 whitespace-nowrap">—</td>
