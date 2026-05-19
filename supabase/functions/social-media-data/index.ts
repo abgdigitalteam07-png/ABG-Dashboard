@@ -132,10 +132,10 @@ async function getPageInsights(pageId: string, pageToken: string, since: string,
   return result;
 }
 
-async function getPageFanCount(pageId: string, pageToken: string): Promise<number> {
-  const res = await fetch(`${GRAPH}/${pageId}?fields=fan_count&access_token=${pageToken}`);
+async function getPageInfo(pageId: string, pageToken: string): Promise<{ fanCount: number; name: string; link: string }> {
+  const res = await fetch(`${GRAPH}/${pageId}?fields=fan_count,name,link&access_token=${pageToken}`);
   const data = await res.json();
-  return data.fan_count || 0;
+  return { fanCount: data.fan_count || 0, name: data.name || "", link: data.link || `https://www.facebook.com/${pageId}` };
 }
 
 async function getPagePosts(pageId: string, pageToken: string, since: string, until: string) {
@@ -274,12 +274,13 @@ Deno.serve(async (req) => {
     const timeoutId = setTimeout(() => controller.abort(), 25000);
 
     try {
-      const [fbInsights, fbFans, fbPosts, fbDailyFans] = await Promise.all([
+      const [fbInsights, fbPageInfo, fbPosts, fbDailyFans] = await Promise.all([
         getPageInsights(pageId, pageToken, startDate, endDate),
-        getPageFanCount(pageId, pageToken),
+        getPageInfo(pageId, pageToken),
         getPagePosts(pageId, pageToken, startDate, endDate),
         getDailyMetric(pageId, pageToken, "page_fan_adds_unique", startDate, endDate).catch(() => [] as Array<{ date: string; value: number }>),
       ]);
+      const fbFans = fbPageInfo.fanCount;
 
       const fbReach = fbInsights["page_impressions_unique"] || 0;
       const fbImpressions = fbReach; // page_impressions often fails on New Pages Experience, use reach
@@ -436,6 +437,8 @@ Deno.serve(async (req) => {
       clearTimeout(timeoutId);
 
       return new Response(JSON.stringify({
+        facebookPageName: fbPageInfo.name,
+        facebookPageLink: fbPageInfo.link,
         overview: {
           totalFollowers: { facebook: fbFans, instagram: igFollowers },
           followerGrowth: { facebook: 0, instagram: 0 },

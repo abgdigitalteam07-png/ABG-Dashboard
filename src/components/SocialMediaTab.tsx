@@ -577,7 +577,7 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
 
   if (!data) return null;
 
-  const { overview, platformBreakdown, contentPerformance, dailyTrends, posts } = data;
+  const { overview, platformBreakdown, contentPerformance, dailyTrends, posts, facebookPageName, facebookPageLink } = data;
   const totalFollowers = (overview.totalFollowers.facebook || 0) + (overview.totalFollowers.instagram || 0);
   const avgFollowerGrowth = parseFloat(((overview.followerGrowth.facebook + overview.followerGrowth.instagram) / 2).toFixed(1));
   const reachDelta = parseFloat(((overview.totalReach / Math.max(overview.totalImpressions, 1)) * 10 - 5).toFixed(1));
@@ -628,11 +628,27 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
           {(["facebook", "instagram"] as const).map((p) => {
             const pb = platformBreakdown[p];
             const Icon = p === "facebook" ? Facebook : Instagram;
+            const connectedName = p === "facebook" ? facebookPageName : null;
+            const connectedLink = p === "facebook" ? facebookPageLink : null;
             return (
               <div key={p} className="rounded-2xl border border-border bg-card p-6">
                 <div className="mb-4 flex items-center gap-2">
                   <Icon className="h-5 w-5" />
-                  <h3 className="text-sm font-semibold capitalize">{p}</h3>
+                  <div className="flex flex-col">
+                    <h3 className="text-sm font-semibold capitalize">{p}</h3>
+                    {connectedName && (
+                      <a
+                        href={connectedLink || undefined}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                        {connectedName}
+                        <ExternalLink className="h-2.5 w-2.5 opacity-60" />
+                      </a>
+                    )}
+                  </div>
                   <span className="ml-auto text-xs text-muted-foreground">
                     {formatNumber(overview.totalFollowers[p] || 0)} followers
                   </span>
