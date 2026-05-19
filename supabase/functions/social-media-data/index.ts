@@ -358,11 +358,23 @@ Deno.serve(async (req) => {
           // Use real reach when available; fall back to fan count as denominator
           const engRate = reach > 0 ? safeDiv(totalEng, reach) : (fbFans > 0 ? safeDiv(totalEng, fbFans) : 0);
 
+          // Build a reliable page-specific permalink.
+          // The Graph API sometimes returns /reel/{id} (generic, login-walled).
+          // Prefer the API URL when it already contains the pageId; otherwise
+          // construct a page-scoped URL from the post's numeric ID.
+          const numericPostId = p.id.includes("_") ? p.id.split("_")[1] : p.id;
+          const apiLink = p.permalink_url || "";
+          const fbPermalink = apiLink.includes(`/${pageId}/`)
+            ? apiLink
+            : type === "reel" || type === "video"
+              ? `https://www.facebook.com/${pageId}/videos/${numericPostId}/`
+              : `https://www.facebook.com/${pageId}/posts/${numericPostId}/`;
+
           fbPostsFormatted.push({
             id: p.id, platform: "facebook", type,
             caption: p.message || "", publishedAt: p.created_time,
             thumbnail,
-            permalink: p.permalink_url || "",
+            permalink: fbPermalink,
             reach, impressions: reach,
             likes, comments, shares, saves: 0,
             engagementRate: engRate, clicks: 0,
