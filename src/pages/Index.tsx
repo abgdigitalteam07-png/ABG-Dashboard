@@ -48,7 +48,7 @@ const Index = () => {
   const socialMediaBrandNames = [
     "Laurel Mountain", "ABG Home Services", "Accessible Home Store", "American Bath Group",
     "Arizona Shower Door", "Bootz", "Coastal Shower Doors", "DreamLine", "MAAX", "MAAX Spas",
-    "Maidstone", "Swan", "Mr.Steam", "Vintage Tub", "Vintage Tub & Bath - Canada",
+    "Maidstone", "Swan", "Mr.Steam", "Vintage Tub", "Vintage Tub & Bath - Canada", "IMI",
   ];
   const hasSocialMedia = socialMediaBrandNames.includes(selectedBrand.name);
 
