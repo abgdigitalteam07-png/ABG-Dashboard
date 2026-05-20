@@ -50,7 +50,15 @@ const Index = () => {
     "Arizona Shower Door", "Bootz", "Coastal Shower Doors", "DreamLine", "MAAX", "MAAX Spas",
     "Maidstone", "Swan", "Mr.Steam", "Vintage Tub", "Vintage Tub & Bath - Canada", "IMI",
   ];
+
+  const linkedinBrandNames = [
+    "MAAX BATH", "MAAX", "DreamLine", "Coastal Shower Doors", "Neptune", "Swan",
+    "IMI", "Mr.Steam", "ABG Decorative Products", "American Standard Bathing",
+    "Maidstone", "Laurel Mountain", "Bootz", "Vintage Tub",
+  ];
+
   const hasSocialMedia = socialMediaBrandNames.includes(selectedBrand.name);
+  const hasLinkedIn = linkedinBrandNames.includes(selectedBrand.name);
 
   const tabs = [
     {
@@ -66,7 +74,7 @@ const Index = () => {
     {
       id: "social",
       label: "Social Media",
-      disabled: !hasSocialMedia,
+      disabled: !hasSocialMedia && !hasLinkedIn,
       tooltip: "No social media data for this brand.",
     },
     {

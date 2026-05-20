@@ -405,8 +405,15 @@ async function exportPostsToPDF(posts: any[], brandName: string, dateFrom: Date,
   doc.save(`${brandName}_social_posts_${format(dateFrom, "yyyy-MM-dd")}_${format(dateTo, "yyyy-MM-dd")}.pdf`);
 }
 
+const linkedinBrandNames = [
+  "MAAX BATH", "MAAX", "DreamLine", "Coastal Shower Doors", "Neptune", "Swan",
+  "IMI", "Mr.Steam", "ABG Decorative Products", "American Standard Bathing",
+  "Maidstone", "Laurel Mountain", "Bootz", "Vintage Tub",
+];
+
 export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps) {
   const [data, setData] = useState<any>(null);
+  const [linkedinData, setLinkedinData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const showLoader = useFirstLoad(loading);
@@ -421,33 +428,51 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
   const pageSize = 10;
 
   const hasSocialMedia = socialMediaBrandNames.includes(brand.name);
+  const hasLinkedIn = linkedinBrandNames.includes(brand.name);
   const isParentBrand = parentBrands.includes(brand.name);
 
   useEffect(() => {
-    if (!hasSocialMedia) {
+    if (!hasSocialMedia && !hasLinkedIn) {
       setLoading(false);
       setData(null);
+      setLinkedinData(null);
       return;
     }
     let cancelled = false;
     setLoading(true);
     setError(null);
 
-    callFunction("social-media-data", {
-      brandName: brand.name,
-      startDate: formatDateStr(dateFrom),
-      endDate: formatDateStr(dateTo),
-      platform: platformFilter === "linkedin" ? "all" : platformFilter,
-    })
-      .then((res: any) => {
+    Promise.all([
+      hasSocialMedia ? callFunction("social-media-data", {
+        brandName: brand.name,
+        startDate: formatDateStr(dateFrom),
+        endDate: formatDateStr(dateTo),
+        platform: platformFilter === "linkedin" ? "all" : platformFilter,
+      }) : Promise.resolve(null),
+      hasLinkedIn ? callFunction("linkedin-data", {
+        brandName: brand.name,
+        startDate: formatDateStr(dateFrom),
+        endDate: formatDateStr(dateTo),
+      }) : Promise.resolve(null),
+    ])
+      .then(([metaRes, liRes]: any[]) => {
         if (cancelled) return;
-        if (res?.error === "no_social_media") {
+
+        if (metaRes?.error === "no_social_media") {
           setData(null);
-        } else if (res?.error) {
-          setError(res.error);
-        } else {
-          setData(res);
+        } else if (metaRes?.error) {
+          setError(metaRes.error);
+        } else if (metaRes) {
+          setData(metaRes);
         }
+
+        if (liRes?.error && liRes.error !== "Brand not configured for LinkedIn") {
+          console.warn("LinkedIn data error:", liRes.error);
+        }
+        if (liRes && !liRes.error) {
+          setLinkedinData(liRes);
+        }
+
         setLoading(false);
       })
       .catch((err: any) => {
@@ -457,7 +482,7 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
       });
 
     return () => { cancelled = true; };
-  }, [brand.name, dateFrom.getTime(), dateTo.getTime(), platformFilter]);
+  }, [brand.name, dateFrom.getTime(), dateTo.getTime(), platformFilter, hasSocialMedia, hasLinkedIn]);
 
   useEffect(() => { setCurrentPage(1); }, [brand.name]);
 
@@ -625,7 +650,7 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
       <section className="space-y-5">
         <SectionHeader icon={Share2} label="Platform Comparison" color="bg-blue-600" />
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {(["facebook", "instagram"] as const).map((p) => {
+          {data && (["facebook", "instagram"] as const).map((p) => {
             const pb = platformBreakdown[p];
             const Icon = p === "facebook" ? Facebook : Instagram;
             const connectedName = p === "facebook" ? facebookPageName : null;
@@ -663,23 +688,56 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
             );
           })}
 
-          {/* LinkedIn Coming Soon Card */}
-          <div className="rounded-2xl border-2 border-dashed border-[#0A66C2]/30 bg-[#0A66C2]/5 p-6 relative overflow-hidden flex flex-col items-center justify-center min-h-[200px] gap-4">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#0A66C2]/10">
-              <Linkedin className="h-7 w-7 text-[#0A66C2]" />
+          {/* LinkedIn Card */}
+          {linkedinData ? (
+            <div className="rounded-2xl border border-border bg-card p-6">
+              <div className="mb-4 flex items-center gap-2">
+                <Linkedin className="h-5 w-5 text-[#0A66C2]" />
+                <div className="flex flex-col">
+                  <h3 className="text-sm font-semibold">LinkedIn</h3>
+                  {linkedinData.pageUrl && (
+                    <a
+                      href={linkedinData.pageUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                      {brand.name}
+                      <ExternalLink className="h-2.5 w-2.5 opacity-60" />
+                    </a>
+                  )}
+                  {linkedinData.isDemo && (
+                    <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">Demo data</span>
+                  )}
+                </div>
+                <span className="ml-auto text-xs text-muted-foreground">
+                  {formatNumber(linkedinData.followers || 0)} followers
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div><span className="text-xs text-muted-foreground">Reach</span><p className="font-semibold tabular-nums">{formatNumber(linkedinData.reach || 0)}</p></div>
+                <div><span className="text-xs text-muted-foreground">Impressions</span><p className="font-semibold tabular-nums">{formatNumber(linkedinData.impressions || 0)}</p></div>
+                <div><span className="text-xs text-muted-foreground">Engagements</span><p className="font-semibold tabular-nums">{formatNumber(linkedinData.engagements || 0)}</p></div>
+                <div><span className="text-xs text-muted-foreground">Engagement Rate</span><p className="font-semibold tabular-nums">{linkedinData.engagementRate || 0}%</p></div>
+              </div>
             </div>
-            <div className="text-center">
-              <p className="text-lg font-bold text-foreground">LinkedIn Analytics</p>
-              <p className="mt-1 text-sm text-muted-foreground">Integration coming soon</p>
+          ) : hasLinkedIn ? (
+            <div className="rounded-2xl border-2 border-dashed border-[#0A66C2]/30 bg-[#0A66C2]/5 p-6 relative overflow-hidden flex flex-col items-center justify-center min-h-[200px] gap-4">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#0A66C2]/10">
+                <Linkedin className="h-7 w-7 text-[#0A66C2]" />
+              </div>
+              <div className="text-center">
+                <p className="text-lg font-bold text-foreground">LinkedIn Analytics</p>
+                <p className="mt-1 text-sm text-muted-foreground">Awaiting API approval</p>
+              </div>
+              <div className="flex items-center gap-2 rounded-full bg-blue-100 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 px-4 py-2">
+                <HelpCircle className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                <span className="text-sm font-semibold text-blue-700 dark:text-blue-400">In Progress</span>
+              </div>
+              <p className="text-xs text-muted-foreground">API access request submitted to LinkedIn</p>
             </div>
-            <div className="flex items-center gap-2 rounded-full bg-amber-100 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 px-4 py-2">
-              <HelpCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-              <span className="text-sm font-semibold text-amber-700 dark:text-amber-400">Coming Soon</span>
-            </div>
-            {liDemo && (
-              <p className="text-xs text-muted-foreground">Preview data available for {brand.name}</p>
-            )}
-          </div>
+          ) : null}
         </div>
       </section>
 
