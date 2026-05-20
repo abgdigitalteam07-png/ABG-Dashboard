@@ -128,7 +128,7 @@ function RecommendationItem({ rec }: { rec: Recommendation }) {
 }
 
 export function AIRecommendations({ tabName, brandName, dateRange, metrics, platform }: AIRecommendationsProps) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
 
   const recommendations = useMemo(() => generateRecommendations(tabName, metrics), [tabName, metrics]);
 
