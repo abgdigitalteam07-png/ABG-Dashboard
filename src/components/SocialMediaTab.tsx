@@ -432,7 +432,7 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
   const isParentBrand = parentBrands.includes(brand.name);
 
   useEffect(() => {
-    if (!hasSocialMedia && !hasLinkedIn) {
+    if (!hasSocialMedia) {
       setLoading(false);
       setData(null);
       setLinkedinData(null);
@@ -442,37 +442,21 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
     setLoading(true);
     setError(null);
 
-    Promise.all([
-      hasSocialMedia ? callFunction("social-media-data", {
-        brandName: brand.name,
-        startDate: formatDateStr(dateFrom),
-        endDate: formatDateStr(dateTo),
-        platform: platformFilter === "linkedin" ? "all" : platformFilter,
-      }) : Promise.resolve(null),
-      hasLinkedIn ? callFunction("linkedin-data", {
-        brandName: brand.name,
-        startDate: formatDateStr(dateFrom),
-        endDate: formatDateStr(dateTo),
-      }) : Promise.resolve(null),
-    ])
-      .then(([metaRes, liRes]: any[]) => {
+    callFunction("social-media-data", {
+      brandName: brand.name,
+      startDate: formatDateStr(dateFrom),
+      endDate: formatDateStr(dateTo),
+      platform: platformFilter === "linkedin" ? "all" : platformFilter,
+    })
+      .then((res: any) => {
         if (cancelled) return;
-
-        if (metaRes?.error === "no_social_media") {
+        if (res?.error === "no_social_media") {
           setData(null);
-        } else if (metaRes?.error) {
-          setError(metaRes.error);
-        } else if (metaRes) {
-          setData(metaRes);
+        } else if (res?.error) {
+          setError(res.error);
+        } else {
+          setData(res);
         }
-
-        if (liRes?.error && liRes.error !== "Brand not configured for LinkedIn") {
-          console.warn("LinkedIn data error:", liRes.error);
-        }
-        if (liRes && !liRes.error) {
-          setLinkedinData(liRes);
-        }
-
         setLoading(false);
       })
       .catch((err: any) => {
@@ -480,6 +464,24 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
         setError(err?.message || "Failed to load data");
         setLoading(false);
       });
+
+    // Try to fetch LinkedIn data (non-blocking, fails silently if not deployed)
+    if (hasLinkedIn) {
+      callFunction("linkedin-data", {
+        brandName: brand.name,
+        startDate: formatDateStr(dateFrom),
+        endDate: formatDateStr(dateTo),
+      })
+        .then((liRes: any) => {
+          if (cancelled) return;
+          if (liRes && !liRes.error) {
+            setLinkedinData(liRes);
+          }
+        })
+        .catch((err: any) => {
+          console.warn("LinkedIn data unavailable:", err?.message);
+        });
+    }
 
     return () => { cancelled = true; };
   }, [brand.name, dateFrom.getTime(), dateTo.getTime(), platformFilter, hasSocialMedia, hasLinkedIn]);
