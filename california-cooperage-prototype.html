@@ -1,0 +1,2146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>California Cooperage — California's Original Hot Tub Since 1972</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;700;800&family=Open+Sans:wght@400;500;600&family=Pacifico&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ─── CSS VARIABLES ─────────────────────────────────── */
+    :root {
+      --blue:    #1C4A63;
+      --teal:    #008B9C;
+      --yellow:  #EFB764;
+      --red:     #8E2C22;
+      --brown:   #9F6438;
+      --beige:   #E9D0BA;
+      --black:   #1A1A1A;
+      --white:   #FFFFFF;
+      --offwhite:#FAF8F5;
+      --charcoal:#2D3748;
+
+      --font-head: 'Jost', sans-serif;
+      --font-body: 'Open Sans', sans-serif;
+      --font-accent: 'Pacifico', cursive;
+    }
+
+    /* ─── RESET & BASE ──────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: var(--font-body);
+      font-size: 16px;
+      line-height: 1.65;
+      color: var(--black);
+      background: var(--offwhite);
+      opacity: 0;
+      animation: fadeIn 0.5s ease forwards;
+    }
+
+    @keyframes fadeIn { to { opacity: 1; } }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+    }
+
+    a { color: inherit; text-decoration: none; }
+    img { max-width: 100%; display: block; }
+    ul { list-style: none; }
+
+    h1, h2, h3, h4 {
+      font-family: var(--font-head);
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      line-height: 1.15;
+    }
+
+    /* ─── PAGES ─────────────────────────────────────────── */
+    .page { display: none; }
+    .page.active { display: block; }
+
+    /* ─── NAVBAR ─────────────────────────────────────────── */
+    .navbar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: var(--white);
+      border-bottom: 1px solid rgba(28,74,99,0.12);
+      padding: 0 24px;
+    }
+    .navbar-inner {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 64px;
+      gap: 24px;
+    }
+    .nav-logo {
+      font-family: var(--font-head);
+      font-weight: 800;
+      font-size: 1.05rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--blue);
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .nav-logo .star-icon {
+      color: var(--yellow);
+      font-size: 1.1rem;
+    }
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 28px;
+    }
+    .nav-links a {
+      font-family: var(--font-head);
+      font-weight: 700;
+      font-size: 0.82rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--black);
+      opacity: 0.75;
+      transition: color 0.2s, opacity 0.2s;
+      cursor: pointer;
+      padding: 4px 0;
+      border-bottom: 2px solid transparent;
+    }
+    .nav-links a:hover,
+    .nav-links a.active {
+      color: var(--blue);
+      opacity: 1;
+      border-bottom-color: var(--teal);
+    }
+    .nav-cta {
+      background: var(--blue);
+      color: var(--white) !important;
+      opacity: 1 !important;
+      padding: 9px 20px !important;
+      border-radius: 6px !important;
+      border-bottom: none !important;
+      transition: background 0.2s !important;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .nav-cta:hover { background: var(--teal) !important; }
+
+    /* ─── UTILITY ────────────────────────────────────────── */
+    .container { max-width: 1400px; margin: 0 auto; padding: 0 24px; }
+    .section { padding: 80px 0; }
+    .eyebrow {
+      font-family: var(--font-head);
+      font-weight: 700;
+      font-size: 0.72rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--teal);
+      margin-bottom: 12px;
+      display: block;
+    }
+    .eyebrow-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(239,183,100,0.18);
+      border: 1px solid var(--yellow);
+      color: var(--yellow);
+      font-family: var(--font-head);
+      font-weight: 700;
+      font-size: 0.72rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      padding: 5px 14px;
+      border-radius: 50px;
+      margin-bottom: 20px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--font-head);
+      font-weight: 700;
+      font-size: 0.82rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 12px 26px;
+      border-radius: 6px;
+      border: 2px solid transparent;
+      cursor: pointer;
+      transition: background 0.2s, color 0.2s, border-color 0.2s, transform 0.15s;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn-yellow { background: var(--yellow); color: var(--black); border-color: var(--yellow); }
+    .btn-yellow:hover { background: #e5a84f; border-color: #e5a84f; }
+    .btn-outline-white { background: transparent; color: var(--white); border-color: var(--white); }
+    .btn-outline-white:hover { background: rgba(255,255,255,0.1); }
+    .btn-blue { background: var(--blue); color: var(--white); border-color: var(--blue); }
+    .btn-blue:hover { background: var(--teal); border-color: var(--teal); }
+    .btn-outline-blue { background: transparent; color: var(--blue); border-color: var(--blue); }
+    .btn-outline-blue:hover { background: var(--blue); color: var(--white); }
+    .text-link {
+      font-family: var(--font-head);
+      font-weight: 700;
+      font-size: 0.85rem;
+      letter-spacing: 0.06em;
+      color: var(--teal);
+      text-transform: uppercase;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: color 0.2s;
+    }
+    .text-link:hover { color: var(--blue); }
+
+    /* ─── HOME: HERO ─────────────────────────────────────── */
+    .hero {
+      background:
+        linear-gradient(rgba(28, 74, 99, 0.72), rgba(28, 74, 99, 0.55)),
+        url('https://raw.githubusercontent.com/abgdigitalteam07-png/california-cooperage/master/public/images/homepage-hero.jpg') center/cover no-repeat;
+      padding: 80px 24px 90px;
+    }
+    .hero-inner {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr 420px;
+      gap: 60px;
+      align-items: center;
+    }
+    .hero h1 {
+      font-size: clamp(2rem, 3.5vw, 3rem);
+      color: var(--white);
+      margin-bottom: 20px;
+    }
+    .hero-sub {
+      font-size: 1.05rem;
+      color: rgba(255,255,255,0.72);
+      margin-bottom: 32px;
+      max-width: 520px;
+      line-height: 1.7;
+    }
+    .hero-btns { display: flex; gap: 14px; flex-wrap: wrap; }
+
+    /* Vintage badge */
+    .vintage-badge {
+      width: 100%;
+      max-width: 360px;
+      aspect-ratio: 1;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+    .badge-outer {
+      width: 320px;
+      height: 320px;
+      border-radius: 50%;
+      border: 4px solid var(--yellow);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+    .badge-inner {
+      width: 280px;
+      height: 280px;
+      border-radius: 50%;
+      border: 2px solid rgba(239,183,100,0.45);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      gap: 4px;
+      padding: 28px;
+    }
+    .badge-star {
+      font-size: 2.4rem;
+      color: var(--yellow);
+      line-height: 1;
+    }
+    .badge-est {
+      font-family: var(--font-head);
+      font-weight: 700;
+      font-size: 0.68rem;
+      letter-spacing: 0.2em;
+      color: rgba(239,183,100,0.7);
+      text-transform: uppercase;
+    }
+    .badge-year {
+      font-family: var(--font-head);
+      font-weight: 800;
+      font-size: 3.5rem;
+      color: var(--yellow);
+      letter-spacing: 0.04em;
+      line-height: 1;
+    }
+    .badge-line {
+      width: 60px;
+      height: 1px;
+      background: rgba(239,183,100,0.4);
+      margin: 4px 0;
+    }
+    .badge-title {
+      font-family: var(--font-head);
+      font-weight: 800;
+      font-size: 0.75rem;
+      letter-spacing: 0.14em;
+      color: var(--yellow);
+      text-transform: uppercase;
+      line-height: 1.4;
+    }
+    .badge-subtitle {
+      font-family: var(--font-body);
+      font-size: 0.68rem;
+      color: rgba(239,183,100,0.6);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+    /* Decorative tick marks around badge */
+    .badge-outer::before {
+      content: '';
+      position: absolute;
+      inset: -12px;
+      border-radius: 50%;
+      border: 1px dashed rgba(239,183,100,0.25);
+    }
+
+    /* ─── BRAND STRIP ────────────────────────────────────── */
+    .brand-strip {
+      background: var(--teal);
+      padding: 16px 24px;
+    }
+    .brand-strip-inner {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px 28px;
+      align-items: center;
+      justify-content: center;
+    }
+    .trust-pill {
+      font-family: var(--font-head);
+      font-weight: 700;
+      font-size: 0.75rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--white);
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      white-space: nowrap;
+    }
+    .trust-pill .tp-icon {
+      color: rgba(255,255,255,0.65);
+      font-size: 0.7rem;
+    }
+
+    /* ─── BRAND STORY ─────────────────────────────────────── */
+    .brand-story { background: var(--beige); }
+    .brand-story-inner {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 64px;
+      align-items: center;
+    }
+    .brand-story h2 { color: var(--blue); font-size: clamp(1.6rem, 2.5vw, 2.2rem); margin-bottom: 16px; }
+    .stats-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 24px;
+    }
+    .stat-pill {
+      background: var(--white);
+      border: 1px solid rgba(28,74,99,0.15);
+      color: var(--blue);
+      font-family: var(--font-head);
+      font-weight: 700;
+      font-size: 0.75rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 6px 16px;
+      border-radius: 50px;
+    }
+    .brand-story p {
+      font-size: 0.97rem;
+      color: rgba(26,26,26,0.82);
+      line-height: 1.75;
+      margin-bottom: 24px;
+      max-width: 500px;
+    }
+
+    /* Decorative illustration placeholder */
+    .deco-illustration {
+      border-radius: 12px;
+      aspect-ratio: 4/3;
+      overflow: hidden;
+      position: relative;
+    }
+    .deco-illustration img {
+      width: 100%; height: 100%; object-fit: cover; display: block;
+    }
+    .deco-sun {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      background: var(--yellow);
+      opacity: 0.35;
+      position: absolute;
+      top: 20px;
+      right: 30px;
+    }
+    .deco-waves {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 60px;
+    }
+    .deco-wave {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 40px;
+      border-radius: 50% 50% 0 0;
+    }
+    .deco-wave:nth-child(1) { background: rgba(0,139,156,0.12); bottom: 20px; }
+    .deco-wave:nth-child(2) { background: rgba(0,139,156,0.18); bottom: 5px; }
+    .deco-wave:nth-child(3) { background: rgba(0,139,156,0.22); bottom: 0; height: 30px; }
+    .deco-text {
+      font-family: var(--font-accent);
+      color: var(--brown);
+      font-size: 1.1rem;
+      opacity: 0.6;
+      z-index: 1;
+    }
+    .deco-label {
+      font-family: var(--font-head);
+      font-weight: 700;
+      font-size: 0.65rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--brown);
+      opacity: 0.5;
+      z-index: 1;
+    }
+
+    /* ─── PRODUCTS ────────────────────────────────────────── */
+    .products-section { background: var(--offwhite); }
+    .section-header {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+    .section-header h2 { color: var(--blue); font-size: clamp(1.6rem, 2.5vw, 2.2rem); margin-bottom: 10px; }
+    .section-header p { color: rgba(26,26,26,0.6); font-size: 1rem; }
+
+    .products-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+    }
+    .product-card {
+      background: var(--white);
+      border-radius: 10px;
+      border: 1px solid rgba(28,74,99,0.1);
+      overflow: hidden;
+      transition: transform 0.22s, border-color 0.22s, box-shadow 0.22s;
+      cursor: pointer;
+    }
+    .product-card:hover {
+      transform: translateY(-4px);
+      border-color: var(--teal);
+      box-shadow: 0 8px 28px rgba(0,139,156,0.12);
+    }
+    .product-img-area {
+      background: var(--beige);
+      height: 200px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+    .product-img-label {
+      font-family: var(--font-head);
+      font-weight: 800;
+      font-size: 2rem;
+      letter-spacing: 0.08em;
+      color: rgba(28,74,99,0.15);
+      text-transform: uppercase;
+    }
+    .flagship-badge {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      background: var(--yellow);
+      color: var(--black);
+      font-family: var(--font-head);
+      font-weight: 700;
+      font-size: 0.65rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      padding: 4px 10px;
+      border-radius: 50px;
+    }
+    .product-body { padding: 24px; }
+    .product-name {
+      font-family: var(--font-head);
+      font-weight: 800;
+      font-size: 1.1rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--blue);
+      margin-bottom: 6px;
+    }
+    .product-tagline {
+      font-size: 0.9rem;
+      color: rgba(26,26,26,0.7);
+      margin-bottom: 16px;
+      line-height: 1.5;
+    }
+    .product-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 20px;
+    }
+    .chip {
+      background: var(--offwhite);
+      border: 1px solid rgba(28,74,99,0.12);
+      color: var(--blue);
+      font-family: var(--font-head);
+      font-weight: 700;
+      font-size: 0.68rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 4px 10px;
+      border-radius: 4px;
+    }
+
+    /* ─── PARTNER SECTION ─────────────────────────────────── */
+    .partner-section {
+      background: var(--charcoal);
+      padding: 72px 24px;
+    }
+    .partner-inner {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    .partner-inner h2 {
+      color: var(--white);
+      font-size: clamp(1.4rem, 2vw, 1.9rem);
+      text-align: center;
+      margin-bottom: 40px;
+    }
+    .partner-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    .partner-tile {
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 10px;
+      padding: 32px;
+      text-align: center;
+      transition: border-color 0.2s;
+    }
+    .partner-tile:hover { border-color: var(--teal); }
+    .partner-logo-placeholder {
+      width: 64px;
+      height: 64px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 8px;
+      margin: 0 auto 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .partner-logo-placeholder svg { opacity: 0.5; }
+    .partner-tile h3 {
+      font-family: var(--font-head);
+      font-weight: 800;
+      font-size: 0.95rem;
+      letter-spacing: 0.1em;
+      color: var(--white);
+      margin-bottom: 8px;
+    }
+    .partner-tile p {
+      font-size: 0.87rem;
+      color: rgba(255,255,255,0.55);
+      line-height: 1.6;
+    }
+
+    /* ─── FAQ ─────────────────────────────────────────────── */
+    .faq-section { background: var(--white); }
+    .faq-list { max-width: 780px; margin: 0 auto; }
+    .faq-item {
+      border-bottom: 1px solid rgba(28,74,99,0.1);
+    }
+    .faq-question {
+      width: 100%;
+      background: none;
+      border: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 20px 0;
+      cursor: pointer;
+      text-align: left;
+      font-family: var(--font-head);
+      font-weight: 700;
+      font-size: 0.95rem;
+      letter-spacing: 0.03em;
+      color: var(--blue);
+      text-transform: uppercase;
+      transition: color 0.2s;
+    }
+    .faq-question:hover { color: var(--teal); }
+    .faq-icon {
+      flex-shrink: 0;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: var(--offwhite);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s, transform 0.25s;
+    }
+    .faq-item.open .faq-icon {
+      background: var(--teal);
+      transform: rotate(45deg);
+    }
+    .faq-icon svg { stroke: var(--blue); transition: stroke 0.2s; }
+    .faq-item.open .faq-icon svg { stroke: var(--white); }
+    .faq-answer {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.35s ease, padding 0.25s;
+    }
+    .faq-item.open .faq-answer { max-height: 200px; }
+    .faq-answer p {
+      padding-bottom: 20px;
+      font-size: 0.95rem;
+      color: rgba(26,26,26,0.72);
+      line-height: 1.7;
+    }
+
+    /* ─── PRODUCT PAGE HERO ──────────────────────────────── */
+    .product-hero {
+      background: var(--blue);
+      padding: 60px 24px 70px;
+    }
+    .product-hero-inner {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    .product-hero h1 {
+      color: var(--white);
+      font-size: clamp(2rem, 3.5vw, 3rem);
+      margin-bottom: 12px;
+    }
+    .product-hero .tagline {
+      color: rgba(255,255,255,0.7);
+      font-size: 1.05rem;
+      margin-bottom: 28px;
+      font-family: var(--font-body);
+      font-weight: 400;
+      letter-spacing: 0;
+      text-transform: none;
+    }
+    .spec-chips-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .spec-chip {
+      background: rgba(255,255,255,0.12);
+      border: 1px solid rgba(255,255,255,0.25);
+      color: var(--white);
+      font-family: var(--font-head);
+      font-weight: 700;
+      font-size: 0.72rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 6px 14px;
+      border-radius: 50px;
+    }
+
+    /* ─── PRODUCT DETAIL LAYOUT ──────────────────────────── */
+    .product-detail-section { background: var(--offwhite); }
+    .product-detail-grid {
+      display: grid;
+      grid-template-columns: 1.1fr 1fr;
+      gap: 60px;
+      align-items: start;
+    }
+    .product-image-block {
+      background: var(--beige);
+      border-radius: 10px;
+      aspect-ratio: 4/3;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid rgba(159,100,56,0.15);
+      position: relative;
+      overflow: hidden;
+    }
+    .product-image-label {
+      font-family: var(--font-head);
+      font-weight: 800;
+      font-size: 3.5rem;
+      color: rgba(28,74,99,0.1);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      z-index: 1;
+    }
+    .product-image-deco-sun {
+      position: absolute;
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      background: var(--yellow);
+      opacity: 0.12;
+      top: -20px;
+      right: -20px;
+    }
+    .product-image-deco-wave {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 50px;
+      background: rgba(0,139,156,0.1);
+      border-radius: 50% 50% 0 0;
+    }
+
+    /* ─── SPECS TABLE ────────────────────────────────────── */
+    .specs-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+    .specs-table tr { border-bottom: 1px solid rgba(28,74,99,0.08); }
+    .specs-table tr:last-child { border-bottom: none; }
+    .specs-table td {
+      padding: 11px 12px;
+      vertical-align: top;
+      line-height: 1.5;
+    }
+    .specs-table td:first-child {
+      font-family: var(--font-head);
+      font-weight: 700;
+      font-size: 0.75rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--blue);
+      white-space: nowrap;
+      width: 44%;
+      padding-left: 0;
+    }
+    .specs-table td:last-child {
+      color: rgba(26,26,26,0.78);
+    }
+    .specs-table tr:nth-child(even) td { background: rgba(28,74,99,0.025); }
+
+    .specs-block {
+      background: var(--white);
+      border-radius: 10px;
+      border: 1px solid rgba(28,74,99,0.1);
+      padding: 28px;
+    }
+    .specs-title {
+      font-family: var(--font-head);
+      font-weight: 800;
+      font-size: 0.8rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--blue);
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 2px solid var(--beige);
+    }
+
+    /* ─── FEATURES GRID ──────────────────────────────────── */
+    .features-section { background: var(--white); }
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+    .feature-card {
+      background: var(--offwhite);
+      border-radius: 8px;
+      border: 1px solid rgba(28,74,99,0.08);
+      padding: 24px;
+      transition: border-color 0.2s;
+    }
+    .feature-card:hover { border-color: var(--teal); }
+    .feature-icon {
+      width: 40px;
+      height: 40px;
+      background: rgba(0,139,156,0.1);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 12px;
+    }
+    .feature-icon svg { stroke: var(--teal); }
+    .feature-name {
+      font-family: var(--font-head);
+      font-weight: 700;
+      font-size: 0.8rem;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: var(--blue);
+      line-height: 1.3;
+    }
+
+    /* ─── COMPARE BAR ────────────────────────────────────── */
+    .compare-bar {
+      background: var(--beige);
+      padding: 28px 24px;
+    }
+    .compare-bar-inner {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      flex-wrap: wrap;
+    }
+    .compare-label {
+      font-family: var(--font-head);
+      font-weight: 700;
+      font-size: 0.75rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: rgba(26,26,26,0.55);
+      flex-shrink: 0;
+    }
+    .compare-links { display: flex; gap: 12px; flex-wrap: wrap; }
+    .compare-link {
+      background: var(--white);
+      border: 1px solid rgba(28,74,99,0.18);
+      color: var(--blue);
+      font-family: var(--font-head);
+      font-weight: 700;
+      font-size: 0.75rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 8px 18px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.2s, border-color 0.2s, color 0.2s;
+    }
+    .compare-link:hover { background: var(--blue); color: var(--white); border-color: var(--blue); }
+
+    /* ─── WARNING BOX ────────────────────────────────────── */
+    .warning-box {
+      background: rgba(239,183,100,0.12);
+      border: 1px solid rgba(239,183,100,0.5);
+      border-left: 4px solid var(--yellow);
+      border-radius: 8px;
+      padding: 20px 24px;
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+      margin-top: 24px;
+    }
+    .warning-box .warn-icon {
+      color: var(--yellow);
+      font-size: 1.2rem;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+    .warning-box h4 {
+      font-family: var(--font-head);
+      font-weight: 700;
+      font-size: 0.78rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--brown);
+      margin-bottom: 6px;
+    }
+    .warning-box p { font-size: 0.88rem; color: rgba(26,26,26,0.72); line-height: 1.6; }
+
+    /* ─── SHAPE GUIDE ────────────────────────────────────── */
+    .shape-guide {
+      background: rgba(239,183,100,0.08);
+      border: 1px solid rgba(239,183,100,0.3);
+      border-radius: 10px;
+      padding: 28px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 28px;
+      margin-top: 24px;
+    }
+    .shape-option h4 {
+      font-family: var(--font-head);
+      font-weight: 700;
+      font-size: 0.8rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--blue);
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .shape-option .shape-icon {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 2px solid var(--teal);
+    }
+    .shape-option .shape-icon.round { border-radius: 50%; }
+    .shape-option p { font-size: 0.85rem; color: rgba(26,26,26,0.68); line-height: 1.6; }
+
+    /* ─── WARRANTY PAGE ──────────────────────────────────── */
+    .coverage-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+      margin-bottom: 60px;
+    }
+    .coverage-card {
+      background: var(--white);
+      border-radius: 10px;
+      border: 1px solid rgba(28,74,99,0.1);
+      padding: 32px 24px;
+      text-align: center;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .coverage-card:hover { border-color: var(--teal); box-shadow: 0 4px 16px rgba(0,139,156,0.08); }
+    .coverage-icon {
+      width: 56px;
+      height: 56px;
+      background: rgba(28,74,99,0.07);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 16px;
+    }
+    .coverage-icon svg { stroke: var(--blue); }
+    .coverage-card h3 {
+      font-family: var(--font-head);
+      font-weight: 800;
+      font-size: 0.9rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--blue);
+      margin-bottom: 10px;
+    }
+    .coverage-card p { font-size: 0.88rem; color: rgba(26,26,26,0.68); line-height: 1.65; }
+
+    .downloads-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+    .download-card {
+      background: var(--white);
+      border: 1px solid rgba(28,74,99,0.1);
+      border-radius: 8px;
+      padding: 20px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .download-card:hover { border-color: var(--teal); background: rgba(0,139,156,0.03); }
+    .download-icon {
+      width: 40px;
+      height: 40px;
+      background: rgba(0,139,156,0.1);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .download-icon svg { stroke: var(--teal); }
+    .download-name {
+      font-family: var(--font-head);
+      font-weight: 700;
+      font-size: 0.78rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--blue);
+      line-height: 1.3;
+    }
+    .download-sub { font-size: 0.72rem; color: rgba(26,26,26,0.45); margin-top: 2px; }
+
+    /* ─── DEALER PAGE ────────────────────────────────────── */
+    .dealer-hero { background: var(--teal); }
+
+    .dealer-form-section { background: var(--offwhite); }
+    .dealer-form-grid {
+      display: grid;
+      grid-template-columns: 1fr 380px;
+      gap: 60px;
+      align-items: start;
+    }
+    .contact-form {
+      background: var(--white);
+      border-radius: 10px;
+      border: 1px solid rgba(28,74,99,0.1);
+      padding: 36px;
+    }
+    .form-title {
+      font-family: var(--font-head);
+      font-weight: 800;
+      font-size: 1rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--blue);
+      margin-bottom: 24px;
+    }
+    .form-group { margin-bottom: 18px; }
+    .form-label {
+      display: block;
+      font-family: var(--font-head);
+      font-weight: 700;
+      font-size: 0.72rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--blue);
+      margin-bottom: 6px;
+    }
+    .form-input,
+    .form-select,
+    .form-textarea {
+      width: 100%;
+      border: 1px solid rgba(28,74,99,0.18);
+      border-radius: 6px;
+      padding: 10px 14px;
+      font-family: var(--font-body);
+      font-size: 0.92rem;
+      color: var(--black);
+      background: var(--white);
+      transition: border-color 0.2s, box-shadow 0.2s;
+      appearance: none;
+    }
+    .form-input:focus,
+    .form-select:focus,
+    .form-textarea:focus {
+      outline: none;
+      border-color: var(--teal);
+      box-shadow: 0 0 0 3px rgba(0,139,156,0.12);
+    }
+    .form-textarea { resize: vertical; min-height: 100px; }
+    .form-select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%231C4A63' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 36px; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+    .trust-signals { margin-top: 40px; }
+    .trust-signals-title {
+      font-family: var(--font-head);
+      font-weight: 700;
+      font-size: 0.7rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: rgba(26,26,26,0.4);
+      margin-bottom: 14px;
+    }
+    .trust-signal-list { display: flex; flex-direction: column; gap: 10px; }
+    .trust-signal-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.87rem;
+      color: rgba(26,26,26,0.7);
+    }
+    .trust-check {
+      width: 22px;
+      height: 22px;
+      background: rgba(0,139,156,0.1);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .trust-check svg { stroke: var(--teal); }
+
+    /* ─── SECTION DIVIDER ─────────────────────────────────── */
+    .divider-tilde {
+      text-align: center;
+      color: rgba(28,74,99,0.2);
+      font-size: 1.2rem;
+      letter-spacing: 0.4em;
+      padding: 0;
+      margin: 0;
+      line-height: 1;
+    }
+
+    /* ─── FOOTER ─────────────────────────────────────────── */
+    .footer {
+      background: var(--blue);
+      padding: 56px 24px 0;
+    }
+    .footer-inner {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    .footer-top {
+      display: grid;
+      grid-template-columns: 1.4fr 1fr 1fr 1fr;
+      gap: 48px;
+      padding-bottom: 40px;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    .footer-brand-logo {
+      font-family: var(--font-head);
+      font-weight: 800;
+      font-size: 1rem;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      color: var(--white);
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      margin-bottom: 10px;
+      cursor: pointer;
+    }
+    .footer-brand-logo .star { color: var(--yellow); }
+    .footer-tagline {
+      font-family: var(--font-accent);
+      color: rgba(239,183,100,0.7);
+      font-size: 0.92rem;
+      margin-bottom: 10px;
+    }
+    .footer-sub {
+      font-size: 0.82rem;
+      color: rgba(255,255,255,0.42);
+      line-height: 1.6;
+    }
+    .footer-col-title {
+      font-family: var(--font-head);
+      font-weight: 700;
+      font-size: 0.72rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.5);
+      margin-bottom: 14px;
+    }
+    .footer-links { display: flex; flex-direction: column; gap: 8px; }
+    .footer-links a {
+      font-size: 0.88rem;
+      color: rgba(255,255,255,0.65);
+      cursor: pointer;
+      transition: color 0.2s;
+    }
+    .footer-links a:hover { color: var(--yellow); }
+    .footer-bottom {
+      padding: 18px 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .footer-copyright {
+      font-size: 0.78rem;
+      color: rgba(255,255,255,0.3);
+    }
+    .footer-cert-pills {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .cert-pill {
+      background: rgba(255,255,255,0.07);
+      border: 1px solid rgba(255,255,255,0.12);
+      color: rgba(255,255,255,0.4);
+      font-family: var(--font-head);
+      font-weight: 700;
+      font-size: 0.65rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 3px 9px;
+      border-radius: 3px;
+    }
+
+    /* ─── RESPONSIVE ─────────────────────────────────────── */
+    @media (max-width: 1024px) {
+      .hero-inner { grid-template-columns: 1fr; }
+      .vintage-badge { display: none; }
+      .brand-story-inner { grid-template-columns: 1fr; }
+      .deco-illustration { display: none; }
+      .product-detail-grid { grid-template-columns: 1fr; }
+      .dealer-form-grid { grid-template-columns: 1fr; }
+      .footer-top { grid-template-columns: 1fr 1fr; gap: 32px; }
+    }
+
+    @media (max-width: 768px) {
+      .section { padding: 56px 0; }
+      .products-grid { grid-template-columns: 1fr; }
+      .features-grid { grid-template-columns: repeat(2, 1fr); }
+      .coverage-grid { grid-template-columns: 1fr; }
+      .downloads-grid { grid-template-columns: 1fr 1fr; }
+      .partner-grid { grid-template-columns: 1fr; }
+      .nav-links { display: none; }
+      .footer-top { grid-template-columns: 1fr; gap: 28px; }
+      .shape-guide { grid-template-columns: 1fr; }
+      .form-row { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 480px) {
+      .features-grid { grid-template-columns: 1fr; }
+      .downloads-grid { grid-template-columns: 1fr; }
+      .hero { padding: 52px 24px 60px; }
+      .container { padding: 0 16px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════
+     NAVBAR
+════════════════════════════════════════════════════════ -->
+<nav class="navbar" role="navigation" aria-label="Main navigation">
+  <div class="navbar-inner">
+    <div class="nav-logo" onclick="showPage('home')" tabindex="0" role="button" aria-label="California Cooperage home">
+      <img src="https://raw.githubusercontent.com/abgdigitalteam07-png/california-cooperage/master/public/logos/california-cooperage-logo-color.png" alt="California Cooperage" style="height:44px;width:auto;display:block;" />
+    </div>
+    <ul class="nav-links" role="list">
+      <li><a onclick="showPage('home')" class="active" data-page="home" tabindex="0" role="button">Home</a></li>
+      <li><a onclick="showPage('cr1')" data-page="cr1" tabindex="0" role="button">CR1</a></li>
+      <li><a onclick="showPage('cr2')" data-page="cr2" tabindex="0" role="button">CR2</a></li>
+      <li><a onclick="showPage('cr3')" data-page="cr3" tabindex="0" role="button">CR3</a></li>
+      <li><a onclick="showPage('warranty')" data-page="warranty" tabindex="0" role="button">Warranty &amp; Docs</a></li>
+    </ul>
+    <a class="nav-links" style="display:flex"><a class="nav-cta" onclick="showPage('find-a-dealer')" tabindex="0" role="button" style="font-family:var(--font-head);font-weight:700;font-size:0.78rem;letter-spacing:0.08em;text-transform:uppercase;padding:9px 20px;border-radius:6px;background:var(--blue);color:var(--white);cursor:pointer;transition:background 0.2s;border:none;text-decoration:none;" onmouseover="this.style.background='var(--teal)'" onmouseout="this.style.background='var(--blue)'">Find a Dealer</a></a>
+  </div>
+</nav>
+
+
+<!-- ═══════════════════════════════════════════════════════
+     HOME PAGE
+════════════════════════════════════════════════════════ -->
+<div id="page-home" class="page active">
+
+  <!-- HERO -->
+  <section class="hero" aria-label="Hero">
+    <div class="hero-inner">
+      <div>
+        <div class="eyebrow-pill">
+          <span aria-hidden="true">★</span>
+          California's Original Hot Tub Since 1972
+        </div>
+        <h1>California's Original Hot Tub —<br>Now More Accessible Than Ever</h1>
+        <p class="hero-sub">Three rotomold spas built for real backyards. Balboa controls, full foam insulation, and 50 years of California know-how.</p>
+        <div class="hero-btns">
+          <button class="btn btn-yellow" onclick="document.getElementById('products').scrollIntoView({behavior:'smooth'})">Explore Our Spas</button>
+          <button class="btn btn-outline-white" onclick="showPage('warranty')">Warranty &amp; Docs</button>
+        </div>
+      </div>
+      <div class="vintage-badge" aria-hidden="true">
+        <div class="badge-outer">
+          <div class="badge-inner">
+            <div class="badge-star">★</div>
+            <div class="badge-est">Est.</div>
+            <div class="badge-year">1972</div>
+            <div class="badge-line"></div>
+            <div class="badge-title">America's Original<br>Hot Tub Brand</div>
+            <div class="badge-line"></div>
+            <div class="badge-subtitle">California Cooperage</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- BRAND STRIP -->
+  <div class="brand-strip" aria-label="Brand trust indicators">
+    <div class="brand-strip-inner">
+      <div class="trust-pill"><span class="tp-icon" aria-hidden="true">✦</span> Balboa / SpaNet Controls</div>
+      <div class="trust-pill"><span class="tp-icon" aria-hidden="true">✦</span> 3KW Heater</div>
+      <div class="trust-pill"><span class="tp-icon" aria-hidden="true">✦</span> Full Foam Insulation</div>
+      <div class="trust-pill"><span class="tp-icon" aria-hidden="true">✦</span> CE · ETL · ISO 9000</div>
+      <div class="trust-pill"><span class="tp-icon" aria-hidden="true">✦</span> California Heritage Since 1972</div>
+    </div>
+  </div>
+
+  <!-- BRAND STORY -->
+  <section class="section brand-story" aria-label="Brand story">
+    <div class="container">
+      <div class="brand-story-inner">
+        <div>
+          <span class="eyebrow">Our Heritage</span>
+          <h2>Born in the Wine Country.<br>Built for the Backyard.</h2>
+          <div class="stats-row">
+            <span class="stat-pill">1972 Founded</span>
+            <span class="stat-pill">50+ Years of Craft</span>
+            <span class="stat-pill">3 Rotomold Models</span>
+          </div>
+          <p>California Cooperage didn't start in a boardroom. It started in Sonoma wine country, where the original cooperage crafted wooden hot tubs for neighbors who wanted something simple — a good soak after a long week.</p>
+          <p>That spirit never left. Today's CR series keeps it going with rotomold construction, Balboa controls, and no unnecessary frills. Just hot water, good company, and a backyard that finally feels worth coming home to.</p>
+          <a class="text-link" onclick="document.getElementById('products').scrollIntoView({behavior:'smooth'})">View the Lineup →</a>
+        </div>
+        <div class="deco-illustration" aria-label="California hot tub lifestyle photo">
+          <img src="cc-assets/logo-007.png" alt="Relaxing in a California Cooperage hot tub with scenic view" />
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider-tilde" aria-hidden="true">～ ★ ～</div>
+
+  <!-- PRODUCTS GRID -->
+  <section class="section products-section" id="products" aria-label="Product lineup">
+    <div class="container">
+      <div class="section-header">
+        <span class="eyebrow">Product Lines</span>
+        <h2>Three Spas. One California Standard.</h2>
+      </div>
+      <div class="products-grid">
+
+        <!-- CR1 -->
+        <article class="product-card" onclick="showPage('cr1')" tabindex="0" role="button" aria-label="View CR1 — The Classic">
+          <div class="product-img-area" style="background:none;padding:0;overflow:hidden;">
+            <img src="cc-assets/logo-002.png" alt="CR1 hot tub" style="width:100%;height:100%;object-fit:cover;" />
+          </div>
+          <div class="product-body">
+            <div class="product-name">CR1 — The Classic</div>
+            <p class="product-tagline">Five seats. Perfect fit. Built for the crew that keeps it simple.</p>
+            <div class="product-chips">
+              <span class="chip">5 Person</span>
+              <span class="chip">Rectangular</span>
+              <span class="chip">14 Jets</span>
+            </div>
+            <span class="text-link">Learn More →</span>
+          </div>
+        </article>
+
+        <!-- CR2 -->
+        <article class="product-card" onclick="showPage('cr2')" tabindex="0" role="button" aria-label="View CR2 — The Entertainer">
+          <div class="product-img-area" style="background:none;padding:0;overflow:hidden;position:relative;">
+            <img src="cc-assets/logo-008.png" alt="CR2 hot tub with friends" style="width:100%;height:100%;object-fit:cover;" />
+            <span class="flagship-badge">Flagship</span>
+          </div>
+          <div class="product-body">
+            <div class="product-name">CR2 — The Entertainer</div>
+            <p class="product-tagline">Seven seats. The one that owns the backyard.</p>
+            <div class="product-chips">
+              <span class="chip">7 Person</span>
+              <span class="chip">Square</span>
+              <span class="chip">25 Jets</span>
+            </div>
+            <span class="text-link">Learn More →</span>
+          </div>
+        </article>
+
+        <!-- CR3 -->
+        <article class="product-card" onclick="showPage('cr3')" tabindex="0" role="button" aria-label="View CR3 — The Social">
+          <div class="product-img-area" style="background:none;padding:0;overflow:hidden;">
+            <img src="cc-assets/logo-010.png" alt="CR3 hot tub outdoor view" style="width:100%;height:100%;object-fit:cover;" />
+          </div>
+          <div class="product-body">
+            <div class="product-name">CR3 — The Social</div>
+            <p class="product-tagline">Six in the round. No bad seat in the house.</p>
+            <div class="product-chips">
+              <span class="chip">6 Person</span>
+              <span class="chip">Round</span>
+              <span class="chip">21 Jets</span>
+            </div>
+            <span class="text-link">Learn More →</span>
+          </div>
+        </article>
+
+      </div>
+    </div>
+  </section>
+
+  <div class="divider-tilde" aria-hidden="true">～ ★ ～</div>
+
+  <!-- PARTNER SECTION -->
+  <section class="partner-section" aria-label="Brand partners">
+    <div class="partner-inner">
+      <h2>Complete Your Outdoor Wellness Experience</h2>
+      <div class="partner-grid">
+        <div class="partner-tile">
+          <div class="partner-logo-placeholder" aria-hidden="true">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M9 9h6M9 12h6M9 15h4"/></svg>
+          </div>
+          <h3>MAAX Saunas</h3>
+          <p>Complete your backyard retreat. MAAX saunas pair perfectly with any CR model for a full hot-cold wellness experience.</p>
+        </div>
+        <div class="partner-tile">
+          <div class="partner-logo-placeholder" aria-hidden="true">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.5"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 3"/></svg>
+          </div>
+          <h3>MAAX Chillers</h3>
+          <p>Cold plunge and contrast therapy. MAAX chillers keep the temperature exactly where you want it, year-round.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="section faq-section" aria-label="Frequently asked questions">
+    <div class="container">
+      <div class="section-header">
+        <span class="eyebrow">FAQ</span>
+        <h2>Everything You Want to Know</h2>
+      </div>
+      <div class="faq-list">
+
+        <div class="faq-item">
+          <button class="faq-question" onclick="toggleFaq(this)" aria-expanded="false">
+            What is rotomold construction?
+            <span class="faq-icon" aria-hidden="true">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            </span>
+          </button>
+          <div class="faq-answer" role="region">
+            <p>Rotomold means the entire shell is molded from a single piece of polyethylene. No seams, no leaks, and it handles freeze-thaw cycles better than acrylic or fiberglass shells.</p>
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-question" onclick="toggleFaq(this)" aria-expanded="false">
+            Do these spas use Balboa or SpaNet controls?
+            <span class="faq-icon" aria-hidden="true">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            </span>
+          </button>
+          <div class="faq-answer" role="region">
+            <p>All three models ship with either Balboa or SpaNet controls — both are industry-standard, easy to use, and widely supported for service.</p>
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-question" onclick="toggleFaq(this)" aria-expanded="false">
+            Do I need an electrician to install?
+            <span class="faq-icon" aria-hidden="true">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            </span>
+          </button>
+          <div class="faq-answer" role="region">
+            <p>That depends on your model configuration. Check the product page for electrical specs or contact a dealer for your specific setup.</p>
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <button class="faq-question" onclick="toggleFaq(this)" aria-expanded="false">
+            What is the difference between CR1, CR2, and CR3?
+            <span class="faq-icon" aria-hidden="true">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            </span>
+          </button>
+          <div class="faq-answer" role="region">
+            <p>Size and capacity. CR1 seats 5 in a rectangular footprint. CR2 seats 7 in a square layout with more jets. CR3 seats 6 in a round face-to-face configuration.</p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+</div><!-- /page-home -->
+
+
+<!-- ═══════════════════════════════════════════════════════
+     CR1 PAGE
+════════════════════════════════════════════════════════ -->
+<div id="page-cr1" class="page">
+
+  <section class="product-hero" aria-label="CR1 overview">
+    <div class="product-hero-inner">
+      <span class="eyebrow" style="color:rgba(255,255,255,0.55)">The CR Series</span>
+      <h1>CR1 — The Classic</h1>
+      <p class="tagline">Five Seats. Rectangular Footprint. Full California Performance.</p>
+      <div class="spec-chips-row">
+        <span class="spec-chip">5 Person</span>
+        <span class="spec-chip">Rectangular 173×150 cm</span>
+        <span class="spec-chip">14 Jets</span>
+        <span class="spec-chip">3KW Heater</span>
+        <span class="spec-chip">Balboa / SpaNet</span>
+        <span class="spec-chip">Full Foam</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="section product-detail-section" aria-label="CR1 specifications">
+    <div class="container">
+      <div class="product-detail-grid">
+        <div>
+          <div class="product-image-block" aria-label="CR1 hot tub placeholder image">
+            <div class="product-image-deco-sun" aria-hidden="true"></div>
+            <div class="product-image-label" aria-hidden="true">CR1</div>
+            <div class="product-image-deco-wave" aria-hidden="true"></div>
+          </div>
+        </div>
+        <div>
+          <div class="specs-block">
+            <div class="specs-title">Specifications</div>
+            <table class="specs-table" aria-label="CR1 specification table">
+              <tbody>
+                <tr><td>Model Code</td><td>RTO1700MD</td></tr>
+                <tr><td>Seating</td><td>5 Persons</td></tr>
+                <tr><td>Shape</td><td>Rectangular</td></tr>
+                <tr><td>Dimensions</td><td>173 × 150 × 76 cm (68" × 59" × 30")</td></tr>
+                <tr><td>Dry Weight</td><td>~165 kg</td></tr>
+                <tr><td>Filled Weight</td><td>~830 kg</td></tr>
+                <tr><td>Total Jets</td><td>14</td></tr>
+                <tr><td>Control</td><td>Balboa / SpaNet</td></tr>
+                <tr><td>Heater</td><td>3 kW</td></tr>
+                <tr><td>Pump</td><td>2 HP 2-Speed</td></tr>
+                <tr><td>Lighting</td><td>12V / 12W</td></tr>
+                <tr><td>Insulation</td><td>Full foam</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section features-section" aria-label="CR1 features">
+    <div class="container">
+      <span class="eyebrow" style="text-align:center;display:block">What's Included</span>
+      <h2 style="text-align:center;color:var(--blue);margin-bottom:36px;font-size:clamp(1.4rem,2vw,1.9rem)">Built Right. Every Time.</h2>
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
+          </div>
+          <div class="feature-name">Balboa / SpaNet Controls</div>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+          </div>
+          <div class="feature-name">5-Person Rectangular Design</div>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M12 2a10 10 0 0 1 10 10c0 5.52-4.48 10-10 10S2 17.52 2 12"/><path d="M12 6v6l4 2"/></svg>
+          </div>
+          <div class="feature-name">3KW Heater + Full Foam</div>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M20 14.66V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5.34"/><polygon points="18 2 22 6 12 16 8 16 8 12 18 2"/></svg>
+          </div>
+          <div class="feature-name">14-Jet Hydrotherapy</div>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          </div>
+          <div class="feature-name">Seamless Rotomold Shell</div>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          </div>
+          <div class="feature-name">California Heritage</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CR1 FAQ -->
+  <section class="section faq-section" aria-label="CR1 FAQ">
+    <div class="container">
+      <div class="section-header">
+        <span class="eyebrow">CR1 FAQ</span>
+        <h2>CR1 Questions Answered</h2>
+      </div>
+      <div class="faq-list">
+        <div class="faq-item">
+          <button class="faq-question" onclick="toggleFaq(this)" aria-expanded="false">
+            What is the footprint of the CR1?
+            <span class="faq-icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+          </button>
+          <div class="faq-answer"><p>The CR1 measures 173 × 150 cm. It fits most standard deck spaces and is the most compact of the three models.</p></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-question" onclick="toggleFaq(this)" aria-expanded="false">
+            What control system does the CR1 use?
+            <span class="faq-icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+          </button>
+          <div class="faq-answer"><p>Balboa or SpaNet — both ship depending on availability. Either way you get reliable digital controls with temperature and jet settings.</p></div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-question" onclick="toggleFaq(this)" aria-expanded="false">
+            How does the CR1 compare to CR2 and CR3?
+            <span class="faq-icon" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+          </button>
+          <div class="faq-answer"><p>CR1 is the smallest and most affordable. CR2 adds 2 more seats and 11 more jets. CR3 goes round for face-to-face seating.</p></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="compare-bar" aria-label="Compare other models">
+    <div class="compare-bar-inner">
+      <span class="compare-label">Compare:</span>
+      <div class="compare-links">
+        <button class="compare-link" onclick="showPage('cr2')">CR2 — 7-Person Square</button>
+        <button class="compare-link" onclick="showPage('cr3')">CR3 — 6-Person Round</button>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /page-cr1 -->
+
+
+<!-- ═══════════════════════════════════════════════════════
+     CR2 PAGE
+════════════════════════════════════════════════════════ -->
+<div id="page-cr2" class="page">
+
+  <section class="product-hero" aria-label="CR2 overview">
+    <div class="product-hero-inner">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
+        <span class="eyebrow" style="color:rgba(255,255,255,0.55);margin-bottom:0">The CR Series</span>
+        <span style="background:var(--yellow);color:var(--black);font-family:var(--font-head);font-weight:700;font-size:0.65rem;letter-spacing:0.12em;text-transform:uppercase;padding:4px 12px;border-radius:50px;">Flagship</span>
+      </div>
+      <h1>CR2 — The Entertainer</h1>
+      <p class="tagline">Seven Seats. The Spa that Owns the Backyard.</p>
+      <div class="spec-chips-row">
+        <span class="spec-chip">7 Person</span>
+        <span class="spec-chip">Square 205 cm</span>
+        <span class="spec-chip">25 Jets</span>
+        <span class="spec-chip">2 Pillows</span>
+        <span class="spec-chip">3KW Heater</span>
+        <span class="spec-chip">Balboa / SpaNet</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="section product-detail-section" aria-label="CR2 specifications">
+    <div class="container">
+      <div class="product-detail-grid">
+        <div>
+          <div class="product-image-block" aria-label="CR2 hot tub placeholder image">
+            <div class="product-image-deco-sun" aria-hidden="true"></div>
+            <div class="product-image-label" aria-hidden="true">CR2</div>
+            <div class="product-image-deco-wave" aria-hidden="true"></div>
+          </div>
+          <div class="warning-box" role="alert">
+            <span class="warn-icon" aria-hidden="true">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--yellow)" stroke-width="2.5" stroke-linecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            </span>
+            <div>
+              <h4>Site Prep Required</h4>
+              <p>The CR2 weighs approximately 1,100 kg (2,425 lbs) when filled. Confirm your deck or patio can support this load before installation.</p>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="specs-block">
+            <div class="specs-title">Specifications</div>
+            <table class="specs-table" aria-label="CR2 specification table">
+              <tbody>
+                <tr><td>Model Code</td><td>RTO2000MD</td></tr>
+                <tr><td>Seating</td><td>7 Persons</td></tr>
+                <tr><td>Shape</td><td>Square</td></tr>
+                <tr><td>Dimensions</td><td>205 × 205 × 81 cm (81" × 81" × 32")</td></tr>
+                <tr><td>Dry Weight</td><td>~441 kg</td></tr>
+                <tr><td>Filled Weight</td><td>~1,100 kg</td></tr>
+                <tr><td>Total Jets</td><td>25</td></tr>
+                <tr><td>Pillows</td><td>2</td></tr>
+                <tr><td>Water Diverter</td><td>1</td></tr>
+                <tr><td>Air Regulators</td><td>2</td></tr>
+                <tr><td>Control</td><td>Balboa / SpaNet</td></tr>
+                <tr><td>Heater</td><td>3 kW</td></tr>
+                <tr><td>Pump</td><td>2 HP 2-Speed</td></tr>
+                <tr><td>Insulation</td><td>Full foam</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section features-section" aria-label="CR2 features">
+    <div class="container">
+      <span class="eyebrow" style="text-align:center;display:block">What's Included</span>
+      <h2 style="text-align:center;color:var(--blue);margin-bottom:36px;font-size:clamp(1.4rem,2vw,1.9rem)">The Full Package.</h2>
+      <div class="features-grid">
+        <div class="feature-card"><div class="feature-icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg></div><div class="feature-name">Balboa / SpaNet Controls</div></div>
+        <div class="feature-card"><div class="feature-icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/></svg></div><div class="feature-name">7-Person Square Design</div></div>
+        <div class="feature-card"><div class="feature-icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M20 14.66V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5.34"/><polygon points="18 2 22 6 12 16 8 16 8 12 18 2"/></svg></div><div class="feature-name">25-Jet Hydrotherapy</div></div>
+        <div class="feature-card"><div class="feature-icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M12 2a10 10 0 0 1 10 10c0 5.52-4.48 10-10 10S2 17.52 2 12"/></svg></div><div class="feature-name">2 Headrest Pillows</div></div>
+        <div class="feature-card"><div class="feature-icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div><div class="feature-name">Seamless Rotomold Shell</div></div>
+        <div class="feature-card"><div class="feature-icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></div><div class="feature-name">California Heritage</div></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="compare-bar" aria-label="Compare other models">
+    <div class="compare-bar-inner">
+      <span class="compare-label">Compare:</span>
+      <div class="compare-links">
+        <button class="compare-link" onclick="showPage('cr1')">CR1 — 5-Person Rectangular</button>
+        <button class="compare-link" onclick="showPage('cr3')">CR3 — 6-Person Round</button>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /page-cr2 -->
+
+
+<!-- ═══════════════════════════════════════════════════════
+     CR3 PAGE
+════════════════════════════════════════════════════════ -->
+<div id="page-cr3" class="page">
+
+  <section class="product-hero" aria-label="CR3 overview">
+    <div class="product-hero-inner">
+      <span class="eyebrow" style="color:rgba(255,255,255,0.55)">The CR Series</span>
+      <h1>CR3 — The Social</h1>
+      <p class="tagline">Six in the Round. No Bad Seat.</p>
+      <div class="spec-chips-row">
+        <span class="spec-chip">6 Person</span>
+        <span class="spec-chip">Round ⌀203 cm</span>
+        <span class="spec-chip">21 Jets</span>
+        <span class="spec-chip">3KW Heater</span>
+        <span class="spec-chip">Balboa / SpaNet</span>
+        <span class="spec-chip">Full Foam</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="section product-detail-section" aria-label="CR3 specifications">
+    <div class="container">
+      <div class="product-detail-grid">
+        <div>
+          <div class="product-image-block" aria-label="CR3 hot tub placeholder image">
+            <div class="product-image-deco-sun" aria-hidden="true"></div>
+            <div class="product-image-label" aria-hidden="true">CR3</div>
+            <div class="product-image-deco-wave" aria-hidden="true"></div>
+          </div>
+          <div class="shape-guide" aria-label="Shape comparison guide">
+            <div class="shape-option">
+              <h4>
+                <span class="shape-icon round" aria-hidden="true"></span>
+                Round (CR3)
+              </h4>
+              <p>Face-to-face seating. Great for conversation. Everyone's equal in the round.</p>
+            </div>
+            <div class="shape-option">
+              <h4>
+                <span class="shape-icon" aria-hidden="true"></span>
+                Square / Rectangular (CR1 &amp; CR2)
+              </h4>
+              <p>More jets per seat. Flexible seating configurations. Better for targeted hydrotherapy.</p>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="specs-block">
+            <div class="specs-title">Specifications</div>
+            <table class="specs-table" aria-label="CR3 specification table">
+              <tbody>
+                <tr><td>Model Code</td><td>RTO2100MD</td></tr>
+                <tr><td>Seating</td><td>6 Persons</td></tr>
+                <tr><td>Shape</td><td>Round</td></tr>
+                <tr><td>Dimensions</td><td>⌀203 × 81 cm</td></tr>
+                <tr><td>Dry Weight</td><td>~240 kg</td></tr>
+                <tr><td>Filled Weight</td><td>~1,040 kg</td></tr>
+                <tr><td>Total Jets</td><td>21</td></tr>
+                <tr><td>Control</td><td>Balboa / SpaNet</td></tr>
+                <tr><td>Heater</td><td>3 kW</td></tr>
+                <tr><td>Pump</td><td>2 HP 2-Speed</td></tr>
+                <tr><td>Insulation</td><td>Full foam</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section features-section" aria-label="CR3 features">
+    <div class="container">
+      <span class="eyebrow" style="text-align:center;display:block">What's Included</span>
+      <h2 style="text-align:center;color:var(--blue);margin-bottom:36px;font-size:clamp(1.4rem,2vw,1.9rem)">Round. Ready. Real.</h2>
+      <div class="features-grid">
+        <div class="feature-card"><div class="feature-icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg></div><div class="feature-name">Balboa / SpaNet Controls</div></div>
+        <div class="feature-card"><div class="feature-icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/></svg></div><div class="feature-name">6-Person Round Design</div></div>
+        <div class="feature-card"><div class="feature-icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M20 14.66V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5.34"/><polygon points="18 2 22 6 12 16 8 16 8 12 18 2"/></svg></div><div class="feature-name">21-Jet Hydrotherapy</div></div>
+        <div class="feature-card"><div class="feature-icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M12 2a10 10 0 0 1 10 10c0 5.52-4.48 10-10 10S2 17.52 2 12"/><path d="M12 6v6l4 2"/></svg></div><div class="feature-name">3KW Heater + Full Foam</div></div>
+        <div class="feature-card"><div class="feature-icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div><div class="feature-name">Seamless Rotomold Shell</div></div>
+        <div class="feature-card"><div class="feature-icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></div><div class="feature-name">California Heritage</div></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="compare-bar" aria-label="Compare other models">
+    <div class="compare-bar-inner">
+      <span class="compare-label">Compare:</span>
+      <div class="compare-links">
+        <button class="compare-link" onclick="showPage('cr1')">CR1 — 5-Person Rectangular</button>
+        <button class="compare-link" onclick="showPage('cr2')">CR2 — 7-Person Square</button>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /page-cr3 -->
+
+
+<!-- ═══════════════════════════════════════════════════════
+     WARRANTY PAGE
+════════════════════════════════════════════════════════ -->
+<div id="page-warranty" class="page">
+
+  <section class="product-hero" aria-label="Warranty overview">
+    <div class="product-hero-inner">
+      <span class="eyebrow" style="color:rgba(255,255,255,0.55)">California Cooperage</span>
+      <h1>Warranty &amp; Documentation</h1>
+      <p class="tagline">We stand behind every spa. Here's what you need to know.</p>
+    </div>
+  </section>
+
+  <section class="section" style="background:var(--offwhite)" aria-label="Warranty coverage">
+    <div class="container">
+      <div class="section-header">
+        <span class="eyebrow">Coverage</span>
+        <h2>What's Covered</h2>
+      </div>
+      <div class="coverage-grid">
+        <div class="coverage-card">
+          <div class="coverage-icon" aria-hidden="true">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          </div>
+          <h3>Shell Coverage</h3>
+          <p>The rotomold shell is built to last. Contact your dealer for full warranty terms specific to your model and region.</p>
+        </div>
+        <div class="coverage-card">
+          <div class="coverage-icon" aria-hidden="true">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
+          </div>
+          <h3>Components Coverage</h3>
+          <p>Balboa / SpaNet controls, pump, heater, and jets are covered against manufacturing defects. Wear parts excluded.</p>
+        </div>
+        <div class="coverage-card">
+          <div class="coverage-icon" aria-hidden="true">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          </div>
+          <h3>Service &amp; Support</h3>
+          <p>Authorized dealer network for in-person service. Contact your nearest dealer for service appointments and parts.</p>
+        </div>
+      </div>
+
+      <div class="section-header">
+        <span class="eyebrow">Downloads</span>
+        <h2>Documentation</h2>
+      </div>
+      <div class="downloads-grid">
+        <div class="download-card" tabindex="0" role="button" aria-label="Download Owner Manual CR1 (PDF placeholder)">
+          <div class="download-icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+          </div>
+          <div>
+            <div class="download-name">Owner Manual CR1</div>
+            <div class="download-sub">PDF — Coming Soon</div>
+          </div>
+        </div>
+        <div class="download-card" tabindex="0" role="button" aria-label="Download Owner Manual CR2">
+          <div class="download-icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg></div>
+          <div><div class="download-name">Owner Manual CR2</div><div class="download-sub">PDF — Coming Soon</div></div>
+        </div>
+        <div class="download-card" tabindex="0" role="button" aria-label="Download Owner Manual CR3">
+          <div class="download-icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg></div>
+          <div><div class="download-name">Owner Manual CR3</div><div class="download-sub">PDF — Coming Soon</div></div>
+        </div>
+        <div class="download-card" tabindex="0" role="button" aria-label="Download Electrical Installation Guide">
+          <div class="download-icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><polyline points="13 2 13 9 20 9"/><path d="M20 14.66V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/><polyline points="14 2 22 2 22 9"/></svg></div>
+          <div><div class="download-name">Electrical Installation Guide</div><div class="download-sub">PDF — Coming Soon</div></div>
+        </div>
+        <div class="download-card" tabindex="0" role="button" aria-label="Download Water Care Guide">
+          <div class="download-icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg></div>
+          <div><div class="download-name">Water Care Guide</div><div class="download-sub">PDF — Coming Soon</div></div>
+        </div>
+        <div class="download-card" tabindex="0" role="button" aria-label="Download Warranty Certificate">
+          <div class="download-icon" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89L17 22l-5-3-5 3 1.523-9.11"/></svg></div>
+          <div><div class="download-name">Warranty Certificate</div><div class="download-sub">PDF — Coming Soon</div></div>
+        </div>
+      </div>
+
+      <div class="warning-box" style="margin-top:40px;max-width:700px" role="note">
+        <span class="warn-icon" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--yellow)" stroke-width="2.5" stroke-linecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        </span>
+        <div>
+          <h4>Electrical Reference</h4>
+          <p>Detailed electrical specifications for all CR models are pending final confirmation. Please contact your authorized dealer or refer to the product-specific installation guide when available.</p>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+</div><!-- /page-warranty -->
+
+
+<!-- ═══════════════════════════════════════════════════════
+     FIND A DEALER PAGE
+════════════════════════════════════════════════════════ -->
+<div id="page-find-a-dealer" class="page">
+
+  <section class="product-hero dealer-hero" aria-label="Find a dealer">
+    <div class="product-hero-inner">
+      <span class="eyebrow" style="color:rgba(255,255,255,0.65)">Authorized Network</span>
+      <h1>Find a Dealer Near You</h1>
+      <p class="tagline">Connect with a California Cooperage dealer in your area.</p>
+    </div>
+  </section>
+
+  <section class="section dealer-form-section" aria-label="Dealer contact form">
+    <div class="container">
+      <div class="dealer-form-grid">
+
+        <div class="contact-form">
+          <div class="form-title">Request Dealer Info</div>
+          <form onsubmit="handleFormSubmit(event)" novalidate>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="dealer-name">Name <span style="color:var(--red)">*</span></label>
+                <input class="form-input" type="text" id="dealer-name" name="name" required autocomplete="name" placeholder="Your name" />
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="dealer-email">Email <span style="color:var(--red)">*</span></label>
+                <input class="form-input" type="email" id="dealer-email" name="email" required autocomplete="email" placeholder="you@example.com" />
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="dealer-postal">Postal Code <span style="color:var(--red)">*</span></label>
+                <input class="form-input" type="text" id="dealer-postal" name="postal" required autocomplete="postal-code" placeholder="e.g. 90210" />
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="dealer-model">Model of Interest</label>
+                <select class="form-select" id="dealer-model" name="model">
+                  <option value="">Not Sure Yet</option>
+                  <option value="cr1">CR1 — The Classic</option>
+                  <option value="cr2">CR2 — The Entertainer</option>
+                  <option value="cr3">CR3 — The Social</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="dealer-message">Message</label>
+              <textarea class="form-textarea" id="dealer-message" name="message" placeholder="Anything you'd like us to know..."></textarea>
+            </div>
+            <button type="submit" class="btn btn-blue" style="width:100%;justify-content:center;">Find My Nearest Dealer</button>
+          </form>
+        </div>
+
+        <div>
+          <div class="trust-signals">
+            <div class="trust-signals-title">Why California Cooperage</div>
+            <div class="trust-signal-list">
+              <div class="trust-signal-item">
+                <span class="trust-check" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+                Balboa Certified Controls
+              </div>
+              <div class="trust-signal-item">
+                <span class="trust-check" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+                Rotomold Constructed — No Seams
+              </div>
+              <div class="trust-signal-item">
+                <span class="trust-check" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+                California Heritage Since 1972
+              </div>
+              <div class="trust-signal-item">
+                <span class="trust-check" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+                CE · ETL · ISO 9000 Certified
+              </div>
+              <div class="trust-signal-item">
+                <span class="trust-check" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+                Authorized Dealer Network
+              </div>
+              <div class="trust-signal-item">
+                <span class="trust-check" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke-width="3" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+                Full Foam Insulation — Year-Round Use
+              </div>
+            </div>
+          </div>
+
+          <div style="margin-top:36px;padding:28px;background:var(--white);border-radius:10px;border:1px solid rgba(28,74,99,0.1);">
+            <div style="font-family:var(--font-accent);color:var(--teal);font-size:1.4rem;margin-bottom:10px;">Soak in the good times.</div>
+            <p style="font-size:0.87rem;color:rgba(26,26,26,0.6);line-height:1.7;">California Cooperage dealers are hands-on, knowledgeable, and ready to walk you through the right model for your backyard and budget. No pressure. Just good advice.</p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+</div><!-- /page-find-a-dealer -->
+
+
+<!-- ═══════════════════════════════════════════════════════
+     FOOTER
+════════════════════════════════════════════════════════ -->
+<footer class="footer" role="contentinfo">
+  <div class="footer-inner">
+    <div class="footer-top">
+      <div>
+        <div class="footer-brand-logo" onclick="showPage('home')" tabindex="0" role="button" aria-label="Go to home page">
+          <img src="cc-assets/logo-014.png" alt="California Cooperage" style="height:32px;width:auto;filter:brightness(0) invert(1);" />
+        </div>
+        <div class="footer-tagline">Soak in the good times.</div>
+        <p class="footer-sub">California's original hot tub since 1972. Built in the spirit of Sonoma. Made for your backyard.</p>
+      </div>
+      <div>
+        <div class="footer-col-title">Our Spas</div>
+        <ul class="footer-links" role="list">
+          <li><a onclick="showPage('cr1')" tabindex="0" role="button">CR1 — The Classic</a></li>
+          <li><a onclick="showPage('cr2')" tabindex="0" role="button">CR2 — The Entertainer</a></li>
+          <li><a onclick="showPage('cr3')" tabindex="0" role="button">CR3 — The Social</a></li>
+        </ul>
+      </div>
+      <div>
+        <div class="footer-col-title">Resources</div>
+        <ul class="footer-links" role="list">
+          <li><a onclick="showPage('warranty')" tabindex="0" role="button">Warranty &amp; Docs</a></li>
+          <li><a tabindex="0" role="button">Register Your Spa</a></li>
+          <li><a onclick="showPage('find-a-dealer')" tabindex="0" role="button">Find a Dealer</a></li>
+        </ul>
+      </div>
+      <div>
+        <div class="footer-col-title">Partners</div>
+        <ul class="footer-links" role="list">
+          <li><a tabindex="0" role="button">MAAX Saunas</a></li>
+          <li><a tabindex="0" role="button">MAAX Chillers</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <div class="footer-copyright">&copy; 2026 California Cooperage. All rights reserved.</div>
+      <div class="footer-cert-pills">
+        <span class="cert-pill">CE</span>
+        <span class="cert-pill">ETL</span>
+        <span class="cert-pill">ISO 9000</span>
+      </div>
+    </div>
+  </div>
+</footer>
+
+
+<!-- ═══════════════════════════════════════════════════════
+     JAVASCRIPT
+════════════════════════════════════════════════════════ -->
+<script>
+  // ── Page navigation ─────────────────────────────────────
+  function showPage(id) {
+    // Hide all pages
+    document.querySelectorAll('.page').forEach(function(p) {
+      p.classList.remove('active');
+    });
+
+    // Show target page
+    var target = document.getElementById('page-' + id);
+    if (target) {
+      target.classList.add('active');
+    }
+
+    // Update nav active state
+    document.querySelectorAll('.nav-links a[data-page]').forEach(function(a) {
+      a.classList.toggle('active', a.getAttribute('data-page') === id);
+    });
+
+    // Scroll to top
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  // ── FAQ accordion ────────────────────────────────────────
+  function toggleFaq(btn) {
+    var item = btn.closest('.faq-item');
+    var isOpen = item.classList.contains('open');
+
+    // Close all FAQs in same list
+    var list = btn.closest('.faq-list');
+    list.querySelectorAll('.faq-item').forEach(function(i) {
+      i.classList.remove('open');
+      i.querySelector('.faq-question').setAttribute('aria-expanded', 'false');
+    });
+
+    // Toggle current if it was closed
+    if (!isOpen) {
+      item.classList.add('open');
+      btn.setAttribute('aria-expanded', 'true');
+    }
+  }
+
+  // ── Keyboard navigation for non-button clickables ────────
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      var el = document.activeElement;
+      if (el && el.getAttribute('role') === 'button' && el.tagName !== 'BUTTON') {
+        e.preventDefault();
+        el.click();
+      }
+    }
+  });
+
+  // ── Form submission (prototype) ──────────────────────────
+  function handleFormSubmit(e) {
+    e.preventDefault();
+    var form = e.target;
+    var name = form.querySelector('#dealer-name').value.trim();
+    var email = form.querySelector('#dealer-email').value.trim();
+    var postal = form.querySelector('#dealer-postal').value.trim();
+
+    if (!name || !email || !postal) {
+      alert('Please fill in all required fields.');
+      return;
+    }
+
+    // Prototype feedback
+    var btn = form.querySelector('button[type="submit"]');
+    var original = btn.textContent;
+    btn.textContent = 'Request Sent!';
+    btn.style.background = 'var(--teal)';
+    btn.disabled = true;
+    setTimeout(function() {
+      btn.textContent = original;
+      btn.style.background = '';
+      btn.disabled = false;
+      form.reset();
+    }, 3000);
+  }
+
+  // ── Product card keyboard support ────────────────────────
+  document.querySelectorAll('.product-card').forEach(function(card) {
+    card.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        card.click();
+      }
+    });
+  });
+</script>
+
+</body>
+</html>
