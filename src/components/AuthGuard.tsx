@@ -76,20 +76,22 @@ export function AuthGuard({ children }: AuthGuardProps) {
 
         if (event === "SIGNED_IN") {
           const now = new Date().toISOString();
-          // Log login
-          supabase.from("user_activity_log").insert({
-            user_id: session.user.id,
-            email: session.user.email || "",
-            action: "login",
-            metadata: {},
-          });
-          // Upsert profile — creates row for first-time magic-link users without overwriting is_active
           const userEmail = session.user.email || "";
           const userDomain = userEmail.split("@")[1] || "";
-          supabase.from("user_profiles").upsert(
+          void supabase.from("user_activity_log").insert({
+            user_id: session.user.id,
+            email: userEmail,
+            action: "login",
+            metadata: {},
+          }).then(({ error }) => {
+            if (error) console.error("Failed to log login:", error);
+          });
+          void supabase.from("user_profiles").upsert(
             { id: session.user.id, email: userEmail, domain: userDomain, last_login_at: now },
             { onConflict: "id" }
-          );
+          ).then(({ error }) => {
+            if (error) console.error("Failed to upsert profile:", error);
+          });
         }
 
         if (event === "TOKEN_REFRESHED" || event === "SIGNED_IN") {

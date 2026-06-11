@@ -102,11 +102,13 @@ const Index = () => {
     lastLogRef.current = key;
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!session) return;
-      supabase.from("user_activity_log").insert({
+      void supabase.from("user_activity_log").insert({
         user_id: session.user.id,
         email: session.user.email || "",
         action: "page_view",
         metadata: { tab: effectiveTab, brand: selectedBrand.name },
+      }).then(({ error }) => {
+        if (error) console.error("Failed to log page_view:", error);
       });
     });
   }, [effectiveTab, selectedBrand.name]);
