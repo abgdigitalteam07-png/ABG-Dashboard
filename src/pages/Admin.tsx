@@ -146,7 +146,15 @@ export default function Admin() {
       const q = searchQuery.toLowerCase();
       list = list.filter((u) => u.full_name?.toLowerCase().includes(q) || u.email.toLowerCase().includes(q));
     }
-    if (statusFilter === "active") list = list.filter((u) => u.is_active);
+    if (statusFilter === "active") {
+      const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+      list = list.filter((u) => u.is_active && !!u.last_login_at && new Date(u.last_login_at).getTime() >= cutoff);
+    }
+    if (statusFilter === "inactive") {
+      const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+      list = list.filter((u) => u.is_active && !!u.last_login_at && new Date(u.last_login_at).getTime() < cutoff);
+    }
+    if (statusFilter === "never") list = list.filter((u) => u.is_active && !u.last_login_at);
     if (statusFilter === "deactivated") list = list.filter((u) => !u.is_active);
     if (roleFilter !== "all") list = list.filter((u) => u.role === roleFilter);
     if (domainFilter !== "all") list = list.filter((u) => u.domain === domainFilter);
@@ -330,8 +338,13 @@ export default function Admin() {
     );
   }
 
-  const activeUsers = users.filter((u) => u.is_active).length;
+  const ACTIVE_WINDOW_DAYS = 30;
+  const activeCutoff = Date.now() - ACTIVE_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+  const isRecentlyActive = (u: UserProfile) =>
+    u.is_active && !!u.last_login_at && new Date(u.last_login_at).getTime() >= activeCutoff;
+  const activeUsers = users.filter(isRecentlyActive).length;
   const deactivatedUsers = users.filter((u) => !u.is_active).length;
+  const neverSignedIn = users.filter((u) => u.is_active && !u.last_login_at).length;
 
   return (
     <div className="min-h-screen bg-background">
@@ -479,8 +492,8 @@ export default function Admin() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
             { label: "Total Users", value: users.length, icon: Users },
-            { label: "Active Users", value: activeUsers, icon: UserCheck },
-            { label: "Deactivated", value: deactivatedUsers, icon: UserX },
+            { label: "Active (30d)", value: activeUsers, icon: UserCheck },
+            { label: "Never Signed In", value: neverSignedIn, icon: UserX },
             { label: "Logins (7 Days)", value: loginsLast7, icon: Activity },
           ].map(({ label, value, icon: Icon }) => (
             <Card key={label}>
@@ -528,7 +541,9 @@ export default function Admin() {
                 <SelectTrigger className="w-36"><SelectValue placeholder="Status" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="active">Active (last 30 days)</SelectItem>
+                  <SelectItem value="inactive">Inactive (30+ days)</SelectItem>
+                  <SelectItem value="never">Never signed in</SelectItem>
                   <SelectItem value="deactivated">Deactivated</SelectItem>
                 </SelectContent>
               </Select>
@@ -592,10 +607,14 @@ export default function Admin() {
                         {u.last_login_at ? formatDistanceToNow(new Date(u.last_login_at), { addSuffix: true }) : "Never"}
                       </TableCell>
                       <TableCell>
-                        {u.is_active ? (
+                        {!u.is_active ? (
+                          <Badge className="bg-red-100 text-red-700 border-red-300">Deactivated</Badge>
+                        ) : !u.last_login_at ? (
+                          <Badge className="bg-slate-100 text-slate-600 border-slate-300">Never signed in</Badge>
+                        ) : isRecentlyActive(u) ? (
                           <Badge className="bg-green-100 text-green-700 border-green-300">Active</Badge>
                         ) : (
-                          <Badge className="bg-red-100 text-red-700 border-red-300">Deactivated</Badge>
+                          <Badge className="bg-amber-100 text-amber-700 border-amber-300">Inactive</Badge>
                         )}
                       </TableCell>
                       <TableCell>
