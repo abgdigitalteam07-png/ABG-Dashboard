@@ -87,22 +87,23 @@ Deno.serve(async (req) => {
       });
     }
 
-    // 1. All folders. HubSpot returns up to 100 per page; paginate via `after`.
+    // 1. Folder tree. HubSpot returns the full folder hierarchy in one call,
+    // rooted at folder.id "0" with descendants under `childNodes` (recursive).
+    const root = await hubspotFetch(`/crm/v3/lists/folders`, token);
     const folders: HubSpotFolder[] = [];
-    let after: string | undefined;
-    for (let i = 0; i < 20; i++) {
-      const qs = new URLSearchParams({ limit: "100" });
-      if (after) qs.set("after", after);
-      const page = await hubspotFetch(`/crm/v3/lists/folders?${qs}`, token);
-      const results: HubSpotFolder[] = (page.results || []).map((r: any) => ({
-        id: String(r.id),
-        name: r.name,
-        parentFolderId: r.parentFolderId != null ? String(r.parentFolderId) : null,
-      }));
-      folders.push(...results);
-      after = page.paging?.next?.after;
-      if (!after) break;
+    function walk(node: any) {
+      if (!node) return;
+      // Skip the synthetic root (id="0", name=null).
+      if (node.id && node.id !== "0" && node.name) {
+        folders.push({
+          id: String(node.id),
+          name: String(node.name),
+          parentFolderId: node.parentFolderId != null ? String(node.parentFolderId) : null,
+        });
+      }
+      for (const child of node.childNodes || []) walk(child);
     }
+    walk(root.folder ?? root);
 
     const folder = matchFolder(brandName, folders);
     if (!folder) {
@@ -112,26 +113,44 @@ Deno.serve(async (req) => {
           folder: null,
           lists: [],
           message: `No HubSpot folder matched brand "${brandName}".`,
+          debug: {
+            totalFolders: folders.length,
+            folderNames: folders.map((f) => f.name),
+          },
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // 2. Lists inside that folder. Use the search endpoint with parentFolderId
-    // filter; request hs_list_size so we get contact counts back.
-    const searchBody = {
-      filter: { parentFolderIds: [folder.id] },
-      additionalProperties: ["hs_list_size", "hs_processing_type"],
-      sort: "NAME",
-      offset: 0,
-      count: 200,
-    };
-    const search = await hubspotFetch(`/crm/v3/lists/search`, token, {
-      method: "POST",
-      body: JSON.stringify(searchBody),
-    });
+    // 2. Lists inside that folder. The v3 search endpoint doesn't filter by
+    // folder directly, so we pull all lists and filter client-side by
+    // parentFolderId. Lists carry `additionalProperties.hs_folder_id` and
+    // `additionalProperties.hs_list_size`.
+    const PAGE_SIZE = 500;
+    const allLists: HubSpotList[] = [];
+    let offset = 0;
+    for (let i = 0; i < 30; i++) {
+      const searchBody = {
+        additionalProperties: ["hs_list_size", "hs_folder_id", "hs_processing_type"],
+        offset,
+        count: PAGE_SIZE,
+      };
+      const search = await hubspotFetch(`/crm/v3/lists/search`, token, {
+        method: "POST",
+        body: JSON.stringify(searchBody),
+      });
+      const page: HubSpotList[] = search.lists || [];
+      allLists.push(...page);
+      if (page.length < PAGE_SIZE) break;
+      offset += page.length;
+    }
 
-    const lists = ((search.lists || []) as HubSpotList[]).map((l) => {
+    const lists = allLists
+      .filter((l) => {
+        const folderId = l.additionalProperties?.hs_folder_id ?? (l as any).folderId;
+        return folderId != null && String(folderId) === folder.id;
+      })
+      .map((l) => {
       const sizeRaw =
         l.size ??
         (l.additionalProperties?.hs_list_size
