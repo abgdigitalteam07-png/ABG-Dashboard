@@ -7,7 +7,7 @@ import {
 } from "recharts";
 import { fetchHubSpotData, callFunction } from "@/lib/api-client";
 import { Brand } from "@/lib/brands";
-import { Users, TrendingUp, UserCheck, UserX, RefreshCw } from "lucide-react";
+import { Users, TrendingUp, UserCheck, UserX, RefreshCw, FolderOpen, List as ListIcon } from "lucide-react";
 import { ContactCharts } from "@/components/ContactCharts";
 import { AIRecommendations } from "./AIRecommendations";
 import { CRMComparisonSection } from "./CRMComparisonTab";
@@ -128,6 +128,38 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo, userEmail = "" }: HubSp
   const [refreshKey, setRefreshKey] = useState(0);
   const showLoader = useFirstLoad(loading);
 
+  // Sub-tab toggle: "overview" = existing CRM content, "lists" = HubSpot Lists view.
+  // Only exposed for primary-account brands.
+  const [subTab, setSubTab] = useState<"overview" | "lists">("overview");
+  const [listsData, setListsData] = useState<{
+    folder: { id: string; name: string } | null;
+    lists: { listId: string; name: string; size: number | null; processingType: string | null }[];
+    totalContacts?: number;
+    message?: string;
+  } | null>(null);
+  const [listsLoading, setListsLoading] = useState(false);
+  const [listsError, setListsError] = useState<string | null>(null);
+
+  useEffect(() => { setListsData(null); setListsError(null); }, [brand.id]);
+
+  useEffect(() => {
+    if (isSecondaryBrand || subTab !== "lists" || listsData) return;
+    let cancelled = false;
+    setListsLoading(true);
+    setListsError(null);
+    callFunction("hubspot-lists", { brandName: brand.name })
+      .then((result: any) => {
+        if (cancelled) return;
+        setListsData(result);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setListsError(err instanceof Error ? err.message : "Failed to load lists");
+      })
+      .finally(() => { if (!cancelled) setListsLoading(false); });
+    return () => { cancelled = true; };
+  }, [brand.id, subTab, isSecondaryBrand, listsData]);
+
   const [secondaryStats, setSecondaryStats] = useState<SecondaryStats | null>(null);
   useEffect(() => { setSecondaryStats(null); }, [brand.id, dateFrom.getTime(), dateTo.getTime()]);
 
@@ -239,8 +271,28 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo, userEmail = "" }: HubSp
   return (
     <>
     <div className="space-y-8 p-6">
-      {/* ── Refresh button ── */}
-      <div className="flex justify-end">
+      {/* ── Top bar: sub-tab toggle (primary only) + Refresh ── */}
+      <div className="flex items-center justify-between gap-3">
+        {!isSecondaryBrand ? (
+          <div className="inline-flex rounded-lg border border-border bg-card p-1 gap-1">
+            {([
+              { id: "overview", label: "CRM Overview", Icon: Users },
+              { id: "lists",    label: "HubSpot Lists", Icon: FolderOpen },
+            ] as const).map(({ id, label, Icon }) => (
+              <button
+                key={id}
+                onClick={() => setSubTab(id)}
+                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  subTab === id
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5" /> {label}
+              </button>
+            ))}
+          </div>
+        ) : <div />}
         <button
           onClick={() => setRefreshKey(k => k + 1)}
           disabled={loading}
@@ -250,6 +302,87 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo, userEmail = "" }: HubSp
           {loading ? "Refreshing…" : "Refresh"}
         </button>
       </div>
+
+      {/* ══ HubSpot Lists sub-view ══ */}
+      {!isSecondaryBrand && subTab === "lists" && (
+        <section className="space-y-5">
+          <SectionHeader icon={FolderOpen} label="HubSpot Lists" color="bg-orange-500" />
+
+          {listsLoading && (
+            <div className="rounded-2xl border border-border bg-card p-10 text-center text-sm text-muted-foreground">
+              Loading lists from HubSpot…
+            </div>
+          )}
+
+          {listsError && (
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-400">
+              Failed to load HubSpot lists: {listsError}
+            </div>
+          )}
+
+          {!listsLoading && !listsError && listsData && !listsData.folder && (
+            <div className="rounded-2xl border border-border bg-card p-10 text-center text-sm text-muted-foreground">
+              No HubSpot folder matched "{brand.name}". Folders are usually named after the brand
+              (e.g. "{brand.name} Profiles"). Ask an admin to create or rename a folder if needed.
+            </div>
+          )}
+
+          {!listsLoading && !listsError && listsData?.folder && (
+            <div className="rounded-2xl border border-border bg-card overflow-hidden">
+              <div className="flex items-center justify-between gap-3 border-b border-border bg-muted/40 px-5 py-3">
+                <div className="flex items-center gap-2">
+                  <FolderOpen className="h-4 w-4 text-orange-500" />
+                  <h3 className="text-sm font-semibold text-foreground">{listsData.folder.name}</h3>
+                  <span className="text-xs text-muted-foreground">
+                    · {listsData.lists.length} list{listsData.lists.length === 1 ? "" : "s"}
+                  </span>
+                </div>
+                <span className="text-xs font-semibold tabular-nums text-muted-foreground">
+                  {(listsData.totalContacts ?? 0).toLocaleString()} total contacts
+                </span>
+              </div>
+              {listsData.lists.length === 0 ? (
+                <div className="p-10 text-center text-sm text-muted-foreground">
+                  Folder is empty.
+                </div>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      <th className="px-5 py-3">List Name</th>
+                      <th className="px-5 py-3 text-right">Contacts</th>
+                      <th className="px-5 py-3 text-right">Type</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {listsData.lists
+                      .slice()
+                      .sort((a, b) => (b.size ?? 0) - (a.size ?? 0))
+                      .map((l) => (
+                        <tr key={l.listId} className="border-b border-border last:border-b-0 hover:bg-muted/30">
+                          <td className="px-5 py-3 flex items-center gap-2">
+                            <ListIcon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                            <span className="font-medium text-foreground">{l.name}</span>
+                          </td>
+                          <td className="px-5 py-3 text-right tabular-nums font-semibold text-foreground">
+                            {l.size != null ? l.size.toLocaleString() : "—"}
+                          </td>
+                          <td className="px-5 py-3 text-right text-xs text-muted-foreground capitalize">
+                            {l.processingType ? l.processingType.toLowerCase() : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* ══ CRM Overview (existing content) — hidden when on lists sub-tab ══ */}
+      {(isSecondaryBrand || subTab === "overview") && <>
+
 
       {isSecondaryBrand ? (
         /* ═══ TOP — 3 KPI cards for secondary brands ═══ */
@@ -410,6 +543,7 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo, userEmail = "" }: HubSp
           totalContactsAllTime: data?.totalContactsAllTime,
         }}
       />
+      </>}
     </div>
 
     {/* ── Claude chat panel — fixed floating, secondary brands only ── */}
