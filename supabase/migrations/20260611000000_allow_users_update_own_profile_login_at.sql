@@ -9,6 +9,7 @@
 -- to someone else's. Privileged columns (role, is_active, deactivated_*) are
 -- still only written from the Admin panel under the admin's session.
 
+DROP POLICY IF EXISTS "Users can update own profile" ON public.user_profiles;
 CREATE POLICY "Users can update own profile" ON public.user_profiles
   FOR UPDATE
   USING (auth.uid() = id)
