@@ -242,9 +242,18 @@ export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
         import("jspdf"),
       ]);
 
-      // Mount the print view off-screen at exact A4 width (794px)
+      // Off-screen container — must be position:absolute (not fixed) so
+      // offsetHeight reflects real content height, not viewport height.
       const container = document.createElement("div");
-      container.style.cssText = "position:fixed;left:-9999px;top:0;width:794px;background:#fff;z-index:-1;";
+      container.style.cssText = [
+        "position:absolute",
+        "top:0",
+        "left:-9999px",
+        "width:794px",
+        "background:#fff",
+        "z-index:-1",
+        "overflow:visible",
+      ].join(";");
       document.body.appendChild(container);
 
       const root = ReactDOM.createRoot(container);
@@ -260,38 +269,48 @@ export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
         />
       );
 
-      // Wait for React + Recharts to paint
-      await new Promise(r => setTimeout(r, 1200));
+      // Wait for React + Recharts SVGs to paint
+      await new Promise(r => setTimeout(r, 1500));
 
       const el = container.firstElementChild as HTMLElement;
+      const elH = el.offsetHeight;   // real pixel height of content
+      const elW = el.offsetWidth;    // should be 794
+
       const canvas = await html2canvas(el, {
         scale: 2,
         useCORS: true,
         allowTaint: true,
         backgroundColor: "#ffffff",
         logging: false,
-        width: el.scrollWidth,
-        height: el.scrollHeight,
-        windowWidth: el.scrollWidth,
-        windowHeight: el.scrollHeight,
+        width: elW,
+        height: elH,
+        windowWidth: elW,
+        windowHeight: elH,
+        scrollX: 0,
+        scrollY: 0,
       });
 
       root.unmount();
       document.body.removeChild(container);
 
-      // Build PDF — paginate at A4 height
-      const pdf    = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-      const pageW  = pdf.internal.pageSize.getWidth();   // 210mm
-      const pageH  = pdf.internal.pageSize.getHeight();  // 297mm
-      const margin = 0;
-      const imgW   = pageW - margin * 2;                 // full bleed width
-      const imgH   = (canvas.height * imgW) / canvas.width;
-      const pageHpx = (pageH * canvas.width) / pageW;   // page height in canvas px
+      // A4 in mm: 210 × 297. We render full-bleed (no margin).
+      const pdf   = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const pageWmm = 210;
+      const pageHmm = 297;
+
+      // How many canvas pixels fit in one A4 page height?
+      // canvas.width  = elW * scale = 794 * 2 = 1588 px
+      // 210mm → 1588px, so 1mm = 1588/210 px
+      // 297mm → 297 * (1588/210) px
+      const pxPerMm  = canvas.width / pageWmm;
+      const pageHpx  = Math.floor(pageHmm * pxPerMm);  // canvas px per A4 page
 
       let srcY = 0;
       let page = 0;
+
       while (srcY < canvas.height) {
-        const sliceH  = Math.min(pageHpx, canvas.height - srcY);
+        const sliceH = Math.min(pageHpx, canvas.height - srcY);
+
         const slice   = document.createElement("canvas");
         slice.width   = canvas.width;
         slice.height  = sliceH;
@@ -299,8 +318,11 @@ export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, slice.width, slice.height);
         ctx.drawImage(canvas, 0, srcY, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+
+        const sliceHmm = sliceH / pxPerMm;
         if (page > 0) pdf.addPage();
-        pdf.addImage(slice.toDataURL("image/png"), "PNG", margin, margin, imgW, (sliceH * imgW) / canvas.width);
+        pdf.addImage(slice.toDataURL("image/png"), "PNG", 0, 0, pageWmm, sliceHmm);
+
         srcY += sliceH;
         page++;
       }
