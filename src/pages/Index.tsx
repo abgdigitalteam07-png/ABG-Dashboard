@@ -8,6 +8,7 @@ import { HubSpotTab } from "@/components/HubSpotTab";
 import { HubSpotCRMTab } from "@/components/HubSpotCRMTab";
 import { SocialMediaTab } from "@/components/SocialMediaTab";
 import { ReadMeTab } from "@/components/ReadMeTab";
+import { SummaryTab } from "@/components/SummaryTab";
 import { toast } from "sonner";
 
 const Index = () => {
@@ -89,6 +90,12 @@ const Index = () => {
       disabled: !selectedBrand.hasHubSpot,
       tooltip: "No HubSpot data for this brand.",
     },
+    {
+      id: "summary",
+      label: "Summary Report",
+      disabled: !selectedBrand.hasGA4 && !selectedBrand.hasGSC && !selectedBrand.hasHubSpot,
+      tooltip: "No data sources linked for this brand.",
+    },
   ];
 
   const effectiveTab =
@@ -129,7 +136,7 @@ const Index = () => {
 
       <main className="mx-auto max-w-[1400px]">
         <div className="px-2 pt-2">
-          <h1 className="px-3 md:px-4 pt-3 md:pt-4 text-sm md:text-lg font-semibold text-foreground">{selectedBrand.name} {effectiveTab === "hubspot" ? "Emails" : effectiveTab === "hubspot-crm" ? "HubSpot CRM" : ""} Performance Overview</h1>
+          <h1 className="px-3 md:px-4 pt-3 md:pt-4 text-sm md:text-lg font-semibold text-foreground">{selectedBrand.name} {effectiveTab === "hubspot" ? "Emails" : effectiveTab === "hubspot-crm" ? "HubSpot CRM" : effectiveTab === "summary" ? "Summary" : ""} Performance Overview</h1>
         </div>
 
         {effectiveTab === "performance" && <PerformanceTab key={selectedBrand.id} brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />}
@@ -137,6 +144,7 @@ const Index = () => {
         {effectiveTab === "hubspot" && <HubSpotTab key={selectedBrand.id} brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />}
         {effectiveTab === "hubspot-crm" && <HubSpotCRMTab key={selectedBrand.id} brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} userEmail={userEmail} />}
         {effectiveTab === "readme" && <ReadMeTab key={selectedBrand.id} brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />}
+        {effectiveTab === "summary" && <SummaryTab key={selectedBrand.id} brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />}
       </main>
     </div>
   );
