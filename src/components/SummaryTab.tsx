@@ -1,10 +1,12 @@
 import { useEffect, useState, useMemo, useRef } from "react";
+import * as ReactDOM from "react-dom/client";
 import { supabase } from "@/integrations/supabase/client";
 import { Brand } from "@/lib/brands";
 import { fetchGA4Data, fetchGSCData, fetchHubSpotData } from "@/lib/api-client";
 import { WaterFillLoader } from "@/components/WaterFillLoader";
 import { useFirstLoad } from "@/hooks/useFirstLoad";
 import { generateRecommendations } from "@/lib/recommendation-rules";
+import { SummaryPrintView } from "@/components/SummaryPrintView";
 import { format } from "date-fns";
 import { TrendingUp, TrendingDown, WifiOff, Download } from "lucide-react";
 import {
@@ -233,14 +235,35 @@ export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
   const [exporting, setExporting] = useState(false);
 
   async function handleDownloadPDF() {
-    if (!reportRef.current) return;
     setExporting(true);
     try {
       const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
         import("html2canvas"),
         import("jspdf"),
       ]);
-      const el = reportRef.current;
+
+      // Mount the print view off-screen at exact A4 width (794px)
+      const container = document.createElement("div");
+      container.style.cssText = "position:fixed;left:-9999px;top:0;width:794px;background:#fff;z-index:-1;";
+      document.body.appendChild(container);
+
+      const root = ReactDOM.createRoot(container);
+      root.render(
+        <SummaryPrintView
+          brand={brand}
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          ga4={ga4}
+          gsc={gsc}
+          channels={channels}
+          recommendations={recommendations}
+        />
+      );
+
+      // Wait for React + Recharts to paint
+      await new Promise(r => setTimeout(r, 1200));
+
+      const el = container.firstElementChild as HTMLElement;
       const canvas = await html2canvas(el, {
         scale: 2,
         useCORS: true,
@@ -252,32 +275,39 @@ export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
         windowWidth: el.scrollWidth,
         windowHeight: el.scrollHeight,
       });
-      const imgData = canvas.toDataURL("image/png");
-      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-      const pageW = pdf.internal.pageSize.getWidth();
-      const pageH = pdf.internal.pageSize.getHeight();
-      const margin = 10;
-      const imgW = pageW - margin * 2;
-      const imgH = (canvas.height * imgW) / canvas.width;
-      let yOffset = margin;
-      let remaining = imgH;
-      let sourceY = 0;
-      while (remaining > 0) {
-        const sliceH = Math.min(remaining, pageH - margin * 2);
-        const sliceCanvas = document.createElement("canvas");
-        sliceCanvas.width = canvas.width;
-        sliceCanvas.height = (sliceH / imgH) * canvas.height;
-        const ctx = sliceCanvas.getContext("2d")!;
-        ctx.drawImage(canvas, 0, sourceY * (canvas.height / imgH), canvas.width, sliceCanvas.height, 0, 0, canvas.width, sliceCanvas.height);
-        const sliceData = sliceCanvas.toDataURL("image/png");
-        if (sourceY > 0) { pdf.addPage(); yOffset = margin; }
-        pdf.addImage(sliceData, "PNG", margin, yOffset, imgW, sliceH);
-        sourceY += sliceH;
-        remaining -= sliceH;
+
+      root.unmount();
+      document.body.removeChild(container);
+
+      // Build PDF — paginate at A4 height
+      const pdf    = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const pageW  = pdf.internal.pageSize.getWidth();   // 210mm
+      const pageH  = pdf.internal.pageSize.getHeight();  // 297mm
+      const margin = 0;
+      const imgW   = pageW - margin * 2;                 // full bleed width
+      const imgH   = (canvas.height * imgW) / canvas.width;
+      const pageHpx = (pageH * canvas.width) / pageW;   // page height in canvas px
+
+      let srcY = 0;
+      let page = 0;
+      while (srcY < canvas.height) {
+        const sliceH  = Math.min(pageHpx, canvas.height - srcY);
+        const slice   = document.createElement("canvas");
+        slice.width   = canvas.width;
+        slice.height  = sliceH;
+        const ctx     = slice.getContext("2d")!;
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, slice.width, slice.height);
+        ctx.drawImage(canvas, 0, srcY, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+        if (page > 0) pdf.addPage();
+        pdf.addImage(slice.toDataURL("image/png"), "PNG", margin, margin, imgW, (sliceH * imgW) / canvas.width);
+        srcY += sliceH;
+        page++;
       }
-      const from = format(dateFrom, "yyyy-MM-dd");
-      const to   = format(dateTo,   "yyyy-MM-dd");
+
       const safeName = brand.name.replace(/[^a-zA-Z0-9]/g, "_");
+      const from     = format(dateFrom, "yyyy-MM-dd");
+      const to       = format(dateTo,   "yyyy-MM-dd");
       pdf.save(`${safeName}_${from}_${to}.pdf`);
     } catch (err) {
       console.error("PDF export failed:", err);
