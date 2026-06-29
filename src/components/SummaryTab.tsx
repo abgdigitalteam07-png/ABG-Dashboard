@@ -6,7 +6,7 @@ import { WaterFillLoader } from "@/components/WaterFillLoader";
 import { useFirstLoad } from "@/hooks/useFirstLoad";
 import { generateRecommendations } from "@/lib/recommendation-rules";
 import { format } from "date-fns";
-import { TrendingUp, TrendingDown, WifiOff } from "lucide-react";
+import { TrendingUp, TrendingDown, WifiOff, Download } from "lucide-react";
 import {
   AreaChart, Area, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip,
@@ -230,10 +230,29 @@ export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
   const axisStyle  = { fontSize: 10, fill: "hsl(var(--muted-foreground))" };
   const gridColor  = "hsl(var(--border))";
 
+  function handleDownloadPDF() {
+    document.title = `${brand.name} — Performance Report ${format(new Date(), "yyyy-MM-dd")}`;
+    window.print();
+  }
+
   if (showLoader) return <WaterFillLoader fullScreen={false} message="Building report…" />;
 
   return (
     <div className="p-6 space-y-8 max-w-[1400px]">
+      <style>{`
+        @media print {
+          /* Hide everything except the report */
+          header, nav, [data-tabnav], .sticky, [class*="DashboardHeader"],
+          [class*="TabNav"], h1.font-semibold { display: none !important; }
+          .no-print { display: none !important; }
+          /* Force colours for print */
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+          @page { size: A4 portrait; margin: 18mm 14mm; }
+          body { background: white !important; font-size: 11pt; }
+          /* Keep recharts SVGs visible */
+          .recharts-wrapper svg { overflow: visible !important; }
+        }
+      `}</style>
 
       {/* ── 1. HEADER ─────────────────────────────────────────────────────── */}
       <div>
@@ -247,7 +266,16 @@ export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
               Week of {format(dateFrom, "MMM d")} – {format(dateTo, "MMM d, yyyy")} · weekly edition
             </p>
           </div>
-          <p className="text-[11px] text-muted-foreground mt-1">Issued {format(new Date(), "MMM d, yyyy")}</p>
+          <div className="flex flex-col items-end gap-2">
+            <p className="text-[11px] text-muted-foreground">Issued {format(new Date(), "MMM d, yyyy")}</p>
+            <button
+              onClick={handleDownloadPDF}
+              className="no-print flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-brand-red text-white text-[11px] font-semibold hover:bg-brand-red/90 transition-colors"
+            >
+              <Download className="h-3.5 w-3.5" />
+              Download Report
+            </button>
+          </div>
         </div>
         {/* meta bar */}
         <div className="flex items-center justify-between pt-2 text-[11px] text-muted-foreground">

@@ -80,3 +80,26 @@
     font-variant-numeric: tabular-nums;
   }
 }
+
+@media print {
+  /* Hide dashboard chrome — only the summary report content prints */
+  .sticky,
+  [data-tabnav],
+  main > div:first-child,
+  .no-print {
+    display: none !important;
+  }
+  main {
+    max-width: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  @page {
+    size: A4 portrait;
+    margin: 18mm 14mm;
+  }
+}
