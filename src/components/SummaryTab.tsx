@@ -267,12 +267,13 @@ export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
       date_range_days: schedForm.date_range_days,
       is_active: schedForm.is_active,
     };
-    if (brandSchedule) {
-      await supabase.from("email_schedules").update(payload).eq("id", brandSchedule.id);
-    } else {
-      const { data } = await supabase.from("email_schedules").insert(payload).select().single();
-      if (data) setBrandSchedule(data as EmailSchedule);
-    }
+    // Upsert on brand_id — guarantees one schedule per brand, no duplicates
+    const { data } = await supabase
+      .from("email_schedules")
+      .upsert(payload, { onConflict: "brand_id" })
+      .select()
+      .single();
+    if (data) setBrandSchedule(data as EmailSchedule);
     setSchedSaving(false);
     toast.success(brandSchedule ? "Schedule updated" : "Schedule created");
     setEmailDialogOpen(false);
