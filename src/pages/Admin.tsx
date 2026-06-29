@@ -22,7 +22,9 @@ import { useToast } from "@/hooks/use-toast";
 import {
   ArrowLeft, Users, UserCheck, UserX, Activity, MoreHorizontal,
   Send, Download, ChevronLeft, ChevronRight, BarChart2, Eye, LogIn,
+  Mail, Plus, Trash2, Calendar, Clock, ToggleLeft, ToggleRight, Play,
 } from "lucide-react";
+import { brands } from "@/lib/brands";
 import { format, formatDistanceToNow, subDays, eachDayOfInterval, startOfDay } from "date-fns";
 
 const ABG_LOGO_URL =
@@ -66,7 +68,33 @@ export default function Admin() {
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const [loginsLast7, setLoginsLast7] = useState(0);
-  const [activeAdminTab, setActiveAdminTab] = useState<"users" | "usage">("users");
+  const [activeAdminTab, setActiveAdminTab] = useState<"users" | "usage" | "schedules">("users");
+
+  // ── Report Schedules state ─────────────────────────────────────────────
+  interface EmailSchedule {
+    id: string;
+    brand_id: string;
+    brand_name: string;
+    recipients: string[];
+    day_of_week: number;
+    send_hour_utc: number;
+    date_range_days: number;
+    is_active: boolean;
+    last_sent_at: string | null;
+    created_at: string;
+  }
+  const [schedules, setSchedules] = useState<EmailSchedule[]>([]);
+  const [schedLoading, setSchedLoading] = useState(false);
+  const [newSched, setNewSched] = useState({
+    brand_id: "", brand_name: "",
+    recipients: "mali@americanbathgroup.com",
+    day_of_week: 1,           // Monday
+    send_hour_utc: 8,
+    date_range_days: 7,
+    is_active: true,
+  });
+  const [schedSaving, setSchedSaving] = useState(false);
+  const [sendingId, setSendingId] = useState<string | null>(null);
 
   // Filters
   const [searchQuery, setSearchQuery] = useState("");
@@ -330,6 +358,64 @@ export default function Admin() {
     return Object.values(map).sort((a, b) => b.views - a.views);
   }, [activity]);
 
+  // ── Schedule helpers ─────────────────────────────────────────────────────
+  async function loadSchedules() {
+    setSchedLoading(true);
+    const { data } = await supabase.from("email_schedules").select("*").order("created_at", { ascending: false });
+    setSchedules(data ?? []);
+    setSchedLoading(false);
+  }
+
+  async function saveSchedule() {
+    if (!newSched.brand_id || !newSched.recipients.trim()) {
+      toast({ title: "Missing fields", description: "Select a brand and add at least one recipient email.", variant: "destructive" });
+      return;
+    }
+    const recipientList = newSched.recipients.split(",").map(e => e.trim().toLowerCase()).filter(Boolean);
+    if (!recipientList.length) {
+      toast({ title: "Invalid emails", description: "Enter at least one valid email address.", variant: "destructive" });
+      return;
+    }
+    setSchedSaving(true);
+    const { error } = await supabase.from("email_schedules").insert({
+      brand_id: newSched.brand_id,
+      brand_name: newSched.brand_name,
+      recipients: recipientList,
+      day_of_week: newSched.day_of_week,
+      send_hour_utc: newSched.send_hour_utc,
+      date_range_days: newSched.date_range_days,
+      is_active: newSched.is_active,
+    });
+    setSchedSaving(false);
+    if (error) { toast({ title: "Error", description: error.message, variant: "destructive" }); return; }
+    toast({ title: "Schedule saved", description: `Report scheduled for ${newSched.brand_name}` });
+    setNewSched({ brand_id: "", brand_name: "", recipients: "mali@americanbathgroup.com", day_of_week: 1, send_hour_utc: 8, date_range_days: 7, is_active: true });
+    loadSchedules();
+  }
+
+  async function toggleSchedule(id: string, current: boolean) {
+    await supabase.from("email_schedules").update({ is_active: !current }).eq("id", id);
+    setSchedules(s => s.map(x => x.id === id ? { ...x, is_active: !current } : x));
+  }
+
+  async function deleteSchedule(id: string, brandName: string) {
+    if (!confirm(`Delete schedule for ${brandName}?`)) return;
+    await supabase.from("email_schedules").delete().eq("id", id);
+    setSchedules(s => s.filter(x => x.id !== id));
+    toast({ title: "Deleted", description: `Schedule for ${brandName} removed.` });
+  }
+
+  async function sendNow(id: string) {
+    setSendingId(id);
+    const { error } = await supabase.functions.invoke("send-scheduled-report", { body: { schedule_id: id } });
+    setSendingId(null);
+    if (error) { toast({ title: "Send failed", description: error.message, variant: "destructive" }); return; }
+    toast({ title: "Report sent!", description: "Email delivered to recipients." });
+    loadSchedules();
+  }
+
+  const DOW_LABELS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
   if (isAdmin === null) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -367,10 +453,11 @@ export default function Admin() {
             {([
               { id: "users", label: "Users & Activity", icon: Users },
               { id: "usage", label: "Daily Usage", icon: BarChart2 },
+              { id: "schedules", label: "Report Schedules", icon: Mail },
             ] as const).map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
-                onClick={() => setActiveAdminTab(id)}
+                onClick={() => { setActiveAdminTab(id); if (id === "schedules") loadSchedules(); }}
                 className={`flex items-center gap-2 rounded-lg px-4 py-1.5 text-sm font-medium transition-all ${
                   activeAdminTab === id
                     ? "bg-white shadow-sm text-foreground"
@@ -602,7 +689,27 @@ export default function Admin() {
                       <TableCell className="font-medium">{u.full_name || "—"}</TableCell>
                       <TableCell>{u.email}</TableCell>
                       <TableCell>{u.domain}</TableCell>
-                      <TableCell><Badge variant="outline" className="text-xs">{u.role}</Badge></TableCell>
+                      <TableCell>
+                        <Select
+                          value={u.role}
+                          onValueChange={(newRole) => setConfirmDialog({
+                            open: true,
+                            title: newRole === "admin" ? "Make Admin" : "Make Member",
+                            description: newRole === "admin"
+                              ? `Give ${u.full_name || u.email} admin access?`
+                              : `Remove admin access from ${u.full_name || u.email}?`,
+                            onConfirm: () => handleRoleChange(u, newRole),
+                          })}
+                        >
+                          <SelectTrigger className="h-7 w-28 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="admin">Admin</SelectItem>
+                            <SelectItem value="viewer">Member</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {u.last_login_at ? formatDistanceToNow(new Date(u.last_login_at), { addSuffix: true }) : "Never"}
                       </TableCell>
@@ -633,20 +740,6 @@ export default function Admin() {
                               })}>Deactivate</DropdownMenuItem>
                             ) : (
                               <DropdownMenuItem onClick={() => handleReactivate(u)}>Reactivate</DropdownMenuItem>
-                            )}
-                            {u.role === "viewer" && (
-                              <DropdownMenuItem onClick={() => setConfirmDialog({
-                                open: true, title: "Make Admin",
-                                description: `Give ${u.full_name || u.email} admin access?`,
-                                onConfirm: () => handleRoleChange(u, "admin"),
-                              })}>Make Admin</DropdownMenuItem>
-                            )}
-                            {u.role === "admin" && (
-                              <DropdownMenuItem onClick={() => setConfirmDialog({
-                                open: true, title: "Remove Admin",
-                                description: `Remove admin access from ${u.full_name || u.email}?`,
-                                onConfirm: () => handleRoleChange(u, "viewer"),
-                              })}>Remove Admin</DropdownMenuItem>
                             )}
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -725,6 +818,235 @@ export default function Admin() {
         </Card>
         </>}
       </main>
+
+      {/* ══ REPORT SCHEDULES TAB ══ */}
+      {activeAdminTab === "schedules" && (
+        <div className="space-y-6">
+
+          {/* ── Setup status banner ── */}
+          <Card className="border-amber-200 bg-amber-50 dark:bg-amber-950/20">
+            <CardContent className="pt-4 pb-4">
+              <div className="flex flex-wrap gap-4 text-sm">
+                {[
+                  { label: "Resend.com API Key", status: "pending", note: "Add RESEND_API_KEY to Supabase Edge Function secrets" },
+                  { label: "email_schedules table", status: "ready", note: "Migration created — run: supabase db push" },
+                  { label: "send-scheduled-report Edge Function", status: "ready", note: "Deploy: supabase functions deploy send-scheduled-report" },
+                  { label: "pg_cron job", status: "pending", note: "Enable in Supabase Dashboard → Database → Extensions → pg_cron, then run the SQL below" },
+                ].map(({ label, status, note }) => (
+                  <div key={label} className="flex items-start gap-2 min-w-[220px] flex-1">
+                    <span className={`mt-0.5 h-2 w-2 rounded-full flex-shrink-0 ${status === "ready" ? "bg-emerald-500" : "bg-amber-500"}`} />
+                    <div>
+                      <p className="font-semibold text-foreground">{label}</p>
+                      <p className="text-xs text-muted-foreground">{note}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <details className="mt-3">
+                <summary className="text-xs font-semibold text-muted-foreground cursor-pointer hover:text-foreground">pg_cron SQL — run once in Supabase SQL Editor</summary>
+                <pre className="mt-2 rounded bg-muted px-3 py-2 text-xs overflow-x-auto text-foreground">{`select cron.schedule(
+  'send-scheduled-reports',
+  '0 * * * *',  -- every hour on the hour (UTC)
+  $$
+    select net.http_post(
+      url := 'https://ffxhonryhaadyudpopvv.supabase.co/functions/v1/send-scheduled-report',
+      headers := '{"Authorization":"Bearer <SERVICE_ROLE_KEY>","Content-Type":"application/json"}'::jsonb,
+      body := '{}'::jsonb
+    )
+  $$
+);`}</pre>
+              </details>
+            </CardContent>
+          </Card>
+
+          {/* ── Add new schedule ── */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Plus className="h-4 w-4 text-brand-red" /> Add Report Schedule
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Brand */}
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Brand</label>
+                  <Select
+                    value={newSched.brand_id}
+                    onValueChange={(val) => {
+                      const b = brands.find(b => b.id === val);
+                      setNewSched(s => ({ ...s, brand_id: val, brand_name: b?.name ?? val }));
+                    }}
+                  >
+                    <SelectTrigger><SelectValue placeholder="Select brand…" /></SelectTrigger>
+                    <SelectContent>
+                      {brands.map(b => (
+                        <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Date range */}
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Report Period</label>
+                  <Select
+                    value={String(newSched.date_range_days)}
+                    onValueChange={(v) => setNewSched(s => ({ ...s, date_range_days: Number(v) }))}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="7">Last 7 days</SelectItem>
+                      <SelectItem value="14">Last 14 days</SelectItem>
+                      <SelectItem value="30">Last 30 days</SelectItem>
+                      <SelectItem value="60">Last 60 days</SelectItem>
+                      <SelectItem value="90">Last 90 days</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Day of week */}
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1"><Calendar className="h-3 w-3" /> Send Day</label>
+                  <Select
+                    value={String(newSched.day_of_week)}
+                    onValueChange={(v) => setNewSched(s => ({ ...s, day_of_week: Number(v) }))}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {DOW_LABELS.map((d, i) => <SelectItem key={i} value={String(i)}>{d}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Hour UTC */}
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1"><Clock className="h-3 w-3" /> Send Time (UTC)</label>
+                  <Select
+                    value={String(newSched.send_hour_utc)}
+                    onValueChange={(v) => setNewSched(s => ({ ...s, send_hour_utc: Number(v) }))}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: 24 }, (_, h) => (
+                        <SelectItem key={h} value={String(h)}>
+                          {String(h).padStart(2, "0")}:00 UTC {h >= 4 && h <= 12 ? `(${h - 4}:00 ET)` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Recipients */}
+              <div className="space-y-1">
+                <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1"><Mail className="h-3 w-3" /> Recipients (comma-separated)</label>
+                <Input
+                  placeholder="brad@americanbathgroup.com, chris@americanbathgroup.com"
+                  value={newSched.recipients}
+                  onChange={e => setNewSched(s => ({ ...s, recipients: e.target.value }))}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {newSched.recipients ? `${newSched.recipients.split(",").filter(e => e.trim()).length} recipient(s)` : "Add email addresses separated by commas"}
+                </p>
+              </div>
+
+              <Button
+                onClick={saveSchedule}
+                disabled={schedSaving || !newSched.brand_id || !newSched.recipients.trim()}
+                className="bg-brand-red hover:bg-brand-red/90 text-white"
+              >
+                {schedSaving ? "Saving…" : <><Plus className="h-4 w-4 mr-1" /> Save Schedule</>}
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* ── Existing schedules ── */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Mail className="h-4 w-4" /> Active Schedules
+                <span className="ml-auto text-xs font-normal text-muted-foreground">{schedules.length} total</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              {schedLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                </div>
+              ) : schedules.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground text-sm">
+                  No schedules yet. Add one above.
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Brand</TableHead>
+                      <TableHead>Recipients</TableHead>
+                      <TableHead>Schedule</TableHead>
+                      <TableHead>Period</TableHead>
+                      <TableHead>Last Sent</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {schedules.map(sched => (
+                      <TableRow key={sched.id}>
+                        <TableCell className="font-semibold">{sched.brand_name}</TableCell>
+                        <TableCell>
+                          <div className="flex flex-wrap gap-1">
+                            {sched.recipients.map(r => (
+                              <span key={r} className="inline-block rounded bg-muted px-1.5 py-0.5 text-[10px] font-mono">{r}</span>
+                            ))}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {DOW_LABELS[sched.day_of_week]}s at {String(sched.send_hour_utc).padStart(2, "0")}:00 UTC
+                        </TableCell>
+                        <TableCell className="text-sm">Last {sched.date_range_days} days</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {sched.last_sent_at ? formatDistanceToNow(new Date(sched.last_sent_at), { addSuffix: true }) : "Never"}
+                        </TableCell>
+                        <TableCell>
+                          <button onClick={() => toggleSchedule(sched.id, sched.is_active)} className="flex items-center gap-1 text-xs">
+                            {sched.is_active
+                              ? <><ToggleRight className="h-4 w-4 text-emerald-500" /><span className="text-emerald-600 font-medium">Active</span></>
+                              : <><ToggleLeft className="h-4 w-4 text-muted-foreground" /><span className="text-muted-foreground">Paused</span></>}
+                          </button>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              size="sm" variant="outline"
+                              disabled={sendingId === sched.id}
+                              onClick={() => sendNow(sched.id)}
+                              title="Send now"
+                            >
+                              {sendingId === sched.id
+                                ? <div className="h-3 w-3 animate-spin rounded-full border border-primary border-t-transparent" />
+                                : <Play className="h-3 w-3" />}
+                            </Button>
+                            <Button
+                              size="sm" variant="ghost"
+                              onClick={() => deleteSchedule(sched.id, sched.brand_name)}
+                              className="text-destructive hover:text-destructive"
+                              title="Delete"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Confirmation Dialog */}
       <Dialog open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog((d) => ({ ...d, open }))}>

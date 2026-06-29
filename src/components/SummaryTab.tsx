@@ -8,7 +8,26 @@ import { useFirstLoad } from "@/hooks/useFirstLoad";
 import { generateRecommendations } from "@/lib/recommendation-rules";
 import { SummaryPrintView } from "@/components/SummaryPrintView";
 import { format } from "date-fns";
-import { TrendingUp, TrendingDown, WifiOff, Download } from "lucide-react";
+import { TrendingUp, TrendingDown, WifiOff, Download, Mail, Send, Calendar, Clock, Pencil } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { toast } from "sonner";
+
+const DOW_LABELS = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+
+interface EmailSchedule {
+  id: string;
+  brand_id: string;
+  brand_name: string;
+  recipients: string[];
+  day_of_week: number;
+  send_hour_utc: number;
+  date_range_days: number;
+  is_active: boolean;
+  last_sent_at: string | null;
+}
 import {
   AreaChart, Area, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip,
@@ -187,7 +206,89 @@ export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
   const [hubspot, setHubspot] = useState<any>(null);
   const [channels, setChannels] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
   const showLoader = useFirstLoad(loading);
+
+  // ── Email schedule state ───────────────────────────────────────────────────
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
+  const [brandSchedule, setBrandSchedule] = useState<EmailSchedule | null>(null);
+  const [schedForm, setSchedForm] = useState({
+    recipients: "mali@americanbathgroup.com",
+    day_of_week: 1,
+    send_hour_utc: 8,
+    date_range_days: 7,
+    is_active: true,
+  });
+  const [schedSaving, setSchedSaving] = useState(false);
+  const [sendingNow, setSendingNow] = useState(false);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setIsAdmin(session?.user?.email === "mali@americanbathgroup.com");
+    });
+  }, []);
+
+  // Load existing schedule for this brand whenever dialog opens
+  async function openEmailDialog() {
+    setEmailDialogOpen(true);
+    const { data } = await supabase
+      .from("email_schedules")
+      .select("*")
+      .eq("brand_id", brand.id)
+      .maybeSingle();
+    if (data) {
+      setBrandSchedule(data as EmailSchedule);
+      setSchedForm({
+        recipients: data.recipients.join(", "),
+        day_of_week: data.day_of_week,
+        send_hour_utc: data.send_hour_utc,
+        date_range_days: data.date_range_days,
+        is_active: data.is_active,
+      });
+    } else {
+      setBrandSchedule(null);
+    }
+  }
+
+  async function saveSchedule() {
+    setSchedSaving(true);
+    const recipientList = schedForm.recipients.split(",").map(e => e.trim().toLowerCase()).filter(Boolean);
+    if (!recipientList.length) { toast.error("Add at least one recipient email"); setSchedSaving(false); return; }
+    const payload = {
+      brand_id: brand.id,
+      brand_name: brand.name,
+      recipients: recipientList,
+      day_of_week: schedForm.day_of_week,
+      send_hour_utc: schedForm.send_hour_utc,
+      date_range_days: schedForm.date_range_days,
+      is_active: schedForm.is_active,
+    };
+    if (brandSchedule) {
+      await supabase.from("email_schedules").update(payload).eq("id", brandSchedule.id);
+    } else {
+      const { data } = await supabase.from("email_schedules").insert(payload).select().single();
+      if (data) setBrandSchedule(data as EmailSchedule);
+    }
+    setSchedSaving(false);
+    toast.success(brandSchedule ? "Schedule updated" : "Schedule created");
+    setEmailDialogOpen(false);
+  }
+
+  async function sendNow() {
+    if (!brandSchedule) { toast.error("Save a schedule first, then use Send Now"); return; }
+    setSendingNow(true);
+    try {
+      const { error } = await supabase.functions.invoke("send-scheduled-report", {
+        body: { schedule_id: brandSchedule.id },
+      });
+      if (error) throw error;
+      toast.success(`Report sent to ${brandSchedule.recipients.join(", ")}`);
+    } catch {
+      toast.error("Failed to send — check Edge Function logs");
+    } finally {
+      setSendingNow(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -265,7 +366,7 @@ export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
           ga4={ga4}
           gsc={gsc}
           channels={channels}
-          recommendations={recommendations}
+          recommendations={[]}
         />
       );
 
@@ -378,14 +479,25 @@ export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
           </div>
           <div className="flex flex-col items-end gap-2">
             <p className="text-[11px] text-muted-foreground">Issued {format(new Date(), "MMM d, yyyy")}</p>
-            <button
-              onClick={handleDownloadPDF}
-              disabled={exporting}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-brand-red text-white text-[11px] font-semibold hover:bg-brand-red/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              <Download className="h-3.5 w-3.5" />
-              {exporting ? "Exporting…" : "Download Report"}
-            </button>
+            <div className="flex items-center gap-2">
+              {isAdmin && (
+                <button
+                  onClick={openEmailDialog}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border bg-background text-foreground text-[11px] font-semibold hover:bg-muted transition-colors"
+                >
+                  <Mail className="h-3.5 w-3.5" />
+                  Email this dashboard
+                </button>
+              )}
+              <button
+                onClick={handleDownloadPDF}
+                disabled={exporting}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-brand-red text-white text-[11px] font-semibold hover:bg-brand-red/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <Download className="h-3.5 w-3.5" />
+                {exporting ? "Exporting…" : "Download Report"}
+              </button>
+            </div>
           </div>
         </div>
         {/* meta bar */}
@@ -626,8 +738,8 @@ export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
         </section>
       )}
 
-      {/* ── 7. RECOMMENDATIONS ────────────────────────────────────────────── */}
-      {recommendations.length > 0 && (
+      {/* ── 7. RECOMMENDATIONS — admin only ───────────────────────────────── */}
+      {isAdmin && recommendations.length > 0 && (
         <section>
           <SectionHeader label="Recommendations — Next 30 Days" />
           <div className="space-y-3">
@@ -666,6 +778,125 @@ export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
           <span>{format(dateFrom, "MMM d")} – {format(dateTo, "MMM d, yyyy")} · GSC data lags 48–72 hours · Confidential</span>
         </div>
       </footer>
+
+      {/* ── EMAIL SCHEDULE DIALOG ─────────────────────────────────────────── */}
+      <Dialog open={emailDialogOpen} onOpenChange={setEmailDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Mail className="h-4 w-4 text-brand-red" />
+              Email this dashboard — {brand.name}
+            </DialogTitle>
+          </DialogHeader>
+
+          {/* Existing schedule status */}
+          {brandSchedule && (
+            <div className="flex items-center gap-2 rounded-md bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-400">
+              <Pencil className="h-3 w-3 flex-shrink-0" />
+              <span>
+                Active schedule: <strong>{DOW_LABELS[brandSchedule.day_of_week]}s at {String(brandSchedule.send_hour_utc).padStart(2,"0")}:00 UTC</strong>
+                {" · "}{brandSchedule.recipients.length} recipient{brandSchedule.recipients.length !== 1 ? "s" : ""}
+                {brandSchedule.last_sent_at && <> · Last sent {format(new Date(brandSchedule.last_sent_at), "MMM d")}</>}
+              </span>
+            </div>
+          )}
+
+          <div className="space-y-4 py-1">
+            {/* Recipients */}
+            <div className="space-y-1">
+              <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1">
+                <Mail className="h-3 w-3" /> Recipients
+              </label>
+              <Input
+                placeholder="email@americanbathgroup.com, ..."
+                value={schedForm.recipients}
+                onChange={e => setSchedForm(s => ({ ...s, recipients: e.target.value }))}
+              />
+              <p className="text-[10px] text-muted-foreground">
+                {schedForm.recipients.split(",").filter(e => e.trim()).length} recipient(s) · comma-separated
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              {/* Day of week */}
+              <div className="space-y-1">
+                <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1">
+                  <Calendar className="h-3 w-3" /> Send Day
+                </label>
+                <Select
+                  value={String(schedForm.day_of_week)}
+                  onValueChange={v => setSchedForm(s => ({ ...s, day_of_week: Number(v) }))}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {DOW_LABELS.map((d, i) => <SelectItem key={i} value={String(i)}>{d}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Send time */}
+              <div className="space-y-1">
+                <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1">
+                  <Clock className="h-3 w-3" /> Time (UTC)
+                </label>
+                <Select
+                  value={String(schedForm.send_hour_utc)}
+                  onValueChange={v => setSchedForm(s => ({ ...s, send_hour_utc: Number(v) }))}
+                >
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {Array.from({ length: 24 }, (_, h) => (
+                      <SelectItem key={h} value={String(h)}>
+                        {String(h).padStart(2,"0")}:00 UTC{h >= 4 && h <= 12 ? ` (${h-4}:00 ET)` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Report period */}
+            <div className="space-y-1">
+              <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Report Period</label>
+              <Select
+                value={String(schedForm.date_range_days)}
+                onValueChange={v => setSchedForm(s => ({ ...s, date_range_days: Number(v) }))}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="7">Last 7 days</SelectItem>
+                  <SelectItem value="14">Last 14 days</SelectItem>
+                  <SelectItem value="30">Last 30 days</SelectItem>
+                  <SelectItem value="60">Last 60 days</SelectItem>
+                  <SelectItem value="90">Last 90 days</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            {brandSchedule && (
+              <Button
+                variant="outline"
+                disabled={sendingNow}
+                onClick={sendNow}
+                className="flex items-center gap-1.5"
+              >
+                <Send className="h-3.5 w-3.5" />
+                {sendingNow ? "Sending…" : "Send Now"}
+              </Button>
+            )}
+            <Button
+              onClick={saveSchedule}
+              disabled={schedSaving}
+              className="bg-brand-red hover:bg-brand-red/90 text-white flex items-center gap-1.5 flex-1"
+            >
+              <Mail className="h-3.5 w-3.5" />
+              {schedSaving ? "Saving…" : brandSchedule ? "Update Schedule" : "Save Schedule"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
