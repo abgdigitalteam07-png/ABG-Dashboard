@@ -197,6 +197,128 @@ function crmRules(m: Record<string, any>): Recommendation[] {
   return recs;
 }
 
+function summaryRules(m: Record<string, any>): Recommendation[] {
+  const recs: Recommendation[] = [];
+
+  // ── Traffic context ───────────────────────────────────────────────────────
+  const sc = m.sessionsDelta;
+  if (sc != null && sc < -10) {
+    recs.push(r(
+      "summary_sessions_drop", "attention",
+      `Traffic is down ${Math.abs(sc).toFixed(1)}% — verify context before sharing`,
+      `Sessions dropped ${Math.abs(sc).toFixed(1)}% vs. the prior period. Before escalating, rule out known factors: a tracking code gap (e.g. GA4 tag missing for several days) can fully explain this in the data without any real traffic loss. A recent site migration or redesign also typically causes Google to temporarily re-crawl and re-index — impressions and sessions may lag 2–4 weeks during that process.`,
+      "Presenting red metrics without context can alarm stakeholders unfamiliar with how new site launches and tracking interruptions affect data. Annotate the report with any known gaps before sharing with leadership.",
+      [
+        "Check GA4 → Admin → Data Streams → confirm tag was firing continuously during the period",
+        "Cross-reference with server logs or Cloudflare analytics — if raw visits are healthy but GA4 is low, the tag was the issue",
+        "If the site recently launched or migrated, note 'Post-launch re-indexing period — Google typically stabilises in 3–6 weeks'",
+        "Add a written annotation to this report before sending to Brad or leadership",
+      ],
+      "Sessions Δ", `${sc.toFixed(1)}%`
+    ));
+  }
+
+  // ── Impressions / re-indexing context ────────────────────────────────────
+  const impDelta = m.totalImpressionsDelta;
+  if (impDelta != null && impDelta < -15) {
+    recs.push(r(
+      "summary_impressions_drop", "attention",
+      `Search impressions down ${Math.abs(impDelta).toFixed(1)}% — likely re-indexing, not a ranking crisis`,
+      `Impressions fell ${Math.abs(impDelta).toFixed(1)}%. When average position is simultaneously trending up (or holding), falling impressions usually means Google has temporarily reduced crawl frequency while re-evaluating the site — common after a new site launch. This is not the same as losing rankings; it typically self-corrects within 4–8 weeks as Googlebot re-crawls and re-indexes the new URL structure.`,
+      "Conflating re-indexing dips with real ranking losses leads to unnecessary panic and premature SEO pivots. The right action is to monitor, not to make sweeping content changes.",
+      [
+        "Check Google Search Console → Pages → Indexing to confirm how many pages are indexed vs. prior period",
+        "Submit updated sitemap in GSC if not already done after site launch",
+        "Monitor week-over-week for stabilisation — look for impressions recovering while position holds",
+        "Note this context clearly in the report: 'GSC impressions dip consistent with post-launch re-indexing. Monitoring weekly.'",
+      ],
+      "Impressions Δ", `${impDelta.toFixed(1)}%`
+    ));
+  }
+
+  // ── Position vs impressions divergence — flag it ─────────────────────────
+  const pos = m.averagePosition;
+  if (pos != null && impDelta != null && impDelta < -10 && pos < 15) {
+    recs.push(r(
+      "summary_pos_divergence", "attention",
+      "Position holding while impressions fall — a re-indexing pattern, not a ranking loss",
+      `Average position is ${pos.toFixed(1)} (page 1–2) while impressions are declining. These two signals normally move together — when you lose rankings, both drop. When only impressions drop while position holds, it almost always means Google reduced crawl volume temporarily (re-indexing) or there was a tracking gap. The rankings themselves are intact.`,
+      "This divergence is actually reassuring — it means the underlying SEO work is holding. The report should present this as a data collection / indexing story, not an SEO failure.",
+      [
+        "Surface this divergence explicitly in the report with a one-line explanation for Brad",
+        "Continue monitoring: if position begins to rise significantly (18+) alongside low impressions, then investigate rankings",
+        "Ask Chris to confirm re-indexing hypothesis with any crawl data or Search Console coverage reports",
+      ],
+      "Position vs Impressions", `Pos. ${pos.toFixed(1)} / Impr. ${impDelta.toFixed(1)}%`
+    ));
+  }
+
+  // ── CTR context ──────────────────────────────────────────────────────────
+  const ctr = m.averageCTR;
+  if (ctr != null) {
+    if (ctr < 2) {
+      recs.push(r(
+        "summary_ctr", "action_required",
+        "Search CTR is very low — meta titles need improvement",
+        `Average CTR of ${ctr}% means searchers see the brand in results but rarely click. For a post-launch site, this is often because new page titles haven't been crawled and updated in Google's index yet — allow 2–4 weeks. If CTR remains low after that, titles and meta descriptions need reworking.`,
+        "Low CTR wastes every impression earned through SEO. Even small CTR improvements multiply across all ranking keywords.",
+        [
+          "Rewrite page titles to lead with the primary keyword and a clear value proposition",
+          "Add unique meta descriptions to the top 20 pages — GSC → Performance → Pages to find them",
+          "Check if new page titles have been indexed: search 'site:domain.com' in Google and spot-check titles",
+        ],
+        "Average CTR", `${ctr}%`, "Target: 3–5%"
+      ));
+    } else {
+      recs.push(r(
+        "summary_ctr", "strong",
+        `Search CTR of ${ctr}% is healthy`,
+        `Click-through rate is in a good range. Even during an indexing transition, searchers are choosing to click when the site appears.`,
+        "Maintaining strong CTR during a post-launch period protects traffic from not falling further than necessary.",
+        ["Maintain current title and description quality", "Focus effort on recovering impression volume"],
+        "Average CTR", `${ctr}%`
+      ));
+    }
+  }
+
+  // ── Report annotation reminder ────────────────────────────────────────────
+  const hasRedMetrics = (sc != null && sc < -10) || (impDelta != null && impDelta < -10);
+  if (hasRedMetrics) {
+    recs.push(r(
+      "summary_annotate", "action_required",
+      "Add context annotations before sharing this report with stakeholders",
+      "This report currently shows several red metrics. Per the team discussion, data alone is not enough — each significant drop needs a plain-English explanation attached. Stakeholders unfamiliar with post-launch behaviour will interpret red as 'something is broken' without context. The recommended annotation: 'Metrics reflect a combination of: (1) tracking code gap [dates], (2) post-launch Google re-indexing period. Both are expected and being monitored.'",
+      "Presenting uncommented red metrics to leadership creates unnecessary alarm and undermines trust in the data function. One sentence of context per metric changes the entire conversation.",
+      [
+        "Draft a 2–3 sentence context note at the top of the report email",
+        "Confirm exact tracking gap dates with Chris and include them explicitly",
+        "Set a 4-week monitoring window — report back once indexing stabilises",
+        "Consider adding an 'Annotations' section to the Summary Report tab for recurring context notes",
+      ],
+      "Report readiness", "Action needed"
+    ));
+  }
+
+  // ── Organic growth — positive signal ─────────────────────────────────────
+  const osd = m.organicSessionsDelta;
+  if (osd != null && osd >= 10) {
+    recs.push(r(
+      "summary_organic_up", "strong",
+      `Organic traffic growing at +${osd.toFixed(1)}% — SEO is compounding`,
+      `Organic sessions are up ${osd.toFixed(1)}% despite the broader indexing transition. This is a strong positive signal — rankings are intact and traffic is recovering. Double down on content that is working.`,
+      "Organic growth is the most durable form of traffic — compounding rankings mean future content gets more reach at no additional cost.",
+      [
+        "Identify which pages are driving organic growth and expand their content",
+        "Build internal links from those pages to underperforming ones",
+        "Consider creating supporting blog or resource content for top-performing keyword clusters",
+      ],
+      "Organic Sessions Δ", `+${osd.toFixed(1)}%`
+    ));
+  }
+
+  return recs;
+}
+
 const STATUS_PRIORITY: Record<RecommendationStatus, number> = {
   action_required: 0,
   attention: 1,
@@ -213,6 +335,8 @@ export function generateRecommendations(
 
   if (tabName === "ga4_gsc") {
     recs = [...ga4Rules(metrics), ...gscRules(metrics)];
+  } else if (tabName === "summary") {
+    recs = summaryRules(metrics);
   } else if (tabName === "crm_email") {
     recs = emailRules(metrics);
   } else if (tabName === "social_facebook") {
