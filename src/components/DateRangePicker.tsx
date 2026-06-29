@@ -188,7 +188,7 @@ type SelectionPhase = "start" | "end";
 
 export function DateRangePicker({ from, to, onChange }: DateRangePickerProps) {
   const [open, setOpen] = useState(false);
-  const [selectedPreset, setSelectedPreset] = useState<PresetId>("last60");
+  const [selectedPreset, setSelectedPreset] = useState<PresetId>("last7");
   const [range, setRange] = useState<{ from: Date; to?: Date }>({ from, to });
   const [phase, setPhase] = useState<SelectionPhase>("start");
   const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" && window.innerWidth < 640);
