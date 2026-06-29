@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Brand } from "@/lib/brands";
 import { fetchGA4Data, fetchGSCData, fetchHubSpotData } from "@/lib/api-client";
@@ -229,30 +229,67 @@ export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
 
   const axisStyle  = { fontSize: 10, fill: "hsl(var(--muted-foreground))" };
   const gridColor  = "hsl(var(--border))";
+  const reportRef  = useRef<HTMLDivElement>(null);
+  const [exporting, setExporting] = useState(false);
 
-  function handleDownloadPDF() {
-    document.title = `${brand.name} — Performance Report ${format(new Date(), "yyyy-MM-dd")}`;
-    window.print();
+  async function handleDownloadPDF() {
+    if (!reportRef.current) return;
+    setExporting(true);
+    try {
+      const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+        import("html2canvas"),
+        import("jspdf"),
+      ]);
+      const el = reportRef.current;
+      const canvas = await html2canvas(el, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: "#ffffff",
+        logging: false,
+        width: el.scrollWidth,
+        height: el.scrollHeight,
+        windowWidth: el.scrollWidth,
+        windowHeight: el.scrollHeight,
+      });
+      const imgData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const margin = 10;
+      const imgW = pageW - margin * 2;
+      const imgH = (canvas.height * imgW) / canvas.width;
+      let yOffset = margin;
+      let remaining = imgH;
+      let sourceY = 0;
+      while (remaining > 0) {
+        const sliceH = Math.min(remaining, pageH - margin * 2);
+        const sliceCanvas = document.createElement("canvas");
+        sliceCanvas.width = canvas.width;
+        sliceCanvas.height = (sliceH / imgH) * canvas.height;
+        const ctx = sliceCanvas.getContext("2d")!;
+        ctx.drawImage(canvas, 0, sourceY * (canvas.height / imgH), canvas.width, sliceCanvas.height, 0, 0, canvas.width, sliceCanvas.height);
+        const sliceData = sliceCanvas.toDataURL("image/png");
+        if (sourceY > 0) { pdf.addPage(); yOffset = margin; }
+        pdf.addImage(sliceData, "PNG", margin, yOffset, imgW, sliceH);
+        sourceY += sliceH;
+        remaining -= sliceH;
+      }
+      const from = format(dateFrom, "yyyy-MM-dd");
+      const to   = format(dateTo,   "yyyy-MM-dd");
+      const safeName = brand.name.replace(/[^a-zA-Z0-9]/g, "_");
+      pdf.save(`${safeName}_${from}_${to}.pdf`);
+    } catch (err) {
+      console.error("PDF export failed:", err);
+    } finally {
+      setExporting(false);
+    }
   }
 
   if (showLoader) return <WaterFillLoader fullScreen={false} message="Building report…" />;
 
   return (
-    <div className="p-6 space-y-8 max-w-[1400px]">
-      <style>{`
-        @media print {
-          /* Hide everything except the report */
-          header, nav, [data-tabnav], .sticky, [class*="DashboardHeader"],
-          [class*="TabNav"], h1.font-semibold { display: none !important; }
-          .no-print { display: none !important; }
-          /* Force colours for print */
-          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-          @page { size: A4 portrait; margin: 18mm 14mm; }
-          body { background: white !important; font-size: 11pt; }
-          /* Keep recharts SVGs visible */
-          .recharts-wrapper svg { overflow: visible !important; }
-        }
-      `}</style>
+    <div ref={reportRef} className="p-6 space-y-8 max-w-[1400px] bg-background">
 
       {/* ── 1. HEADER ─────────────────────────────────────────────────────── */}
       <div>
@@ -270,10 +307,11 @@ export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
             <p className="text-[11px] text-muted-foreground">Issued {format(new Date(), "MMM d, yyyy")}</p>
             <button
               onClick={handleDownloadPDF}
-              className="no-print flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-brand-red text-white text-[11px] font-semibold hover:bg-brand-red/90 transition-colors"
+              disabled={exporting}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-brand-red text-white text-[11px] font-semibold hover:bg-brand-red/90 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <Download className="h-3.5 w-3.5" />
-              Download Report
+              {exporting ? "Exporting…" : "Download Report"}
             </button>
           </div>
         </div>
