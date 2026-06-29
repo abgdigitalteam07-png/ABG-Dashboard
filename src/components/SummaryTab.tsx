@@ -228,26 +228,30 @@ export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
     });
   }, []);
 
-  // Load existing schedule for this brand whenever dialog opens
-  async function openEmailDialog() {
-    setEmailDialogOpen(true);
-    const { data } = await supabase
+  // Silently load schedule on mount so the button shows status before dialog opens
+  useEffect(() => {
+    if (!isAdmin) return;
+    supabase
       .from("email_schedules")
       .select("*")
       .eq("brand_id", brand.id)
-      .maybeSingle();
-    if (data) {
-      setBrandSchedule(data as EmailSchedule);
-      setSchedForm({
-        recipients: data.recipients.join(", "),
-        day_of_week: data.day_of_week,
-        send_hour_utc: data.send_hour_utc,
-        date_range_days: data.date_range_days,
-        is_active: data.is_active,
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) {
+          setBrandSchedule(data as EmailSchedule);
+          setSchedForm({
+            recipients: data.recipients.join(", "),
+            day_of_week: data.day_of_week,
+            send_hour_utc: data.send_hour_utc,
+            date_range_days: data.date_range_days,
+            is_active: data.is_active,
+          });
+        }
       });
-    } else {
-      setBrandSchedule(null);
-    }
+  }, [isAdmin, brand.id]);
+
+  async function openEmailDialog() {
+    setEmailDialogOpen(true);
   }
 
   async function saveSchedule() {
@@ -483,10 +487,16 @@ export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
               {isAdmin && (
                 <button
                   onClick={openEmailDialog}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-border bg-background text-foreground text-[11px] font-semibold hover:bg-muted transition-colors"
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-[11px] font-semibold transition-colors ${
+                    brandSchedule
+                      ? "border-emerald-400 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-700"
+                      : "border-border bg-background text-foreground hover:bg-muted"
+                  }`}
                 >
                   <Mail className="h-3.5 w-3.5" />
-                  Email this dashboard
+                  {brandSchedule
+                    ? `Scheduled · ${DOW_LABELS[brandSchedule.day_of_week]}s · Edit`
+                    : "Email this dashboard"}
                 </button>
               )}
               <button
