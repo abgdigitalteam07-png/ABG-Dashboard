@@ -108,9 +108,9 @@ const td: React.CSSProperties = {
 };
 const axisStyle = { fontSize: 9, fill: MUTED, fontFamily: FONT };
 
-// White gap between sections — page slicer should land here
+// White gap between sections — marks a safe page-break point
 function Gap() {
-  return <div style={{ height: BREAK_GAP, backgroundColor: "#ffffff" }} />;
+  return <div data-pb="1" style={{ height: BREAK_GAP, backgroundColor: "#ffffff" }} />;
 }
 
 function SectionHeader({ label, source }: { label: string; source?: string }) {

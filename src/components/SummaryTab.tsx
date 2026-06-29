@@ -273,11 +273,23 @@ export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
       await new Promise(r => setTimeout(r, 1500));
 
       const el = container.firstElementChild as HTMLElement;
-      const elH = el.offsetHeight;
+      const scale = 2;
       const elW = el.offsetWidth;
+      const elH = el.offsetHeight;
+
+      // Collect safe break Y-positions from data-pb markers BEFORE capturing.
+      // These are the Gap() divs between sections — always safe to cut here.
+      const pbEls = Array.from(el.querySelectorAll("[data-pb]")) as HTMLElement[];
+      // Convert DOM px → canvas px (scale=2). Use the mid-point of each gap.
+      const safeBreaks: number[] = pbEls.map(
+        (e) => Math.round((e.offsetTop + e.offsetHeight / 2) * scale)
+      );
+      // Always include start and end
+      safeBreaks.unshift(0);
+      safeBreaks.push(elH * scale);
 
       const canvas = await html2canvas(el, {
-        scale: 2,
+        scale,
         useCORS: true,
         allowTaint: true,
         backgroundColor: "#ffffff",
@@ -293,63 +305,38 @@ export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
       root.unmount();
       document.body.removeChild(container);
 
-      // A4: 210 × 297 mm. canvas.width = elW * 2 (scale=2).
-      const pdf      = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-      const pageWmm  = 210;
-      const pageHmm  = 297;
-      const pxPerMm  = canvas.width / pageWmm;
-      const pageHpx  = Math.round(pageHmm * pxPerMm);
+      // A4: 210 × 297 mm. canvas.width = elW * scale.
+      const pdf     = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const pageWmm = 210;
+      const pageHmm = 297;
+      const pxPerMm = canvas.width / pageWmm;
+      const pageHpx = Math.round(pageHmm * pxPerMm);
 
-      // Read pixel data once for smart-break scanning
-      const scanCtx  = canvas.getContext("2d")!;
-      const imgData  = scanCtx.getImageData(0, 0, canvas.width, canvas.height);
-
-      // Returns true if the given canvas row is ≥95% white pixels
-      function rowIsWhite(y: number): boolean {
-        if (y < 0 || y >= canvas.height) return true;
-        let white = 0;
-        const rowStart = y * canvas.width * 4;
-        for (let x = 0; x < canvas.width; x++) {
-          const i = rowStart + x * 4;
-          if (imgData.data[i] > 240 && imgData.data[i + 1] > 240 && imgData.data[i + 2] > 240) white++;
-        }
-        return white / canvas.width >= 0.95;
-      }
-
-      // Find the best break point within ±search px of targetY (prefer whitest row)
-      function bestBreak(targetY: number, search = 120): number {
-        let best = targetY;
-        let bestScore = -1;
-        const lo = Math.max(0, targetY - search);
-        const hi = Math.min(canvas.height - 1, targetY + search);
-        for (let y = lo; y <= hi; y++) {
-          let white = 0;
-          const rowStart = y * canvas.width * 4;
-          for (let x = 0; x < canvas.width; x++) {
-            const i = rowStart + x * 4;
-            if (imgData.data[i] > 240 && imgData.data[i + 1] > 240 && imgData.data[i + 2] > 240) white++;
-          }
-          // Weight: prefer rows closer to targetY and whiter
-          const proximity = 1 - Math.abs(y - targetY) / search;
-          const score = (white / canvas.width) * 0.7 + proximity * 0.3;
-          if (score > bestScore) { bestScore = score; best = y; }
-        }
-        return best;
+      // For each page boundary, pick the nearest safe break that doesn't
+      // overshoot the page limit — guarantees cuts always land between sections.
+      function pickBreak(fromY: number): number {
+        const target = fromY + pageHpx;
+        if (target >= canvas.height) return canvas.height;
+        // Find safe break points between fromY and target
+        const candidates = safeBreaks.filter(b => b > fromY && b <= target);
+        // Pick the one closest to (but not past) target
+        return candidates.length > 0
+          ? candidates[candidates.length - 1]
+          : target; // fallback: hard cut at A4 boundary
       }
 
       let srcY = 0;
       let page = 0;
 
       while (srcY < canvas.height) {
-        const raw    = srcY + pageHpx;
-        const breakY = raw >= canvas.height ? canvas.height : bestBreak(raw);
+        const breakY = pickBreak(srcY);
         const sliceH = breakY - srcY;
         if (sliceH <= 0) break;
 
-        const slice   = document.createElement("canvas");
-        slice.width   = canvas.width;
-        slice.height  = sliceH;
-        const ctx     = slice.getContext("2d")!;
+        const slice = document.createElement("canvas");
+        slice.width  = canvas.width;
+        slice.height = sliceH;
+        const ctx = slice.getContext("2d")!;
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, slice.width, slice.height);
         ctx.drawImage(canvas, 0, srcY, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
