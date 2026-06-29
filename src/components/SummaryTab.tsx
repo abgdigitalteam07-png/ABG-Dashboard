@@ -808,12 +808,14 @@ export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
                 <Mail className="h-3 w-3" /> Recipients
               </label>
               <Input
-                placeholder="email@americanbathgroup.com, ..."
+                placeholder="mali@americanbathgroup.com, brad@americanbathgroup.com"
                 value={schedForm.recipients}
                 onChange={e => setSchedForm(s => ({ ...s, recipients: e.target.value }))}
               />
               <p className="text-[10px] text-muted-foreground">
-                {schedForm.recipients.split(",").filter(e => e.trim()).length} recipient(s) · comma-separated
+                {schedForm.recipients.split(",").filter(e => e.trim()).length} recipient(s) —
+                separate multiple emails with a comma, e.g.{" "}
+                <span className="font-mono text-foreground">mali@americanbathgroup.com, brad@americanbathgroup.com</span>
               </p>
             </div>
 
