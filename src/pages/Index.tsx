@@ -36,9 +36,9 @@ const Index = () => {
   const [activeTab, setActiveTab] = useState("performance");
 
   const now = new Date();
-  const start60 = new Date(now);
-  start60.setDate(start60.getDate() - 60);
-  const [dateFrom, setDateFrom] = useState(start60);
+  const start7 = new Date(now);
+  start7.setDate(start7.getDate() - 7);
+  const [dateFrom, setDateFrom] = useState(start7);
   const [dateTo, setDateTo] = useState(now);
 
   const handleDateChange = useCallback((from: Date, to: Date) => {
