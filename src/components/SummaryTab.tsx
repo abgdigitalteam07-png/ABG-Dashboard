@@ -273,8 +273,8 @@ export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
       await new Promise(r => setTimeout(r, 1500));
 
       const el = container.firstElementChild as HTMLElement;
-      const elH = el.offsetHeight;   // real pixel height of content
-      const elW = el.offsetWidth;    // should be 794
+      const elH = el.offsetHeight;
+      const elW = el.offsetWidth;
 
       const canvas = await html2canvas(el, {
         scale: 2,
@@ -293,23 +293,58 @@ export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
       root.unmount();
       document.body.removeChild(container);
 
-      // A4 in mm: 210 × 297. We render full-bleed (no margin).
-      const pdf   = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-      const pageWmm = 210;
-      const pageHmm = 297;
-
-      // How many canvas pixels fit in one A4 page height?
-      // canvas.width  = elW * scale = 794 * 2 = 1588 px
-      // 210mm → 1588px, so 1mm = 1588/210 px
-      // 297mm → 297 * (1588/210) px
+      // A4: 210 × 297 mm. canvas.width = elW * 2 (scale=2).
+      const pdf      = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const pageWmm  = 210;
+      const pageHmm  = 297;
       const pxPerMm  = canvas.width / pageWmm;
-      const pageHpx  = Math.floor(pageHmm * pxPerMm);  // canvas px per A4 page
+      const pageHpx  = Math.round(pageHmm * pxPerMm);
+
+      // Read pixel data once for smart-break scanning
+      const scanCtx  = canvas.getContext("2d")!;
+      const imgData  = scanCtx.getImageData(0, 0, canvas.width, canvas.height);
+
+      // Returns true if the given canvas row is ≥95% white pixels
+      function rowIsWhite(y: number): boolean {
+        if (y < 0 || y >= canvas.height) return true;
+        let white = 0;
+        const rowStart = y * canvas.width * 4;
+        for (let x = 0; x < canvas.width; x++) {
+          const i = rowStart + x * 4;
+          if (imgData.data[i] > 240 && imgData.data[i + 1] > 240 && imgData.data[i + 2] > 240) white++;
+        }
+        return white / canvas.width >= 0.95;
+      }
+
+      // Find the best break point within ±search px of targetY (prefer whitest row)
+      function bestBreak(targetY: number, search = 120): number {
+        let best = targetY;
+        let bestScore = -1;
+        const lo = Math.max(0, targetY - search);
+        const hi = Math.min(canvas.height - 1, targetY + search);
+        for (let y = lo; y <= hi; y++) {
+          let white = 0;
+          const rowStart = y * canvas.width * 4;
+          for (let x = 0; x < canvas.width; x++) {
+            const i = rowStart + x * 4;
+            if (imgData.data[i] > 240 && imgData.data[i + 1] > 240 && imgData.data[i + 2] > 240) white++;
+          }
+          // Weight: prefer rows closer to targetY and whiter
+          const proximity = 1 - Math.abs(y - targetY) / search;
+          const score = (white / canvas.width) * 0.7 + proximity * 0.3;
+          if (score > bestScore) { bestScore = score; best = y; }
+        }
+        return best;
+      }
 
       let srcY = 0;
       let page = 0;
 
       while (srcY < canvas.height) {
-        const sliceH = Math.min(pageHpx, canvas.height - srcY);
+        const raw    = srcY + pageHpx;
+        const breakY = raw >= canvas.height ? canvas.height : bestBreak(raw);
+        const sliceH = breakY - srcY;
+        if (sliceH <= 0) break;
 
         const slice   = document.createElement("canvas");
         slice.width   = canvas.width;
@@ -319,11 +354,10 @@ export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
         ctx.fillRect(0, 0, slice.width, slice.height);
         ctx.drawImage(canvas, 0, srcY, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
 
-        const sliceHmm = sliceH / pxPerMm;
         if (page > 0) pdf.addPage();
-        pdf.addImage(slice.toDataURL("image/png"), "PNG", 0, 0, pageWmm, sliceHmm);
+        pdf.addImage(slice.toDataURL("image/png"), "PNG", 0, 0, pageWmm, sliceH / pxPerMm);
 
-        srcY += sliceH;
+        srcY = breakY;
         page++;
       }
 
