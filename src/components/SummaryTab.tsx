@@ -324,11 +324,43 @@ export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
   }, [brand.id, dateFrom.getTime(), dateTo.getTime()]);
 
   const recommendations = useMemo(() => {
-    const m: Record<string, any> = {};
-    if (ga4) Object.assign(m, { sessionsDelta: ga4.sessionsDelta, organicSessionsDelta: ga4.organicSessionsDelta });
-    if (gsc) Object.assign(m, { averageCTR: gsc.averageCTR, averagePosition: gsc.averagePosition, totalImpressionsDelta: gsc.totalImpressionsDelta });
+    // Edge functions return deltas hardcoded to 0 — compute real deltas
+    // from the daily time series by comparing first half vs second half of period.
+    function computeDelta(series: any[], key: string): number | null {
+      if (!series || series.length < 4) return null;
+      const mid = Math.floor(series.length / 2);
+      const prev = series.slice(0, mid).reduce((s: number, d: any) => s + (d[key] ?? 0), 0);
+      const curr = series.slice(mid).reduce((s: number, d: any) => s + (d[key] ?? 0), 0);
+      if (prev === 0) return null;
+      return parseFloat((((curr - prev) / prev) * 100).toFixed(1));
+    }
+
+    const sessionsDelta   = computeDelta(ga4?.sessionsOverTime, "sessions");
+    const impressionsDelta = computeDelta(gsc?.clicksImpressionsOverTime, "impressions");
+    const clicksDelta      = computeDelta(gsc?.clicksImpressionsOverTime, "clicks");
+
+    const m: Record<string, any> = {
+      // Computed real deltas
+      sessionsDelta,
+      organicSessionsDelta: computeDelta(ga4?.sessionsOverTime, "organicSessions") ?? ga4?.organicSessionsDelta,
+      totalImpressionsDelta: impressionsDelta,
+      totalClicksDelta: clicksDelta,
+      // Static metrics
+      averageCTR:      gsc?.averageCTR,
+      averagePosition: gsc?.averagePosition,
+      totalSessions:   ga4?.sessions,
+      totalImpressions: gsc?.totalImpressions,
+      totalClicks:     gsc?.totalClicks,
+      // Rich context for deeper analysis
+      channels:        channels,
+      topQueries:      gsc?.topQueries ?? [],
+      topLandingPages: gsc?.topLandingPages ?? [],
+      brandName:       brand.name,
+      dateFrom,
+      dateTo,
+    };
     return generateRecommendations("summary", m);
-  }, [ga4, gsc]);
+  }, [ga4, gsc, channels, brand.name, dateFrom, dateTo]);
 
   const execSummary = useMemo(
     () => buildExecutiveSummary(brand.name, ga4, gsc, dateFrom, dateTo),
@@ -749,8 +781,8 @@ export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
         </section>
       )}
 
-      {/* ── 7. RECOMMENDATIONS — admin only ───────────────────────────────── */}
-      {isAdmin && recommendations.length > 0 && (
+      {/* ── 7. RECOMMENDATIONS ────────────────────────────────────────────── */}
+      {recommendations.length > 0 && (
         <section>
           <SectionHeader label="Recommendations — Next 30 Days" />
           <div className="space-y-3">

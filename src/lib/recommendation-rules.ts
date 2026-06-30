@@ -197,122 +197,207 @@ function crmRules(m: Record<string, any>): Recommendation[] {
   return recs;
 }
 
+
 function summaryRules(m: Record<string, any>): Recommendation[] {
   const recs: Recommendation[] = [];
 
-  // ── Traffic context ───────────────────────────────────────────────────────
-  const sc = m.sessionsDelta;
-  if (sc != null && sc < -10) {
-    recs.push(r(
-      "summary_sessions_drop", "attention",
-      `Traffic is down ${Math.abs(sc).toFixed(1)}% — verify context before sharing`,
-      `Sessions dropped ${Math.abs(sc).toFixed(1)}% vs. the prior period. Before escalating, rule out known factors: a tracking code gap (e.g. GA4 tag missing for several days) can fully explain this in the data without any real traffic loss. A recent site migration or redesign also typically causes Google to temporarily re-crawl and re-index — impressions and sessions may lag 2–4 weeks during that process.`,
-      "Presenting red metrics without context can alarm stakeholders unfamiliar with how new site launches and tracking interruptions affect data. Annotate the report with any known gaps before sharing with leadership.",
-      [
-        "Check GA4 → Admin → Data Streams → confirm tag was firing continuously during the period",
-        "Cross-reference with server logs or Cloudflare analytics — if raw visits are healthy but GA4 is low, the tag was the issue",
-        "If the site recently launched or migrated, note 'Post-launch re-indexing period — Google typically stabilises in 3–6 weeks'",
-        "Add a written annotation to this report before sending to Brad or leadership",
-      ],
-      "Sessions Δ", `${sc.toFixed(1)}%`
-    ));
-  }
+  const sc         = m.sessionsDelta as number | null;
+  const impDelta   = m.totalImpressionsDelta as number | null;
+  const clickDelta = m.totalClicksDelta as number | null;
+  const pos        = m.averagePosition as number | null;
+  const ctr        = m.averageCTR as number | null;
+  const osd        = m.organicSessionsDelta as number | null;
+  const channels: any[]   = m.channels ?? [];
+  const topQueries: any[] = m.topQueries ?? [];
+  const topPages: any[]   = m.topLandingPages ?? [];
 
-  // ── Impressions / re-indexing context ────────────────────────────────────
-  const impDelta = m.totalImpressionsDelta;
-  if (impDelta != null && impDelta < -15) {
-    recs.push(r(
-      "summary_impressions_drop", "attention",
-      `Search impressions down ${Math.abs(impDelta).toFixed(1)}% — likely re-indexing, not a ranking crisis`,
-      `Impressions fell ${Math.abs(impDelta).toFixed(1)}%. When average position is simultaneously trending up (or holding), falling impressions usually means Google has temporarily reduced crawl frequency while re-evaluating the site — common after a new site launch. This is not the same as losing rankings; it typically self-corrects within 4–8 weeks as Googlebot re-crawls and re-indexes the new URL structure.`,
-      "Conflating re-indexing dips with real ranking losses leads to unnecessary panic and premature SEO pivots. The right action is to monitor, not to make sweeping content changes.",
-      [
-        "Check Google Search Console → Pages → Indexing to confirm how many pages are indexed vs. prior period",
-        "Submit updated sitemap in GSC if not already done after site launch",
-        "Monitor week-over-week for stabilisation — look for impressions recovering while position holds",
-        "Note this context clearly in the report: 'GSC impressions dip consistent with post-launch re-indexing. Monitoring weekly.'",
-      ],
-      "Impressions Δ", `${impDelta.toFixed(1)}%`
-    ));
-  }
-
-  // ── Position vs impressions divergence — flag it ─────────────────────────
-  const pos = m.averagePosition;
-  if (pos != null && impDelta != null && impDelta < -10 && pos < 15) {
-    recs.push(r(
-      "summary_pos_divergence", "attention",
-      "Position holding while impressions fall — a re-indexing pattern, not a ranking loss",
-      `Average position is ${pos.toFixed(1)} (page 1–2) while impressions are declining. These two signals normally move together — when you lose rankings, both drop. When only impressions drop while position holds, it almost always means Google reduced crawl volume temporarily (re-indexing) or there was a tracking gap. The rankings themselves are intact.`,
-      "This divergence is actually reassuring — it means the underlying SEO work is holding. The report should present this as a data collection / indexing story, not an SEO failure.",
-      [
-        "Surface this divergence explicitly in the report with a one-line explanation for Brad",
-        "Continue monitoring: if position begins to rise significantly (18+) alongside low impressions, then investigate rankings",
-        "Ask Chris to confirm re-indexing hypothesis with any crawl data or Search Console coverage reports",
-      ],
-      "Position vs Impressions", `Pos. ${pos.toFixed(1)} / Impr. ${impDelta.toFixed(1)}%`
-    ));
-  }
-
-  // ── CTR context ──────────────────────────────────────────────────────────
-  const ctr = m.averageCTR;
-  if (ctr != null) {
-    if (ctr < 2) {
+  // ── 1. SESSION ANALYSIS ───────────────────────────────────────────────────
+  if (sc != null) {
+    if (sc < -15) {
+      const sortedCh = [...channels].sort((a, b) => (b.sessions ?? b.users ?? 0) - (a.sessions ?? a.users ?? 0));
+      const topCh = sortedCh[0];
+      const chNote = topCh ? ` Largest channel: ${topCh.channel} (${(topCh.sessions ?? topCh.users ?? 0).toLocaleString()} sessions) — check if this channel specifically declined.` : "";
       recs.push(r(
-        "summary_ctr", "action_required",
-        "Search CTR is very low — meta titles need improvement",
-        `Average CTR of ${ctr}% means searchers see the brand in results but rarely click. For a post-launch site, this is often because new page titles haven't been crawled and updated in Google's index yet — allow 2–4 weeks. If CTR remains low after that, titles and meta descriptions need reworking.`,
-        "Low CTR wastes every impression earned through SEO. Even small CTR improvements multiply across all ranking keywords.",
+        "summary_sessions_drop", "action_required",
+        `Traffic dropped ${Math.abs(sc).toFixed(1)}% — find which channel caused it`,
+        `Sessions fell ${Math.abs(sc).toFixed(1)}% comparing the two halves of this period.${chNote} Common causes: (1) GA4 tracking gap — tag stopped firing; (2) a channel-specific drop (organic, direct, or paid); (3) post-launch re-indexing reducing crawl volume. Isolate the channel before taking action.`,
+        "A session drop without isolating the channel leads to wrong fixes. Check channel breakdown first.",
         [
-          "Rewrite page titles to lead with the primary keyword and a clear value proposition",
-          "Add unique meta descriptions to the top 20 pages — GSC → Performance → Pages to find them",
-          "Check if new page titles have been indexed: search 'site:domain.com' in Google and spot-check titles",
+          topCh ? `GA4 → Acquisition → check if ${topCh.channel} specifically declined vs. prior period` : "GA4 → Acquisition → Traffic Acquisition — compare channel trends",
+          "GA4 → Admin → Data Streams → confirm the tracking tag fired every day in this period",
+          "Cross-check with server logs or Cloudflare to confirm real traffic vs. tracking gap",
+          "If a site migration happened recently, note post-launch re-indexing as the expected cause",
         ],
-        "Average CTR", `${ctr}%`, "Target: 3–5%"
+        "Sessions Δ", `${sc.toFixed(1)}%`
       ));
-    } else {
+    } else if (sc < -5) {
       recs.push(r(
-        "summary_ctr", "strong",
-        `Search CTR of ${ctr}% is healthy`,
-        `Click-through rate is in a good range. Even during an indexing transition, searchers are choosing to click when the site appears.`,
-        "Maintaining strong CTR during a post-launch period protects traffic from not falling further than necessary.",
-        ["Maintain current title and description quality", "Focus effort on recovering impression volume"],
-        "Average CTR", `${ctr}%`
+        "summary_sessions_dip", "attention",
+        `Traffic dipped ${Math.abs(sc).toFixed(1)}% — monitor and check channel split`,
+        `Sessions declined ${Math.abs(sc).toFixed(1)}% in the second half of this period. Small declines are often seasonal or caused by brief tracking interruptions. Monitor for another period before acting.`,
+        "Catching small declines early prevents them becoming larger drops.",
+        ["Compare channel breakdown — is the decline isolated to one source?", "Review week-over-week trend — is it continuing or stabilising?"],
+        "Sessions Δ", `${sc.toFixed(1)}%`
+      ));
+    } else if (sc >= 10) {
+      const topCh = [...channels].sort((a, b) => (b.sessions ?? b.users ?? 0) - (a.sessions ?? a.users ?? 0))[0];
+      recs.push(r(
+        "summary_sessions_up", "strong",
+        `Traffic grew ${sc.toFixed(1)}% — identify what's working and scale it`,
+        `Sessions increased ${sc.toFixed(1)}% in the second half of this period.${topCh ? ` Top channel: ${topCh.channel}.` : ""} Capture what drove growth before conditions change.`,
+        "Sustained growth compounds — double down on the channel and content driving it.",
+        ["GA4 → Acquisition → find the top-growing channel", "Find which landing pages received the most new sessions", "Replicate the content format or campaign that drove the spike"],
+        "Sessions Δ", `+${sc.toFixed(1)}%`
       ));
     }
   }
 
-  // ── Report annotation reminder ────────────────────────────────────────────
-  const hasRedMetrics = (sc != null && sc < -10) || (impDelta != null && impDelta < -10);
-  if (hasRedMetrics) {
+  // ── 2. CHANNEL BREAKDOWN ─────────────────────────────────────────────────
+  if (channels.length > 0 && sc != null && sc < -5) {
+    const organic = channels.find((c: any) => /organic.search/i.test(c.channel ?? ""));
+    const direct  = channels.find((c: any) => /direct/i.test(c.channel ?? ""));
+    const paid    = channels.find((c: any) => /paid/i.test(c.channel ?? ""));
+    const email   = channels.find((c: any) => /email/i.test(c.channel ?? ""));
+    const notes: string[] = [];
+    if (organic) notes.push(`Organic Search: ${(organic.sessions ?? organic.users ?? 0).toLocaleString()}`);
+    if (direct)  notes.push(`Direct: ${(direct.sessions ?? direct.users ?? 0).toLocaleString()}`);
+    if (paid)    notes.push(`Paid: ${(paid.sessions ?? paid.users ?? 0).toLocaleString()}`);
+    if (email)   notes.push(`Email: ${(email.sessions ?? email.users ?? 0).toLocaleString()}`);
+    if (notes.length > 0) {
+      recs.push(r(
+        "summary_channel_breakdown", "attention",
+        "Channel breakdown — pinpoint the source of the drop",
+        `Sessions by channel this period: ${notes.join(" · ")}. Compare against your previous period in GA4 to find which channel declined. Organic Search drop → SEO/indexing issue. Direct drop → branded search or tracking change. Paid drop → budget or campaign change.`,
+        "Traffic drops almost always originate in one channel — isolating it focuses the response.",
+        [
+          "GA4 → Acquisition → Traffic Acquisition → compare date ranges side by side",
+          organic ? "Organic dropped? → Check GSC for impression and ranking changes" : "",
+          direct  ? "Direct dropped? → Check if tracking parameters or branded ads changed" : "",
+          paid    ? "Paid dropped? → Check Google Ads for budget caps or ad disapprovals" : "",
+        ].filter(Boolean),
+        "Channel split", notes[0] ?? "—"
+      ));
+    }
+  }
+
+  // ── 3. SEARCH IMPRESSIONS ─────────────────────────────────────────────────
+  if (impDelta != null && impDelta < -15) {
+    const highImpLowCTR = [...topPages].filter((p: any) => p.impressions > 100).sort((a: any, b: any) => a.ctr - b.ctr).slice(0, 3);
+    const pageNote = highImpLowCTR.length > 0
+      ? ` Pages with most impressions but lowest CTR: ${highImpLowCTR.map((p: any) => `"${p.page.replace(/^https?:\/\/[^/]+/, "") || "/"}" (${p.impressions.toLocaleString()} impr, ${p.ctr}% CTR)`).join("; ")}.`
+      : "";
     recs.push(r(
-      "summary_annotate", "action_required",
-      "Add context annotations before sharing this report with stakeholders",
-      "This report currently shows several red metrics. Per the team discussion, data alone is not enough — each significant drop needs a plain-English explanation attached. Stakeholders unfamiliar with post-launch behaviour will interpret red as 'something is broken' without context. The recommended annotation: 'Metrics reflect a combination of: (1) tracking code gap [dates], (2) post-launch Google re-indexing period. Both are expected and being monitored.'",
-      "Presenting uncommented red metrics to leadership creates unnecessary alarm and undermines trust in the data function. One sentence of context per metric changes the entire conversation.",
+      "summary_impressions_drop", "action_required",
+      `Search impressions dropped ${Math.abs(impDelta).toFixed(1)}% — check page indexing`,
+      `Impressions fell ${Math.abs(impDelta).toFixed(1)}% comparing the two halves of this period.${pageNote} When impressions fall while average position holds steady, it is almost always a re-indexing pattern — not a ranking loss. Google temporarily reduces crawl frequency after site changes. If position is also rising (worse), investigate specific page rankings.`,
+      "Impressions are the leading indicator — a sustained drop eventually hits clicks and sessions. Act early.",
       [
-        "Draft a 2–3 sentence context note at the top of the report email",
-        "Confirm exact tracking gap dates with Chris and include them explicitly",
-        "Set a 4-week monitoring window — report back once indexing stabilises",
-        "Consider adding an 'Annotations' section to the Summary Report tab for recurring context notes",
+        "GSC → Performance → Pages — sort by impressions to find which pages lost visibility",
+        "GSC → Coverage/Indexing — confirm key pages are still indexed",
+        "Submit updated XML sitemap to GSC if site structure changed recently",
+        highImpLowCTR.length > 0 ? `Quick win: improve title tags on high-impression/low-CTR pages` : "Find high-impression pages in GSC and optimise their title tags",
       ],
-      "Report readiness", "Action needed"
+      "Impressions Δ", `${impDelta.toFixed(1)}%`
+    ));
+  } else if (impDelta != null && impDelta >= 15) {
+    recs.push(r(
+      "summary_impressions_up", "strong",
+      `Search impressions up ${impDelta.toFixed(1)}% — visibility growing`,
+      `More searches are showing your pages. Now convert impressions into clicks by improving CTR on high-impression pages.`,
+      "Growing impressions multiplies traffic when paired with strong CTR.",
+      ["Find highest-impression / lowest-CTR pages in GSC and rewrite their title tags", "Add FAQ schema to key pages to earn rich snippets"],
+      "Impressions Δ", `+${impDelta.toFixed(1)}%`
     ));
   }
 
-  // ── Organic growth — positive signal ─────────────────────────────────────
-  const osd = m.organicSessionsDelta;
+  // ── 4. CLICKS DROP (CTR problem) ─────────────────────────────────────────
+  if (clickDelta != null && clickDelta < -15 && (impDelta == null || impDelta > -10)) {
+    const lowCTR = [...topQueries].filter((q: any) => q.impressions > 50 && q.ctr < 3).slice(0, 3);
+    const qNote  = lowCTR.length > 0
+      ? ` Queries with most impressions but low CTR: ${lowCTR.map((q: any) => `"${q.query}" (${q.impressions} impr, ${q.ctr}% CTR, pos. ${q.position})`).join("; ")}.`
+      : "";
+    recs.push(r(
+      "summary_clicks_drop", "action_required",
+      `Clicks dropped ${Math.abs(clickDelta).toFixed(1)}% while impressions held — CTR is the issue`,
+      `The site still appears in searches but fewer people click.${qNote} This means title tags and meta descriptions are not compelling enough for the queries you rank for. Rich snippets (FAQ schema, star ratings) can lift CTR significantly without needing better rankings.`,
+      "Impressions without clicks waste your SEO investment — every ranking should pull maximum clicks.",
+      [
+        lowCTR.length > 0 ? `Rewrite title tags for pages ranking for: ${lowCTR.map(q => `"${q.query}"`).join(", ")}` : "GSC → Queries — filter by high impressions / low CTR",
+        "Add structured data (FAQ, Product, HowTo schema) to key pages",
+        "Ensure title tags include the target keyword in the first 60 characters",
+        "Test adding the current year or a clear benefit to title tags",
+      ],
+      "Clicks Δ", `${clickDelta.toFixed(1)}%`
+    ));
+  }
+
+  // ── 5. TOP PAGES INSIGHT ──────────────────────────────────────────────────
+  if (topPages.length > 0) {
+    const quickWins = topPages.filter((p: any) => p.position <= 10 && p.ctr < 4 && p.impressions > 200).slice(0, 2);
+    if (quickWins.length > 0) {
+      recs.push(r(
+        "summary_page_ctr", "attention",
+        "Page 1 rankings not converting clicks — quick wins available",
+        `These pages rank on page 1 but have low CTR: ${quickWins.map((p: any) => `"${p.page.replace(/^https?:\/\/[^/]+/, "") || "/"}" (pos. ${p.position}, ${p.ctr}% CTR, ${p.impressions.toLocaleString()} impr)`).join("; ")}. Rewriting their title tags is the highest-ROI SEO action available right now — no ranking improvement needed, just better copy.`,
+        "Page 1 rankings with low CTR leave free traffic on the table.",
+        quickWins.map((p: any) => `Rewrite title tag for "${p.page.replace(/^https?:\/\/[^/]+/, "") || "/"}" — add a clear benefit in the first 55 characters`),
+        "Page 1 CTR", `${quickWins[0]?.ctr}%`
+      ));
+    } else {
+      const top3 = topPages.slice(0, 3).map((p: any) => `"${p.page.replace(/^https?:\/\/[^/]+/, "") || "/"}" (${p.clicks.toLocaleString()} clicks, pos. ${p.position})`).join("; ");
+      recs.push(r(
+        "summary_top_pages", "trending_up",
+        "Top pages driving search traffic — protect them",
+        `Highest-performing pages: ${top3}. These anchor your search visibility — losses here have outsized impact on overall traffic.`,
+        "Top-performing pages are your SEO foundation.",
+        ["Update these pages at least quarterly to maintain freshness", "Build internal links from newer pages to these top performers", "Monitor Core Web Vitals for these pages — speed directly affects rankings"],
+        "Top pages", `${topPages[0]?.clicks.toLocaleString()} clicks`
+      ));
+    }
+  }
+
+  // ── 6. POSITION vs IMPRESSIONS DIVERGENCE ────────────────────────────────
+  if (pos != null && impDelta != null && impDelta < -10 && pos < 15) {
+    recs.push(r(
+      "summary_pos_divergence", "attention",
+      "Rankings are intact — impressions drop is indexing, not ranking loss",
+      `Average position is ${pos.toFixed(1)} (page 1–2) while impressions fell ${Math.abs(impDelta).toFixed(1)}%. Position and impressions normally move together — when only impressions drop while position holds, it means Google reduced crawl frequency temporarily (common after site changes). Rankings themselves are not lost. Typically self-corrects in 4–8 weeks.`,
+      "This divergence is reassuring — share it as context with leadership.",
+      ["Report note: 'Position stable at " + pos.toFixed(1) + " — impression drop is crawl frequency, not ranking loss'", "Submit updated sitemap in GSC to accelerate re-indexing", "Monitor weekly — impressions should recover while position stays flat"],
+      "Position vs Impressions", `Pos. ${pos.toFixed(1)} · Impr. ${impDelta.toFixed(1)}%`
+    ));
+  }
+
+  // ── 7. CTR ────────────────────────────────────────────────────────────────
+  if (ctr != null && ctr < 2) {
+    recs.push(r(
+      "summary_ctr", "action_required",
+      `Search CTR of ${ctr}% is very low — title tags need improvement`,
+      `At ${ctr}% CTR the site appears in search but rarely gets clicked. Biggest lever: rewrite title tags to be keyword-forward and benefit-led. Allow 2–4 weeks after any title changes before measuring impact.`,
+      "Low CTR wastes every SEO impression. Improving from 2% to 4% doubles organic traffic at zero cost.",
+      ["GSC → Performance → Pages — sort by impressions, review CTR column", "Rewrite title tags: 'Primary Keyword — Clear Benefit | Brand'", "Add meta descriptions to every indexed page", "Add FAQ schema to product/category pages for rich snippets"],
+      "Avg CTR", `${ctr}%`, "Target: 3–5%"
+    ));
+  } else if (ctr != null && ctr >= 4) {
+    recs.push(r(
+      "summary_ctr", "strong",
+      `Strong search CTR of ${ctr}% — focus now on growing impressions`,
+      `At ${ctr}% the site earns clicks above the B2B average. Growing impressions will multiply this strong CTR into more traffic.`,
+      "High CTR maximises the traffic value of every ranking earned.",
+      ["Maintain current title tag strategy", "Grow impressions through new content targeting adjacent keywords"],
+      "Avg CTR", `${ctr}%`
+    ));
+  }
+
+  // ── 8. ORGANIC GROWTH ─────────────────────────────────────────────────────
   if (osd != null && osd >= 10) {
     recs.push(r(
       "summary_organic_up", "strong",
-      `Organic traffic growing at +${osd.toFixed(1)}% — SEO is compounding`,
-      `Organic sessions are up ${osd.toFixed(1)}% despite the broader indexing transition. This is a strong positive signal — rankings are intact and traffic is recovering. Double down on content that is working.`,
-      "Organic growth is the most durable form of traffic — compounding rankings mean future content gets more reach at no additional cost.",
-      [
-        "Identify which pages are driving organic growth and expand their content",
-        "Build internal links from those pages to underperforming ones",
-        "Consider creating supporting blog or resource content for top-performing keyword clusters",
-      ],
-      "Organic Sessions Δ", `+${osd.toFixed(1)}%`
+      `Organic traffic growing ${osd.toFixed(1)}% — SEO momentum building`,
+      `Organic sessions grew ${osd.toFixed(1)}% in the second half of this period. Rankings are holding and driving more traffic — Google's confidence in the site is increasing.`,
+      "Organic momentum compounds — rising rankings attract links, which improve rankings further.",
+      ["GSC → Performance → Pages — find pages driving organic growth", "Create more content in the same topic clusters", "Build internal links from growing pages to pages needing a boost"],
+      "Organic Δ", `+${osd.toFixed(1)}%`
     ));
   }
 
