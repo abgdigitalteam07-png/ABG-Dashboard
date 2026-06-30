@@ -30,6 +30,7 @@ interface EmailSchedule {
 }
 import {
   AreaChart, Area, BarChart, Bar,
+  LineChart, Line, Legend,
   XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer,
 } from "recharts";
@@ -690,26 +691,23 @@ export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
 
           {!loading && gsc?.clicksImpressionsOverTime?.length > 0 && (
             <div className="rounded-lg border border-border bg-card p-5 mb-4">
-              <p className="text-[10px] font-black uppercase tracking-[0.15em] text-foreground mb-4">
-                Search Impressions — Daily
+              <p className="text-[10px] font-black uppercase tracking-[0.15em] text-foreground mb-1">
+                Clicks &amp; Impressions Over Time
               </p>
-              <ResponsiveContainer width="100%" height={200}>
-                <AreaChart data={gsc.clicksImpressionsOverTime} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="gscImpr" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="hsl(var(--brand-red))" stopOpacity={0.2} />
-                      <stop offset="95%" stopColor="hsl(var(--brand-red))" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
+              <p className="text-[11px] text-muted-foreground mb-4">Search visibility trend</p>
+              <ResponsiveContainer width="100%" height={240}>
+                <LineChart data={gsc.clicksImpressionsOverTime} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
                   <CartesianGrid vertical={false} stroke={gridColor} strokeDasharray="3 3" />
                   <XAxis dataKey="date" tick={axisStyle} tickFormatter={(v) => v.slice(5)} tickLine={false} axisLine={false} />
-                  <YAxis tick={axisStyle} tickLine={false} axisLine={false} />
+                  <YAxis yAxisId="left" tick={axisStyle} tickLine={false} axisLine={false} />
+                  <YAxis yAxisId="right" orientation="right" tick={axisStyle} tickLine={false} axisLine={false} />
                   <Tooltip content={<ChartTooltip />} />
-                  <Area type="monotone" dataKey="impressions" name="Impressions"
-                    stroke="hsl(var(--brand-red))" strokeWidth={2}
-                    fill="url(#gscImpr)" dot={false}
-                    activeDot={{ r: 4, strokeWidth: 0, fill: "hsl(var(--brand-red))" }} />
-                </AreaChart>
+                  <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
+                  <Line yAxisId="left" type="monotone" dataKey="clicks" name="Clicks"
+                    stroke="#7C3AED" strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
+                  <Line yAxisId="right" type="monotone" dataKey="impressions" name="Impressions"
+                    stroke="#EC4899" strokeWidth={2} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} />
+                </LineChart>
               </ResponsiveContainer>
             </div>
           )}
