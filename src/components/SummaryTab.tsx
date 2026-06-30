@@ -784,25 +784,68 @@ export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
       {/* ── 7. RECOMMENDATIONS ────────────────────────────────────────────── */}
       {recommendations.length > 0 && (
         <section>
-          <SectionHeader label="Recommendations — Next 30 Days" />
-          <div className="space-y-3">
-            {recommendations.slice(0, 5).map((rec, i) => {
-              const borderColor =
-                rec.status === "action_required" ? "border-l-red-500"    :
-                rec.status === "attention"        ? "border-l-amber-500"  :
-                rec.status === "strong"           ? "border-l-emerald-500":
-                                                    "border-l-blue-400";
+          <SectionHeader label="Insights" />
+          <div className="space-y-4">
+            {recommendations.slice(0, 6).map((rec, i) => {
+              const isRed    = rec.status === "action_required";
+              const isAmber  = rec.status === "attention";
+              const isGreen  = rec.status === "strong" || rec.status === "trending_up";
+
+              const accent      = isRed ? "#ef4444" : isAmber ? "#f59e0b" : isGreen ? "#10b981" : "#60a5fa";
+              const badgeBg     = isRed ? "bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-400"
+                                : isAmber ? "bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400"
+                                : isGreen ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400"
+                                : "bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400";
+              const badgeLabel  = isRed ? "Action Required" : isAmber ? "Monitor" : isGreen ? "Positive" : "Info";
+
               return (
-                <div key={rec.id} className={`rounded-lg border border-border border-l-[4px] bg-card px-5 py-4 ${borderColor}`}>
-                  <div className="flex items-start gap-4">
-                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-foreground text-[11px] font-black text-background">
-                      {i + 1}
-                    </div>
-                    <div className="flex-1 min-w-0">
+                <div
+                  key={rec.id}
+                  className="rounded-lg border border-border bg-card overflow-hidden"
+                  style={{ borderLeft: `4px solid ${accent}` }}
+                >
+                  {/* Header row */}
+                  <div className="flex items-start justify-between gap-3 px-5 pt-4 pb-2">
+                    <div className="flex items-start gap-3 flex-1 min-w-0">
+                      <div
+                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-black text-white mt-0.5"
+                        style={{ backgroundColor: accent }}
+                      >
+                        {i + 1}
+                      </div>
                       <p className="text-sm font-bold text-foreground leading-snug">{rec.headline}</p>
-                      <p className="mt-1 text-xs text-muted-foreground leading-relaxed">{rec.detail}</p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {rec.benchmark && (
+                        <span className="text-[10px] text-muted-foreground hidden sm:block">{rec.benchmark}</span>
+                      )}
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${badgeBg}`}>
+                        {badgeLabel}
+                      </span>
                     </div>
                   </div>
+
+                  {/* Diagnosis */}
+                  <div className="px-5 pb-3 ml-9">
+                    <p className="text-xs text-muted-foreground leading-relaxed">{rec.detail}</p>
+                  </div>
+
+                  {/* Actions */}
+                  {rec.actions && rec.actions.length > 0 && (
+                    <div className="mx-5 mb-4 ml-14 rounded-md bg-muted/50 px-4 py-3">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">
+                        Actions to take
+                      </p>
+                      <ol className="space-y-1.5">
+                        {rec.actions.map((action, ai) => (
+                          <li key={ai} className="flex items-start gap-2 text-xs text-foreground">
+                            <span className="shrink-0 font-bold text-muted-foreground mt-0.5">{ai + 1}.</span>
+                            <span className="leading-relaxed">{action}</span>
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  )}
                 </div>
               );
             })}
