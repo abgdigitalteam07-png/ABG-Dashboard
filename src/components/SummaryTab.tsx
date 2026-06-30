@@ -8,7 +8,7 @@ import { useFirstLoad } from "@/hooks/useFirstLoad";
 import { generateRecommendations } from "@/lib/recommendation-rules";
 import { SummaryPrintView } from "@/components/SummaryPrintView";
 import { format } from "date-fns";
-import { TrendingUp, TrendingDown, WifiOff, Download, Mail, Send, Calendar, Clock, Pencil } from "lucide-react";
+import { TrendingUp, TrendingDown, WifiOff, Download, Mail, Send, Calendar, Clock, Pencil, ChevronDown, ChevronUp } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -215,6 +215,7 @@ export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
   // ── Email schedule state ───────────────────────────────────────────────────
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
   const [brandSchedule, setBrandSchedule] = useState<EmailSchedule | null>(null);
+  const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
   const [schedForm, setSchedForm] = useState({
     recipients: "mali@americanbathgroup.com",
     day_of_week: 1,
@@ -856,18 +857,34 @@ export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
       {recommendations.length > 0 && (
         <section>
           <SectionHeader label="Insights" />
-          <div className="space-y-4">
+          <div className="space-y-3">
             {recommendations.slice(0, 6).map((rec, i) => {
-              const isRed    = rec.status === "action_required";
-              const isAmber  = rec.status === "attention";
-              const isGreen  = rec.status === "strong" || rec.status === "trending_up";
+              const isRed   = rec.status === "action_required";
+              const isAmber = rec.status === "attention";
+              const isGreen = rec.status === "strong" || rec.status === "trending_up";
 
-              const accent      = isRed ? "#ef4444" : isAmber ? "#f59e0b" : isGreen ? "#10b981" : "#60a5fa";
-              const badgeBg     = isRed ? "bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-400"
-                                : isAmber ? "bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400"
-                                : isGreen ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400"
-                                : "bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400";
-              const badgeLabel  = isRed ? "Action Required" : isAmber ? "Monitor" : isGreen ? "Positive" : "Info";
+              const accent     = isRed ? "#ef4444" : isAmber ? "#f59e0b" : isGreen ? "#10b981" : "#60a5fa";
+              const badgeBg    = isRed    ? "bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-400"
+                               : isAmber  ? "bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400"
+                               : isGreen  ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400"
+                               : "bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400";
+              const badgeLabel = isRed ? "Fix needed" : isAmber ? "Watch" : isGreen ? "Positive" : "Info";
+
+              // Root cause = last item in whyChain, stripped of the "Root cause — " prefix
+              const rootCause = rec.whyChain?.length
+                ? rec.whyChain[rec.whyChain.length - 1].replace(/^Root cause:\s*/i, "")
+                : null;
+
+              const isExpanded = expandedCards.has(rec.id);
+              const toggle = () => setExpandedCards(prev => {
+                const next = new Set(prev);
+                isExpanded ? next.delete(rec.id) : next.add(rec.id);
+                return next;
+              });
+
+              // Evidence rows: always show all in expanded, max 3 collapsed
+              const visibleFindings = isExpanded ? rec.findings : rec.findings?.slice(0, 3);
+              const hiddenFindingCount = (rec.findings?.length ?? 0) - 3;
 
               return (
                 <div
@@ -875,81 +892,119 @@ export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
                   className="rounded-lg border border-border bg-card overflow-hidden"
                   style={{ borderLeft: `4px solid ${accent}` }}
                 >
-                  {/* Header */}
-                  <div className="flex items-start justify-between gap-3 px-5 pt-4 pb-2">
+                  {/* ── Header row ── */}
+                  <button
+                    onClick={toggle}
+                    className="w-full flex items-start justify-between gap-3 px-5 pt-4 pb-3 text-left hover:bg-muted/30 transition-colors"
+                  >
                     <div className="flex items-start gap-3 flex-1 min-w-0">
                       <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-black text-white mt-0.5" style={{ backgroundColor: accent }}>
                         {i + 1}
                       </div>
-                      <p className="text-sm font-bold text-foreground leading-snug">{rec.headline}</p>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-foreground leading-snug">{rec.headline}</p>
+                        {/* Root cause pill — always visible, one line */}
+                        {rootCause && (
+                          <p className="mt-1 text-[11px] text-muted-foreground leading-snug line-clamp-2">
+                            <span className="font-semibold" style={{ color: accent }}>Root cause: </span>
+                            {rootCause}
+                          </p>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      {rec.benchmark && <span className="text-[10px] text-muted-foreground hidden sm:block">{rec.benchmark}</span>}
+                    <div className="flex items-center gap-2 shrink-0 mt-0.5">
                       <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${badgeBg}`}>{badgeLabel}</span>
+                      {isExpanded
+                        ? <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                        : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
                     </div>
-                  </div>
+                  </button>
 
-                  {/* Observation */}
-                  <div className="px-5 pb-2 pl-14">
-                    <p className="text-xs text-muted-foreground leading-relaxed">{rec.detail}</p>
-                  </div>
-
-                  {/* 5-Why causal chain */}
-                  {rec.whyChain && rec.whyChain.length > 0 && (
-                    <div className="mx-5 mb-3 ml-14">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">Why this happened</p>
-                      <div className="relative pl-4 border-l-2 border-border space-y-2">
-                        {rec.whyChain.map((why, wi) => {
-                          const isRoot = wi === rec.whyChain!.length - 1;
-                          return (
-                            <div key={wi} className="flex items-start gap-2">
-                              <div
-                                className={`shrink-0 mt-0.5 h-4 w-4 rounded-full flex items-center justify-center text-[9px] font-black absolute -left-[9px] ${isRoot ? "text-white" : "text-muted-foreground bg-background border border-border"}`}
-                                style={isRoot ? { backgroundColor: accent } : {}}
-                              >
-                                {wi + 1}
-                              </div>
-                              <p className={`text-xs leading-relaxed pl-2 ${isRoot ? "font-semibold text-foreground" : "text-muted-foreground"}`}>
-                                {isRoot && <span className="text-[10px] font-black uppercase tracking-widest mr-1" style={{ color: accent }}>Root cause — </span>}
-                                {why}
-                              </p>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Evidence — inline data table */}
-                  {rec.findings && rec.findings.length > 0 && (
+                  {/* ── Always-visible: compact evidence ── */}
+                  {visibleFindings && visibleFindings.length > 0 && (
                     <div className="mx-5 mb-3 ml-14 rounded-md border border-border overflow-hidden">
-                      <div className="px-3 py-1.5 border-b border-border bg-muted/20">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Evidence</p>
-                      </div>
-                      {rec.findings.map((f, fi) => {
+                      {visibleFindings.map((f, fi) => {
                         const rowAccent = f.severity === "high" ? "border-l-red-400" : f.severity === "medium" ? "border-l-amber-400" : "border-l-border";
                         return (
-                          <div key={fi} className={`flex items-center justify-between gap-3 px-3 py-2 border-l-2 ${rowAccent} ${fi > 0 ? "border-t border-border" : ""} bg-muted/30`}>
+                          <div key={fi} className={`flex items-center justify-between gap-3 px-3 py-2 border-l-2 ${rowAccent} ${fi > 0 ? "border-t border-border" : ""} bg-muted/20`}>
                             <span className="text-[11px] font-mono text-foreground truncate max-w-[50%]">{f.label}</span>
                             <span className="text-[11px] text-muted-foreground text-right">{f.value}</span>
                           </div>
                         );
                       })}
+                      {!isExpanded && hiddenFindingCount > 0 && (
+                        <button onClick={toggle} className="w-full px-3 py-1.5 text-[10px] text-muted-foreground hover:text-foreground border-t border-border bg-muted/10 text-left transition-colors">
+                          +{hiddenFindingCount} more rows — click to expand
+                        </button>
+                      )}
                     </div>
                   )}
 
-                  {/* Fix steps */}
-                  {rec.actions && rec.actions.length > 0 && (
-                    <div className="mx-5 mb-4 ml-14 space-y-2">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">What to do</p>
-                      {rec.actions.map((action, ai) => (
-                        <div key={ai} className="flex items-start gap-2">
-                          <div className="mt-1 h-4 w-4 shrink-0 rounded-full flex items-center justify-center text-[9px] font-black text-white" style={{ backgroundColor: accent }}>
-                            {ai + 1}
-                          </div>
-                          <p className="text-xs text-foreground leading-relaxed">{action}</p>
+                  {/* ── Always-visible: top action only ── */}
+                  {rec.actions && rec.actions.length > 0 && !isExpanded && (
+                    <div className="mx-5 mb-4 ml-14">
+                      <div className="flex items-start gap-2">
+                        <div className="mt-1 h-4 w-4 shrink-0 rounded-full flex items-center justify-center text-[9px] font-black text-white" style={{ backgroundColor: accent }}>
+                          1
                         </div>
-                      ))}
+                        <p className="text-xs text-foreground leading-relaxed">{rec.actions[0]}</p>
+                      </div>
+                      {rec.actions.length > 1 && (
+                        <button onClick={toggle} className="mt-1.5 ml-6 text-[10px] text-muted-foreground hover:text-foreground transition-colors">
+                          +{rec.actions.length - 1} more steps — click to expand
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ── EXPANDED: full why chain + all actions ── */}
+                  {isExpanded && (
+                    <div>
+                      {/* Full observation */}
+                      <div className="px-5 pb-2 pl-14">
+                        <p className="text-xs text-muted-foreground leading-relaxed">{rec.detail}</p>
+                      </div>
+
+                      {/* Full 5-Why chain */}
+                      {rec.whyChain && rec.whyChain.length > 1 && (
+                        <div className="mx-5 mb-3 ml-14">
+                          <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">Why this happened</p>
+                          <div className="relative pl-4 border-l-2 border-border space-y-2">
+                            {rec.whyChain.map((why, wi) => {
+                              const isRoot = wi === rec.whyChain!.length - 1;
+                              return (
+                                <div key={wi} className="flex items-start gap-2">
+                                  <div
+                                    className={`shrink-0 mt-0.5 h-4 w-4 rounded-full flex items-center justify-center text-[9px] font-black absolute -left-[9px] ${isRoot ? "text-white" : "text-muted-foreground bg-background border border-border"}`}
+                                    style={isRoot ? { backgroundColor: accent } : {}}
+                                  >
+                                    {wi + 1}
+                                  </div>
+                                  <p className={`text-xs leading-relaxed pl-2 ${isRoot ? "font-semibold text-foreground" : "text-muted-foreground"}`}>
+                                    {isRoot && <span className="text-[10px] font-black uppercase tracking-widest mr-1" style={{ color: accent }}>Root cause — </span>}
+                                    {why}
+                                  </p>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* All actions */}
+                      {rec.actions && rec.actions.length > 0 && (
+                        <div className="mx-5 mb-4 ml-14 space-y-2">
+                          <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">What to do</p>
+                          {rec.actions.map((action, ai) => (
+                            <div key={ai} className="flex items-start gap-2">
+                              <div className="mt-1 h-4 w-4 shrink-0 rounded-full flex items-center justify-center text-[9px] font-black text-white" style={{ backgroundColor: accent }}>
+                                {ai + 1}
+                              </div>
+                              <p className="text-xs text-foreground leading-relaxed">{action}</p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
