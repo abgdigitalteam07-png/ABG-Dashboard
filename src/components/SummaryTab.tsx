@@ -407,6 +407,8 @@ export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
       });
     })();
 
+    const periodDays = Math.round((dateTo.getTime() - dateFrom.getTime()) / 86_400_000);
+
     const m: Record<string, any> = {
       sessionsDelta,
       organicSessionsDelta: computeDelta(ga4?.sessionsOverTime, "organicSessions") ?? ga4?.organicSessionsDelta,
@@ -419,6 +421,7 @@ export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
       totalClicks:      gsc?.totalClicks,
       impressionsSeries: gsc?.clicksImpressionsOverTime ?? [],
       sessionsSeries:    ga4?.sessionsOverTime ?? [],
+      periodDays,
       channels,
       channelComparison,
       topQueries:      gsc?.topQueries ?? [],
@@ -885,19 +888,48 @@ export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
                     </div>
                   </div>
 
-                  {/* Diagnosis */}
-                  <div className="px-5 pb-3 pl-14">
+                  {/* Observation */}
+                  <div className="px-5 pb-2 pl-14">
                     <p className="text-xs text-muted-foreground leading-relaxed">{rec.detail}</p>
                   </div>
 
-                  {/* Data findings — inline table */}
+                  {/* 5-Why causal chain */}
+                  {rec.whyChain && rec.whyChain.length > 0 && (
+                    <div className="mx-5 mb-3 ml-14">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">Why this happened</p>
+                      <div className="relative pl-4 border-l-2 border-border space-y-2">
+                        {rec.whyChain.map((why, wi) => {
+                          const isRoot = wi === rec.whyChain!.length - 1;
+                          return (
+                            <div key={wi} className="flex items-start gap-2">
+                              <div
+                                className={`shrink-0 mt-0.5 h-4 w-4 rounded-full flex items-center justify-center text-[9px] font-black absolute -left-[9px] ${isRoot ? "text-white" : "text-muted-foreground bg-background border border-border"}`}
+                                style={isRoot ? { backgroundColor: accent } : {}}
+                              >
+                                {wi + 1}
+                              </div>
+                              <p className={`text-xs leading-relaxed pl-2 ${isRoot ? "font-semibold text-foreground" : "text-muted-foreground"}`}>
+                                {isRoot && <span className="text-[10px] font-black uppercase tracking-widest mr-1" style={{ color: accent }}>Root cause — </span>}
+                                {why}
+                              </p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Evidence — inline data table */}
                   {rec.findings && rec.findings.length > 0 && (
                     <div className="mx-5 mb-3 ml-14 rounded-md border border-border overflow-hidden">
+                      <div className="px-3 py-1.5 border-b border-border bg-muted/20">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Evidence</p>
+                      </div>
                       {rec.findings.map((f, fi) => {
                         const rowAccent = f.severity === "high" ? "border-l-red-400" : f.severity === "medium" ? "border-l-amber-400" : "border-l-border";
                         return (
                           <div key={fi} className={`flex items-center justify-between gap-3 px-3 py-2 border-l-2 ${rowAccent} ${fi > 0 ? "border-t border-border" : ""} bg-muted/30`}>
-                            <span className="text-[11px] font-mono text-foreground truncate max-w-[55%]">{f.label}</span>
+                            <span className="text-[11px] font-mono text-foreground truncate max-w-[50%]">{f.label}</span>
                             <span className="text-[11px] text-muted-foreground text-right">{f.value}</span>
                           </div>
                         );
@@ -905,7 +937,7 @@ export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
                     </div>
                   )}
 
-                  {/* Specific fix steps */}
+                  {/* Fix steps */}
                   {rec.actions && rec.actions.length > 0 && (
                     <div className="mx-5 mb-4 ml-14 space-y-2">
                       <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">What to do</p>

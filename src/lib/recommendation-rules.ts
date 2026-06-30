@@ -12,6 +12,7 @@ export interface Recommendation {
   headline: string;
   detail: string;
   whyItMatters: string;
+  whyChain?: string[];           // 5-Why causal chain — last item is the root cause
   findings?: InsightFinding[];   // actual data rows shown inline in the card
   actions: string[];
   benchmark?: string;
@@ -359,12 +360,42 @@ function summaryRules(m: Record<string, any>): Recommendation[] {
       }
     }
 
+    // Build the 5-Why chain for session drop
+    const sessionWhyChain: string[] = [
+      `Sessions fell ${Math.abs(sc).toFixed(1)}%${sessionPeriod ? ` — first half had ${num(sessionPeriod.prev)} sessions, second half had ${num(sessionPeriod.curr)}` : ""}`,
+    ];
+    if (sessionCliff) {
+      sessionWhyChain.push(`The drop happened on ${sessionCliff.date} — visits fell from ~${num(sessionCliff.before)}/day to ~${num(sessionCliff.after)}/day, a ${sessionCliff.pct.toFixed(0)}% overnight change. This is an event, not a trend`);
+    } else {
+      sessionWhyChain.push(`The decline is gradual, not a single-day cliff — points to a channel slowly losing momentum rather than a technical event`);
+    }
+    if (biggestDrop) {
+      sessionWhyChain.push(`${biggestDrop.channel} is responsible — it lost ${num(biggestDrop.prev - biggestDrop.curr)} sessions (${num(biggestDrop.prev)} → ${num(biggestDrop.curr)}). The other channels are relatively stable`);
+      const ch = biggestDrop.channel?.toLowerCase() ?? "";
+      if (/organic/.test(ch)) {
+        sessionWhyChain.push(`Organic Search drop = fewer Google impressions or lower CTR — look at the Impressions insight above for the specific page-level cause`);
+        sessionWhyChain.push(`Root cause: Google is either showing the site's pages in fewer searches, or searchers see the result and don't click — both are addressable through GSC`);
+      } else if (/paid|cpc/.test(ch)) {
+        sessionWhyChain.push(`Paid Search drop = ad budget was cut, campaigns paused, or Quality Score fell — log into Google Ads and check campaign status for that date range`);
+        sessionWhyChain.push(`Root cause: paid campaign change (pause, budget cut, or policy disapproval) removed a traffic source that was sending ${num(biggestDrop.prev)} sessions per period`);
+      } else if (/direct/.test(ch)) {
+        sessionWhyChain.push(`Direct traffic drop usually means either the GA4 tracking tag stopped firing on some pages, or branded search demand fell`);
+        sessionWhyChain.push(`Root cause: check GA4 → Admin → Data Streams → DebugView to confirm the tag is firing on every page — a missing tag makes real visitors disappear from reports`);
+      } else {
+        sessionWhyChain.push(`Root cause: ${biggestDrop.channel} channel lost ${num(biggestDrop.prev - biggestDrop.curr)} sessions — investigate what changed in that specific channel around the drop date`);
+      }
+    } else {
+      sessionWhyChain.push(`No single channel shows a clear drop — first rule out a GA4 tracking gap: if the tag stopped firing, sessions vanish from reports even though real visitors came`);
+      sessionWhyChain.push(`Root cause: unclear without channel-level before/after data — open GA4 → Reports → Acquisition → Traffic acquisition and compare the two periods manually`);
+    }
+
     recs.push({
       id: "summary_sessions_drop",
       status: sc < -15 ? "action_required" : "attention",
       headline: `Sessions are down ${Math.abs(sc).toFixed(1)}%${totalSessions ? ` — ${num(totalSessions)} total this period` : ""}`,
       detail: `${sessionPeriod ? sessionPeriod.label + ". " : `Traffic fell ${Math.abs(sc).toFixed(1)}% vs. the prior period. `}${sessionCliff ? `Sessions dropped sharply around ${sessionCliff.date} — from ~${num(sessionCliff.before)}/day to ~${num(sessionCliff.after)}/day. ` : ""}${hasPriorChannels ? "Here is each channel's before → after — the one with the biggest drop is where to look first." : "Here is the current channel breakdown."}`,
       whyItMatters: "Sessions are the foundation — every other metric flows from traffic.",
+      whyChain: sessionWhyChain,
       findings: chFindings,
       actions,
       metric: "Sessions Δ", currentValue: `${sc.toFixed(1)}%`,
@@ -538,12 +569,77 @@ function summaryRules(m: Record<string, any>): Recommendation[] {
       ? "Root cause: rankings are intact — Google reduced crawl frequency temporarily after recent site changes."
       : "";
 
+    // Build 5-Why chain for impressions drop — causal chain varies by root cause diagnosis
+    const imprWhyChain: string[] = [
+      `Search impressions fell ${Math.abs(impDelta).toFixed(1)}%${imprPeriod ? ` — first half had ${num(imprPeriod.prev)} impressions, second half had ${num(imprPeriod.curr)}` : ""}`,
+    ];
+    if (imprCliff) {
+      imprWhyChain.push(
+        imprIsCliff
+          ? `The drop happened on ${imprCliff.date} — impressions fell from ~${num(imprCliff.before)}/day to ~${num(imprCliff.after)}/day overnight (${imprCliff.pct.toFixed(0)}%). This is a single-day cliff, meaning a technical change caused it — not a gradual ranking erosion`
+          : `Impressions started declining around ${imprCliff.date}, falling gradually from ~${num(imprCliff.before)}/day to ~${num(imprCliff.after)}/day — this is drift, not a cliff, which points to ranking erosion over time rather than one specific event`
+      );
+    }
+    if (disappearedPages.length > 0) {
+      const totalMissingImpr = disappearedPages.reduce((s: number, p: any) => s + p.impressions, 0);
+      imprWhyChain.push(
+        `${disappearedPages.length} page${disappearedPages.length > 1 ? "s" : ""} that had ${num(totalMissingImpr)} impressions in the prior period are now completely absent from GSC — Google is not showing them in any search results at all`
+      );
+      imprWhyChain.push(
+        `When a URL disappears from GSC entirely (not just drops), it means Google received a 404 error when it tried to access it — the page does not exist at that URL anymore`
+      );
+      imprWhyChain.push(
+        `Root cause: those URLs were removed or restructured without 301 redirects. Google deleted them from its index. Every impression they used to generate is now zero. Adding 301 redirects to their new equivalent URLs will recover those rankings over the next 4–8 weeks`
+      );
+    } else if (isFewerPagesIndexed) {
+      imprWhyChain.push(
+        `Average position improved — meaning the pages that ARE showing up are ranking better. But impressions still fell. This combination only happens when the site is ranking for fewer distinct queries (fewer pages indexed), not when rankings are lost`
+      );
+      imprWhyChain.push(
+        `After a site relaunch or URL restructure, pages that don't have 301 redirects from their old URL get treated as new pages by Google — they lose all their accumulated ranking history and temporarily disappear`
+      );
+      imprWhyChain.push(
+        `Root cause: missing 301 redirects after URL changes. Old URLs are returning 404 errors instead of forwarding to new equivalent pages. Google dropped them from its index, taking their impressions with them`
+      );
+    } else if (isRankingLoss) {
+      imprWhyChain.push(
+        `${rankingLossPages.length} page${rankingLossPages.length > 1 ? "s" : ""} dropped in position — when a page moves from position 5 to position 15, it falls off the first page and impressions collapse because most searchers never scroll to page 2`
+      );
+      imprWhyChain.push(
+        `Position drops happen when Google finds another site's content more relevant — either competitor content improved, or this site's content became stale or lost backlinks`
+      );
+      imprWhyChain.push(
+        `Root cause: ranking loss on specific pages. Content on ${rankingLossPages.slice(0, 2).map((p: any) => `"${slug(p.page)}"`).join(", ")} is no longer considered the best answer for those queries — it needs to be updated, expanded, and given stronger internal links`
+      );
+    } else if (imprIsCliff) {
+      imprWhyChain.push(
+        `Position held stable but impressions fell on a specific date — when ranking is unchanged but impression volume drops suddenly, Google stopped showing the site's pages for queries it was matching before`
+      );
+      imprWhyChain.push(
+        `Cliff-shaped drops with stable position are caused by: a robots.txt change that blocked crawling, a noindex tag added to key pages, or a URL restructure that removed pages from the index without redirects`
+      );
+      imprWhyChain.push(
+        `Root cause: a technical change on or around ${imprCliff?.date} caused Google to stop surfacing pages it was previously ranking. Check what changed on the site that day — deployment, robots.txt, new URL structure`
+      );
+    } else {
+      imprWhyChain.push(
+        `Position is holding at ${pos?.toFixed(1) ?? "—"} — rankings are not lost. When position holds but impressions fall gradually, Google temporarily reduced how often it crawls the site`
+      );
+      imprWhyChain.push(
+        `After a site relaunch or structural change, Googlebot re-evaluates crawl frequency. During that period it visits fewer pages per day, so it discovers and shows fewer of them in search results`
+      );
+      imprWhyChain.push(
+        `Root cause: temporary crawl frequency reduction after site changes — this self-corrects in 4–8 weeks as Googlebot re-establishes its crawl schedule. Submitting the sitemap in GSC accelerates recovery`
+      );
+    }
+
     recs.push({
       id: "summary_impressions_drop",
       status: "action_required",
       headline: `Search impressions dropped ${Math.abs(impDelta).toFixed(1)}%${totalImpressions ? ` — ${num(totalImpressions)} total this period` : ""}`,
       detail: `${imprPeriod ? imprPeriod.label + ". " : ""}${dropDateSentence ? " " + dropDateSentence : ""} ${rootCauseLabel} ${hasPriorPages || disappearedPages.length > 0 ? "Below is each page's before → after." : "Below are your highest-impression pages."}`,
       whyItMatters: "Impressions are the upstream metric — fixing them unlocks clicks and sessions.",
+      whyChain: imprWhyChain,
       findings: pageFindings,
       actions,
       metric: "Impressions Δ", currentValue: `${impDelta.toFixed(1)}%`,
@@ -607,12 +703,23 @@ function summaryRules(m: Record<string, any>): Recommendation[] {
     }
     actions.push(`Add FAQ schema markup to your top-ranked pages — this creates rich snippets in search results which typically lift CTR by 20–40% with zero ranking change needed`);
 
+    const clicksWhyChain: string[] = [
+      `Clicks fell ${Math.abs(clickDelta).toFixed(1)}%${clicksPeriod ? ` — first half had ${num(clicksPeriod.prev)} clicks, second half had ${num(clicksPeriod.curr)}` : ""} while impressions stayed flat`,
+      `When impressions hold but clicks fall, rankings are not the problem — the site still appears in search results at the same frequency as before`,
+      `Searchers are seeing the results and choosing to click on a competitor's link instead — this means the title and description shown in Google are not convincing enough`,
+      lowCTR.length > 0
+        ? `The clearest evidence: "${lowCTR[0].query}" gets ${num(lowCTR[0].impressions)} impressions at position ${lowCTR[0].position} but only ${lowCTR[0].ctr}% CTR — a typical CTR at that position should be 3–6%`
+        : `Queries with high impressions but low CTR are appearing in search results but not getting clicked`,
+      `Root cause: title tags were written for the brand, not for the searcher's query. A title like "Bootz Industries | Products" tells a searcher nothing specific — a title like "Bootz Bathtubs — Cast Iron & Acrylic Tub Collection" matches what they searched and earns the click`,
+    ];
+
     recs.push({
       id: "summary_clicks_drop",
       status: "action_required",
       headline: `Clicks dropped ${Math.abs(clickDelta).toFixed(1)}% while impressions held${totalClicks ? ` — ${num(totalClicks)} total clicks` : ""}`,
       detail: `${clicksPeriod ? clicksPeriod.label + ". " : `Clicks fell ${Math.abs(clickDelta).toFixed(1)}% period-over-period. `}Impressions are stable so rankings are not the issue — the problem is title tags and meta descriptions are not compelling enough to earn the click. Here are the queries with the most impressions but lowest CTR:`,
       whyItMatters: "Clicks are the conversion from visibility to traffic — a CTR fix is free incremental traffic.",
+      whyChain: clicksWhyChain,
       findings: qFindings,
       actions,
       metric: "Clicks Δ", currentValue: `${clickDelta.toFixed(1)}%`,
@@ -630,12 +737,24 @@ function summaryRules(m: Record<string, any>): Recommendation[] {
       return sum + Math.round(p.impressions * 0.04) - Math.round(p.impressions * p.ctr / 100);
     }, 0);
 
+    const bestWin = quickWins[0];
+    const pageCtrWhyChain = [
+      `${quickWins.length} pages rank on Google page 1 but have CTR below 4% — they are visible but not being clicked`,
+      `Getting to page 1 requires sustained SEO work. But converting that ranking into traffic only requires better title tag copy`,
+      bestWin
+        ? `"${slug(bestWin.page)}" is the biggest opportunity: position ${bestWin.position} with ${num(bestWin.impressions)} impressions, but only ${bestWin.ctr}% CTR. At position ${bestWin.position}, the expected CTR is 4–8% — this page is underperforming by ${(4 - bestWin.ctr).toFixed(1)} percentage points`
+        : `These pages are underperforming their position — at page 1, expected CTR is 4–8%`,
+      `Low CTR at a good position means the title tag doesn't match what the searcher is looking for — it's either too generic, too long, or front-loads the brand name instead of the keyword`,
+      `Root cause: title tags written for the brand, not for the search query. Rewriting them to be keyword-led (query first, brand last, under 60 characters) is a free fix that recovers ~${num(totalMissedClicks)} clicks per period`,
+    ];
+
     recs.push({
       id: "summary_page_ctr",
       status: "attention",
       headline: `${quickWins.length} page-1 rankings are leaving ~${num(totalMissedClicks)} clicks on the table`,
       detail: `These pages already rank on page 1 of Google but have low click-through rates — meaning you have the ranking without the traffic. At a healthy 4% CTR they should collectively deliver ${num(totalMissedClicks)} more clicks per period. Fixing title tags on these pages is the highest-ROI action available: no link building, no content creation, just better copy.`,
       whyItMatters: "Page 1 rankings are earned — not converting them to clicks wastes the SEO investment.",
+      whyChain: pageCtrWhyChain,
       findings: quickWins.map((p: any) => {
         const missed = Math.round(p.impressions * 0.04) - Math.round(p.impressions * p.ctr / 100);
         return {
@@ -704,12 +823,23 @@ function summaryRules(m: Record<string, any>): Recommendation[] {
       .sort((a: any, b: any) => b.impressions - a.impressions)
       .slice(0, 5);
 
+    const brandedWhyChain = [
+      `${brandedClickPct.toFixed(0)}% of clicks (${num(brandedClicks)} out of ${num(totalQueryClicks)}) come from searches that include the brand name — people who already know the brand`,
+      `Non-branded queries (product searches without the brand name) get ${num(nonBrandedClicks)} clicks. Those queries have impressions, so the site is appearing — but the CTR is very low`,
+      topNonBranded.length > 0
+        ? `"${topNonBranded[0].query}" gets ${num(topNonBranded[0].impressions)} impressions at position ${topNonBranded[0].position} but only ${topNonBranded[0].ctr}% CTR — someone searching for that product sees the result and doesn't click because the title tag doesn't make the connection`
+        : `Product query pages have impressions but low CTR — the title tags don't match the way customers search`,
+      `Non-branded product pages aren't converting impressions to clicks because their title tags use internal product names or categories rather than the terms customers type into Google`,
+      `Root cause: pages are optimized for the brand's naming conventions instead of customer search language. A page titled "Bootz Standard Series" won't rank for "freestanding bathtub under $500" even if that product fits — the content and title need to use the customer's vocabulary`,
+    ];
+
     recs.push({
       id: "summary_branded_dominance",
       status: "attention",
       headline: `${brandedClickPct.toFixed(0)}% of search clicks are branded — non-branded product pages aren't driving organic traffic`,
       detail: `Out of ${num(totalQueryClicks)} tracked clicks, ${num(brandedClicks)} come from people already searching your brand name. Only ${num(nonBrandedClicks)} clicks come from people searching product terms they don't yet associate with your brand. This means the site is capturing existing demand but not creating new demand — a risk if brand awareness drops.`,
       whyItMatters: "Branded traffic is fragile — it only comes from people who already know you. Non-branded traffic is where growth comes from.",
+      whyChain: brandedWhyChain,
       findings: topNonBranded.length > 0
         ? topNonBranded.map((q: any) => {
             const missed = Math.round(q.impressions * 0.04) - Math.round(q.impressions * (q.ctr / 100));
@@ -746,12 +876,22 @@ function summaryRules(m: Record<string, any>): Recommendation[] {
     : null;
 
   if (homepagePage && (homepagePage.impressions / (totalImpressions || 1)) > 0.15) {
+    const homepageSharePct = ((homepagePage.impressions / (totalImpressions || 1)) * 100).toFixed(0);
+    const homepageWhyChain = [
+      `The homepage (/) gets ${num(homepagePage.impressions)} impressions — ${homepageSharePct}% of all search impressions for the site`,
+      `In a healthy site, most search impressions should go to category and product pages, not the homepage — the homepage is a navigational destination, not a product landing page`,
+      `When the homepage dominates impressions, it usually means product and category pages are not indexed, or they are indexed but not ranking for any queries`,
+      `After a site relaunch, old product URLs that redirect to the homepage transfer their page authority to the homepage instead of to the correct product page — so the homepage starts ranking where product pages used to rank`,
+      `Root cause: old product URLs are 301-redirecting to the homepage instead of to their equivalent new product pages. The homepage absorbs the ranking signals that should go to specific product pages, pushing product queries to surface the homepage (which can't convert them) instead of a product page (which can)`,
+    ];
+
     recs.push({
       id: "summary_homepage_concentration",
       status: "attention",
       headline: `Homepage is receiving a disproportionate share of search traffic — product pages may not be indexed`,
       detail: `The homepage (/) is getting ${num(homepagePage.impressions)} impressions — ${((homepagePage.impressions / (totalImpressions || 1)) * 100).toFixed(0)}% of total. In a healthy site, most search traffic should land on category and product pages, not the homepage. This pattern often appears after a relaunch where old product URLs redirect to the homepage instead of their equivalent new pages.`,
       whyItMatters: "Homepage visitors see everything and convert to nothing specific. Product page visitors convert.",
+      whyChain: homepageWhyChain,
       findings: topPages.slice(0, 5).map((p: any) => ({
         label: slug(p.page) || "/",
         value: `${num(p.impressions)} impr · ${p.ctr}% CTR · pos ${p.position}`,
