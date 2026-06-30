@@ -216,6 +216,20 @@ function num(n: number): string {
   return n.toLocaleString();
 }
 
+function periodTotals(series: any[], key: string): { prev: number; curr: number; label: string } | null {
+  if (!series || series.length < 4) return null;
+  const mid  = Math.floor(series.length / 2);
+  const prev = series.slice(0, mid).reduce((s, d) => s + (d[key] ?? 0), 0);
+  const curr = series.slice(mid).reduce((s, d) => s + (d[key] ?? 0), 0);
+  const pct  = prev > 0 ? (((curr - prev) / prev) * 100) : 0;
+  const dir  = pct > 0 ? "+" : "";
+  return {
+    prev,
+    curr,
+    label: `First ${mid} days: ${num(Math.round(prev))} → Last ${series.length - mid} days: ${num(Math.round(curr))} (${dir}${pct.toFixed(1)}%)`,
+  };
+}
+
 function summaryRules(m: Record<string, any>): Recommendation[] {
   const recs: Recommendation[] = [];
 
@@ -231,6 +245,11 @@ function summaryRules(m: Record<string, any>): Recommendation[] {
   const totalSessions     = m.totalSessions as number | null;
   const totalImpressions  = m.totalImpressions as number | null;
   const totalClicks       = m.totalClicks as number | null;
+
+  // Before/after period breakdown from raw daily series
+  const imprPeriod    = periodTotals(m.impressionsSeries ?? [], "impressions");
+  const clicksPeriod  = periodTotals(m.impressionsSeries ?? [], "clicks");
+  const sessionPeriod = periodTotals(m.sessionsSeries ?? [], "sessions");
 
   // ── 1. SESSION DROP ───────────────────────────────────────────────────────
   if (sc != null && sc < -5) {
@@ -267,7 +286,7 @@ function summaryRules(m: Record<string, any>): Recommendation[] {
       id: "summary_sessions_drop",
       status: sc < -15 ? "action_required" : "attention",
       headline: `Sessions are down ${Math.abs(sc).toFixed(1)}%${totalSessions ? ` — ${num(totalSessions)} total this period` : ""}`,
-      detail: `Traffic fell ${Math.abs(sc).toFixed(1)}% comparing the first and second half of this period.${chFindings.length ? ` Here is the channel breakdown — the channel that declined most is causing the drop.` : ""} Before escalating, rule out a GA4 tracking gap: if the tag stopped firing for even a few days, sessions disappear from the report even though real visitors came.`,
+      detail: `${sessionPeriod ? sessionPeriod.label + ". " : `Traffic fell ${Math.abs(sc).toFixed(1)}% period-over-period. `}${chFindings.length ? "Here is the channel breakdown — the channel that declined most is causing the drop." : ""} Before escalating, rule out a GA4 tracking gap: if the tag stopped firing for even a few days, sessions disappear from the report even though real visitors came.`,
       whyItMatters: "Sessions are the foundation — every other metric flows from traffic.",
       findings: chFindings,
       actions,
@@ -279,7 +298,7 @@ function summaryRules(m: Record<string, any>): Recommendation[] {
       id: "summary_sessions_up",
       status: "strong",
       headline: `Traffic grew ${sc.toFixed(1)}%${totalSessions ? ` — ${num(totalSessions)} sessions this period` : ""}`,
-      detail: `Sessions increased ${sc.toFixed(1)}% in the second half of this period.${topCh ? ` Top channel: ${topCh.channel} with ${num(topCh.sessions ?? topCh.users ?? 0)} sessions.` : ""} Identify what drove this before the conditions change.`,
+      detail: `${sessionPeriod ? sessionPeriod.label + ". " : `Sessions increased ${sc.toFixed(1)}% period-over-period. `}${topCh ? `Top channel: ${topCh.channel} with ${num(topCh.sessions ?? topCh.users ?? 0)} sessions.` : ""} Identify what drove this before the conditions change.`,
       whyItMatters: "Growth compounds — double down on whatever is working.",
       findings: channels.slice(0, 4).map((c: any) => ({ label: c.channel, value: `${num(c.sessions ?? c.users ?? 0)} sessions` })),
       actions: [
@@ -324,7 +343,7 @@ function summaryRules(m: Record<string, any>): Recommendation[] {
       id: "summary_impressions_drop",
       status: "action_required",
       headline: `Search impressions dropped ${Math.abs(impDelta).toFixed(1)}%${totalImpressions ? ` — ${num(totalImpressions)} total this period` : ""}`,
-      detail: `Impressions fell ${Math.abs(impDelta).toFixed(1)}% in the second half of this period — fewer searches are showing your pages.${pageFindings.length ? ` Below are your highest-impression pages sorted by lowest CTR. These pages have the visibility but are not getting the clicks — fixing their title tags recovers traffic without needing better rankings.` : ""} ${pos != null && pos < 15 ? `Average position (${pos.toFixed(1)}) is holding on page 1–2, which means rankings are intact — this is likely a crawl frequency issue, not a ranking loss.` : ""}`,
+      detail: `${imprPeriod ? imprPeriod.label + ". " : `Impressions fell ${Math.abs(impDelta).toFixed(1)}% period-over-period. `}${pageFindings.length ? "Below are your highest-impression pages sorted by lowest CTR. These pages have the visibility but are not getting the clicks — fixing their title tags recovers traffic without needing better rankings." : ""} ${pos != null && pos < 15 ? `Average position (${pos.toFixed(1)}) is holding on page 1–2, which means rankings are intact — this is likely a crawl frequency issue, not a ranking loss.` : ""}`,
       whyItMatters: "Impressions are the upstream metric — fixing them unlocks clicks and sessions.",
       findings: pageFindings,
       actions,
@@ -373,7 +392,7 @@ function summaryRules(m: Record<string, any>): Recommendation[] {
       id: "summary_clicks_drop",
       status: "action_required",
       headline: `Clicks dropped ${Math.abs(clickDelta).toFixed(1)}% while impressions held${totalClicks ? ` — ${num(totalClicks)} total clicks` : ""}`,
-      detail: `The site is still appearing in searches but fewer people are clicking. Impressions are stable, so rankings are not the issue — the problem is the title tags and meta descriptions are not compelling enough to earn the click. Here are the queries with the most impressions but lowest CTR:`,
+      detail: `${clicksPeriod ? clicksPeriod.label + ". " : `Clicks fell ${Math.abs(clickDelta).toFixed(1)}% period-over-period. `}Impressions are stable so rankings are not the issue — the problem is title tags and meta descriptions are not compelling enough to earn the click. Here are the queries with the most impressions but lowest CTR:`,
       whyItMatters: "Clicks are the conversion from visibility to traffic — a CTR fix is free incremental traffic.",
       findings: qFindings,
       actions,

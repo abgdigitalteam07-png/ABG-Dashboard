@@ -351,6 +351,9 @@ export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
       totalSessions:   ga4?.sessions,
       totalImpressions: gsc?.totalImpressions,
       totalClicks:     gsc?.totalClicks,
+      // Raw time series — used for before/after period breakdown
+      impressionsSeries: gsc?.clicksImpressionsOverTime ?? [],
+      sessionsSeries:    ga4?.sessionsOverTime ?? [],
       // Rich context for deeper analysis
       channels:        channels,
       topQueries:      gsc?.topQueries ?? [],
