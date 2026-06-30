@@ -363,16 +363,16 @@ function summaryRules(m: Record<string, any>): Recommendation[] {
     if (hasPriorPages) {
       const droppedPages = [...pageComparison]
         .filter((p: any) => (p.imprDelta ?? 0) < -5)
-        .sort((a: any, b: any) => (a.imprDelta ?? 0) - (b.imprDelta ?? 0)) // most dropped first
+        .sort((a: any, b: any) => (a.imprDelta ?? 0) - (b.imprDelta ?? 0))
         .slice(0, 6);
       biggestDropPage = droppedPages[0];
 
       pageFindings = droppedPages.map((p: any) => {
         const reason = p.posDelta > 2
-          ? `pos dropped ${p.prevPosition.toFixed(1)} → ${p.currPosition.toFixed(1)} (ranking loss)`
-          : p.posDelta < -2
-          ? `pos improved ${p.prevPosition.toFixed(1)} → ${p.currPosition.toFixed(1)}`
-          : `pos held ~${p.currPosition.toFixed(1)} (crawl/index issue)`;
+          ? `pos dropped ${p.prevPosition.toFixed(1)} → ${p.currPosition.toFixed(1)} (ranking lost)`
+          : p.posDelta < -1.5
+          ? `pos improved ${p.prevPosition.toFixed(1)} → ${p.currPosition.toFixed(1)} (fewer queries served — check redirects)`
+          : `pos held ~${p.currPosition.toFixed(1)} (crawl frequency reduced)`;
         return {
           label: slug(p.page),
           value: `${num(p.prevImpressions)} → ${num(p.currImpressions)} impr (${p.imprDelta!.toFixed(0)}%) · ${reason}`,
@@ -380,7 +380,6 @@ function summaryRules(m: Record<string, any>): Recommendation[] {
         };
       });
     } else {
-      // No prior data — show current period sorted by lowest CTR
       pageFindings = [...topPages]
         .filter((p: any) => (p.impressions ?? 0) > 50)
         .sort((a: any, b: any) => a.ctr - b.ctr)
@@ -392,47 +391,66 @@ function summaryRules(m: Record<string, any>): Recommendation[] {
         }));
     }
 
-    // Determine root cause from page-level position data
+    // Three root causes — must be distinguished correctly:
+    // 1. RANKING LOSS: position got worse (posDelta > 2) — Google pushed pages down
+    // 2. FEWER PAGES: position improved or held on visible pages, but impressions fell
+    //    → ranking for fewer distinct queries (lost pages, missing redirects after relaunch)
+    // 3. CRAWL FREQUENCY: position held, moderate impression drop — temporary post-launch jitter
     const rankingLossPages = hasPriorPages
       ? pageComparison.filter((p: any) => (p.posDelta ?? 0) > 2 && (p.imprDelta ?? 0) < -5)
       : [];
-    const indexingIssuePages = hasPriorPages
-      ? pageComparison.filter((p: any) => Math.abs(p.posDelta ?? 0) <= 2 && (p.imprDelta ?? 0) < -10)
+    const positionImprovingPages = hasPriorPages
+      ? pageComparison.filter((p: any) => (p.posDelta ?? 0) < -1.5 && (p.imprDelta ?? 0) < -10)
       : [];
-    const isRankingLoss = rankingLossPages.length > indexingIssuePages.length;
+    // avg position delta across all comparison pages
+    const avgPosDelta = hasPriorPages && pageComparison.length > 0
+      ? pageComparison.reduce((s: number, p: any) => s + (p.posDelta ?? 0), 0) / pageComparison.length
+      : 0;
+
+    // Position improving overall while impressions fell = fewer pages indexed (post-relaunch redirect issue)
+    const isFewerPagesIndexed = positionImprovingPages.length > rankingLossPages.length
+      || (avgPosDelta < -1 && impDelta < -20);
+    const isRankingLoss = !isFewerPagesIndexed && rankingLossPages.length > 0;
 
     const actions: string[] = [];
     if (biggestDropPage) {
       const cause = biggestDropPage.posDelta > 2
-        ? `position dropped from ${biggestDropPage.prevPosition.toFixed(1)} → ${biggestDropPage.currPosition.toFixed(1)}, meaning Google lowered its ranking`
-        : `position held at ~${biggestDropPage.currPosition.toFixed(1)}, meaning rankings are intact but Google is crawling it less frequently`;
+        ? `position dropped from ${biggestDropPage.prevPosition.toFixed(1)} → ${biggestDropPage.currPosition.toFixed(1)} — Google lowered its ranking`
+        : biggestDropPage.posDelta < -1.5
+        ? `position actually improved from ${biggestDropPage.prevPosition.toFixed(1)} → ${biggestDropPage.currPosition.toFixed(1)} but impressions fell — this page is now ranking for fewer search queries, likely because old URLs weren't redirected after the site relaunch`
+        : `position held at ~${biggestDropPage.currPosition.toFixed(1)} — rankings are intact but Google is crawling it less frequently after recent site changes`;
       actions.push(`"${slug(biggestDropPage.page)}" lost the most impressions: ${num(biggestDropPage.prevImpressions)} → ${num(biggestDropPage.currImpressions)} (${biggestDropPage.imprDelta!.toFixed(0)}%). Root cause: ${cause}`);
     }
-    if (isRankingLoss && rankingLossPages.length > 0) {
-      actions.push(`${rankingLossPages.length} page${rankingLossPages.length > 1 ? "s" : ""} lost rankings: ${rankingLossPages.slice(0, 3).map((p: any) => `"${slug(p.page)}" (pos ${p.prevPosition.toFixed(1)} → ${p.currPosition.toFixed(1)})`).join(", ")}. Update their content and add internal links pointing to them from high-authority pages`);
-    } else if (indexingIssuePages.length > 0 || (pos != null && pos < 15)) {
-      actions.push(`Average position is ${pos?.toFixed(1) ?? "—"} — rankings are intact. The impression drop is Google temporarily reducing crawl frequency after site changes. Submit your sitemap in GSC → Sitemaps to accelerate re-indexing`);
+
+    if (isFewerPagesIndexed) {
+      actions.push(`Rankings improved (avg position ${avgPosDelta < 0 ? "up" : "down"} ${Math.abs(avgPosDelta).toFixed(1)} pts) but impressions fell — this is the signature of a site relaunch where old URLs weren't 301-redirected. Pull the GSC Pages report filtered to before vs after the launch date and find which URLs disappeared`);
+      actions.push(`In GSC → Indexing → Pages, check for a spike in "Page not found (404)" or "Crawled, not indexed" after the launch date — each 404 is a page that used to rank dropping out of search entirely`);
+      actions.push(`Compare total indexed pages now vs before launch in GSC → Indexing → Pages → "All submitted pages" count — if the new site has fewer indexed pages, you've confirmed pages are missing`);
+    } else if (isRankingLoss) {
+      actions.push(`${rankingLossPages.length} page${rankingLossPages.length > 1 ? "s" : ""} lost rankings: ${rankingLossPages.slice(0, 3).map((p: any) => `"${slug(p.page)}" (pos ${p.prevPosition.toFixed(1)} → ${p.currPosition.toFixed(1)})`).join(", ")}. Update and expand their content and build internal links from other pages`);
     } else {
-      actions.push(`Check GSC → Coverage → Indexing to confirm key pages are still indexed — a de-indexed page disappears from impressions completely`);
+      actions.push(`Average position is ${pos?.toFixed(1) ?? "—"} — rankings are intact. Submit your sitemap in GSC → Sitemaps to prompt Google to re-crawl and recover impressions faster`);
     }
-    // CTR opportunity on remaining high-impression pages
+
     const lowCTRPage = [...topPages].filter((p: any) => p.impressions > 500 && p.ctr < 2.5).sort((a: any, b: any) => b.impressions - a.impressions)[0];
     if (lowCTRPage) {
       const missed = Math.round(lowCTRPage.impressions * 0.04) - Math.round(lowCTRPage.impressions * lowCTRPage.ctr / 100);
       actions.push(`While impressions recover, fix the CTR on "${slug(lowCTRPage.page)}" — ${num(lowCTRPage.impressions)} impressions at ${lowCTRPage.ctr}% CTR is leaving ~${num(missed)} clicks on the table right now`);
     }
 
-    const rootCauseLabel = isRankingLoss
+    const rootCauseLabel = isFewerPagesIndexed
+      ? "Root cause: position is improving but impressions fell — the site is ranking for fewer distinct queries, most likely because old URLs weren't redirected after a relaunch."
+      : isRankingLoss
       ? "Root cause: ranking loss on specific pages."
       : pos != null && pos < 15
-      ? "Root cause: rankings are intact — this is a crawl frequency / re-indexing issue."
+      ? "Root cause: rankings are intact — Google reduced crawl frequency temporarily after recent site changes."
       : "";
 
     recs.push({
       id: "summary_impressions_drop",
       status: "action_required",
       headline: `Search impressions dropped ${Math.abs(impDelta).toFixed(1)}%${totalImpressions ? ` — ${num(totalImpressions)} total this period` : ""}`,
-      detail: `${imprPeriod ? imprPeriod.label + ". " : `Impressions fell ${Math.abs(impDelta).toFixed(1)}% vs. the prior period. `}${rootCauseLabel} ${hasPriorPages ? "Below is each page's before → after with the reason for its drop." : "Below are your highest-impression pages sorted by lowest CTR."}`,
+      detail: `${imprPeriod ? imprPeriod.label + ". " : `Impressions fell ${Math.abs(impDelta).toFixed(1)}% vs. the prior period. `}${rootCauseLabel} ${hasPriorPages ? "Below is each page's before → after." : "Below are your highest-impression pages."}`,
       whyItMatters: "Impressions are the upstream metric — fixing them unlocks clicks and sessions.",
       findings: pageFindings,
       actions,
