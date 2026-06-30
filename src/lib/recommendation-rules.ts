@@ -510,20 +510,46 @@ function summaryRules(m: Record<string, any>): Recommendation[] {
       || (avgPosDelta < -1 && impDelta < -20);
     const isRankingLoss = !isFewerPagesIndexed && rankingLossPages.length > 0;
 
+    // Canonical tag misconfiguration pattern:
+    // Many pages disappeared at once (cliff drop) + position is GOOD on surviving pages
+    // = Google can see some pages fine, but most are pointing canonical to a wrong domain (e.g. staging URL)
+    // This is MORE severe than missing redirects — it affects every page simultaneously
+    const isCanonicalTagPattern = disappearedPages.length >= 5
+      && imprIsCliff
+      && pos != null && pos < 13
+      && impDelta < -35;
+
     const actions: string[] = [];
 
     if (disappearedPages.length > 0) {
       const topMissing = disappearedPages.slice(0, 3);
       const totalMissingImpr = disappearedPages.reduce((s: number, p: any) => s + p.impressions, 0);
-      actions.push(
-        `${disappearedPages.length} page${disappearedPages.length > 1 ? "s" : ""} that ranked before are now completely gone from GSC — they had ${num(totalMissingImpr)} impressions combined and are now generating zero. These pages need 301 redirects to their new URLs: ${topMissing.map((p: any) => `"${slug(p.page)}" (${num(p.impressions)} impr)`).join(", ")}`
-      );
-      actions.push(
-        `For each missing page: open the old URL in a browser — if it shows a 404 error, there is no redirect. Ask your developer to add a 301 redirect from that URL to the closest equivalent page on the new site`
-      );
-      actions.push(
-        `In GSC → Indexing → Pages → filter by "Not found (404)" — confirm these pages appear in that list. Submit the new equivalent URLs using GSC → URL Inspection → Request Indexing after redirects are in place`
-      );
+
+      if (isCanonicalTagPattern) {
+        // Canonical tag diagnosis — more urgent and specific than redirect advice
+        actions.push(
+          `URGENT — check canonical tags before anything else. Open any page on the site, right-click → View Page Source, and search for "canonical". The URL in that tag should be bootz.com/... (or whichever domain). If it says anything like "pantheonsite.io", "staging.", "dev.", or a different domain — that is the root cause. Every page is telling Google "the real version of me is on the staging server", so Google ignores bootz.com`
+        );
+        actions.push(
+          `${disappearedPages.length} pages had ${num(totalMissingImpr)} impressions before and now show zero — this matches a canonical tag issue where ALL pages launched with a misconfigured canonical pointing to the old staging domain. Fix: in WordPress → Settings → General, confirm the Site URL and WordPress URL are both set to the live domain (e.g. https://bootz.com), then run a database search-and-replace to fix any remaining staging URLs embedded in content`
+        );
+        actions.push(
+          `After the canonical tag is fixed: go to GSC → URL Inspection for one of the disappeared pages (e.g. ${slug(disappearedPages[0].page)}) → click "Request Indexing". Do this for your top 10 pages to signal Google to re-crawl immediately. Full recovery takes 2–4 weeks`
+        );
+        actions.push(
+          `Once canonical tags are corrected, THEN address 301 redirects for any old URLs that returned 404. The canonical fix is first priority — redirects are second`
+        );
+      } else {
+        actions.push(
+          `${disappearedPages.length} page${disappearedPages.length > 1 ? "s" : ""} that ranked before are now completely gone from GSC — they had ${num(totalMissingImpr)} impressions combined and are now generating zero. These pages need 301 redirects to their new URLs: ${topMissing.map((p: any) => `"${slug(p.page)}" (${num(p.impressions)} impr)`).join(", ")}`
+        );
+        actions.push(
+          `For each missing page: open the old URL in a browser — if it shows a 404 error, there is no redirect. Ask your developer to add a 301 redirect from that URL to the closest equivalent page on the new site`
+        );
+        actions.push(
+          `In GSC → Indexing → Pages → filter by "Not found (404)" — confirm these pages appear in that list. Submit the new equivalent URLs using GSC → URL Inspection → Request Indexing after redirects are in place`
+        );
+      }
     } else if (biggestDropPage) {
       const cause = biggestDropPage.posDelta > 2
         ? `position dropped from ${biggestDropPage.prevPosition.toFixed(1)} → ${biggestDropPage.currPosition.toFixed(1)} — Google lowered its ranking`
@@ -557,7 +583,9 @@ function summaryRules(m: Record<string, any>): Recommendation[] {
         : `Impressions started declining around ${imprCliff.date}, falling from ~${num(imprCliff.before)}/day to ~${num(imprCliff.after)}/day. This is a gradual drift — more consistent with ranking erosion or crawl frequency reduction than a one-time event.`
       : "";
 
-    const rootCauseLabel = disappearedPages.length > 0
+    const rootCauseLabel = isCanonicalTagPattern
+      ? `Root cause: canonical tag misconfiguration — every page on the site is likely pointing its canonical tag to the staging server instead of the live domain. Google ignores bootz.com as a result. This explains why position holds on the few pages Google did index, but most pages generate zero impressions.`
+      : disappearedPages.length > 0
       ? `Root cause: ${disappearedPages.length} pages that ranked before are now completely missing from Google — they had impressions in the prior period and now show zero. This is a missing 301 redirect problem.`
       : isFewerPagesIndexed
       ? "Root cause: position is improving but impressions fell — the site is ranking for fewer distinct queries. Most likely old URLs were not redirected after the site relaunch."
@@ -580,7 +608,21 @@ function summaryRules(m: Record<string, any>): Recommendation[] {
           : `Impressions started declining around ${imprCliff.date}, falling gradually from ~${num(imprCliff.before)}/day to ~${num(imprCliff.after)}/day — this is drift, not a cliff, which points to ranking erosion over time rather than one specific event`
       );
     }
-    if (disappearedPages.length > 0) {
+    if (isCanonicalTagPattern) {
+      const totalMissingImpr = disappearedPages.reduce((s: number, p: any) => s + p.impressions, 0);
+      imprWhyChain.push(
+        `${disappearedPages.length} pages that collectively had ${num(totalMissingImpr)} impressions are now completely gone from GSC — simultaneously, on the launch date. Individual redirect issues don't cause this many pages to vanish at once`
+      );
+      imprWhyChain.push(
+        `Position on the surviving pages is ${pos?.toFixed(1)} — well-ranked. This means Google likes the content it CAN see. The problem is it's refusing to index most pages. That's a canonical tag or indexing configuration problem, not a ranking problem`
+      );
+      imprWhyChain.push(
+        `A canonical tag is a line in the page's HTML that tells Google "the official version of this page lives at [URL]". If it points to the staging server (e.g. live-bootz.pantheonsite.io) instead of bootz.com, Google ignores bootz.com and tries to index the staging URL instead — which it can't reach publicly`
+      );
+      imprWhyChain.push(
+        `Root cause: canonical tags across the entire site point to the staging domain instead of the live domain. This is a WordPress Site URL setting that wasn't updated when the site launched. Fix this first — before any redirects — and Google will begin indexing all the stuck pages within 2–4 weeks`
+      );
+    } else if (disappearedPages.length > 0) {
       const totalMissingImpr = disappearedPages.reduce((s: number, p: any) => s + p.impressions, 0);
       imprWhyChain.push(
         `${disappearedPages.length} page${disappearedPages.length > 1 ? "s" : ""} that had ${num(totalMissingImpr)} impressions in the prior period are now completely absent from GSC — Google is not showing them in any search results at all`
