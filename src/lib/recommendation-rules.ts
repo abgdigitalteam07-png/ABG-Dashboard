@@ -216,6 +216,38 @@ function num(n: number): string {
   return n.toLocaleString();
 }
 
+// Finds the day where a metric dropped most sharply — returns the date and avg before/after
+function findCliffDrop(series: any[], key: string): { date: string; before: number; after: number; pct: number } | null {
+  if (!series || series.length < 8) return null;
+  const window = 4; // days each side to average
+  let maxDrop = 0;
+  let dropIndex = -1;
+  for (let i = window; i < series.length - window; i++) {
+    const before = series.slice(i - window, i).reduce((s, d) => s + (d[key] ?? 0), 0) / window;
+    const after  = series.slice(i, i + window).reduce((s, d) => s + (d[key] ?? 0), 0) / window;
+    const drop   = before > 0 ? (before - after) / before : 0;
+    if (drop > maxDrop) { maxDrop = drop; dropIndex = i; }
+  }
+  if (dropIndex < 0 || maxDrop < 0.25) return null; // not a meaningful cliff
+  const window2 = Math.min(window, dropIndex, series.length - dropIndex);
+  const before = series.slice(dropIndex - window2, dropIndex).reduce((s, d) => s + (d[key] ?? 0), 0) / window2;
+  const after  = series.slice(dropIndex, dropIndex + window2).reduce((s, d) => s + (d[key] ?? 0), 0) / window2;
+  return { date: series[dropIndex].date, before: Math.round(before), after: Math.round(after), pct: maxDrop * 100 };
+}
+
+// Checks if a drop is cliff-like (single-day step change) vs gradual drift
+function isCliffDrop(series: any[], key: string, cliffResult: ReturnType<typeof findCliffDrop>): boolean {
+  if (!cliffResult || !series.length) return false;
+  // Find index of cliff date
+  const idx = series.findIndex(d => d.date === cliffResult.date);
+  if (idx < 2) return false;
+  // Check if drop happened in ≤3 days (cliff) vs spread over >7 days (drift)
+  const dayBefore = series[idx - 1]?.[key] ?? 0;
+  const dayOf     = series[idx]?.[key] ?? 0;
+  const singleDayDrop = dayBefore > 0 ? (dayBefore - dayOf) / dayBefore : 0;
+  return singleDayDrop > 0.2; // 20%+ drop in one day = cliff
+}
+
 function periodTotals(series: any[], key: string): { prev: number; curr: number; label: string } | null {
   if (!series || series.length < 4) return null;
   const mid  = Math.floor(series.length / 2);
@@ -252,6 +284,20 @@ function summaryRules(m: Record<string, any>): Recommendation[] {
   const imprPeriod    = periodTotals(m.impressionsSeries ?? [], "impressions");
   const clicksPeriod  = periodTotals(m.impressionsSeries ?? [], "clicks");
   const sessionPeriod = periodTotals(m.sessionsSeries ?? [], "sessions");
+
+  // Exact drop date + cliff vs gradual diagnosis
+  const imprCliff    = findCliffDrop(m.impressionsSeries ?? [], "impressions");
+  const sessionCliff = findCliffDrop(m.sessionsSeries ?? [], "sessions");
+  const imprIsCliff  = isCliffDrop(m.impressionsSeries ?? [], "impressions", imprCliff);
+
+  // Branded vs non-branded query split
+  const brandNameLower = (m.brandName ?? "").toLowerCase().split(" ")[0]; // first word e.g. "bootz"
+  const brandedQueries    = topQueries.filter((q: any) => brandNameLower && q.query?.toLowerCase().includes(brandNameLower));
+  const nonBrandedQueries = topQueries.filter((q: any) => !brandNameLower || !q.query?.toLowerCase().includes(brandNameLower));
+  const brandedClicks     = brandedQueries.reduce((s: number, q: any) => s + (q.clicks ?? 0), 0);
+  const nonBrandedClicks  = nonBrandedQueries.reduce((s: number, q: any) => s + (q.clicks ?? 0), 0);
+  const totalQueryClicks  = brandedClicks + nonBrandedClicks;
+  const brandedClickPct   = totalQueryClicks > 0 ? (brandedClicks / totalQueryClicks) * 100 : 0;
 
   // Flag: do we have real prior-period comparison data?
   const hasPriorPages      = pageComparison.length > 0;
@@ -317,7 +363,7 @@ function summaryRules(m: Record<string, any>): Recommendation[] {
       id: "summary_sessions_drop",
       status: sc < -15 ? "action_required" : "attention",
       headline: `Sessions are down ${Math.abs(sc).toFixed(1)}%${totalSessions ? ` — ${num(totalSessions)} total this period` : ""}`,
-      detail: `${sessionPeriod ? sessionPeriod.label + ". " : `Traffic fell ${Math.abs(sc).toFixed(1)}% vs. the prior period. `}${hasPriorChannels ? "Here is each channel's before → after — the one with the biggest drop is where to look first." : "Here is the current channel breakdown."}`,
+      detail: `${sessionPeriod ? sessionPeriod.label + ". " : `Traffic fell ${Math.abs(sc).toFixed(1)}% vs. the prior period. `}${sessionCliff ? `Sessions dropped sharply around ${sessionCliff.date} — from ~${num(sessionCliff.before)}/day to ~${num(sessionCliff.after)}/day. ` : ""}${hasPriorChannels ? "Here is each channel's before → after — the one with the biggest drop is where to look first." : "Here is the current channel breakdown."}`,
       whyItMatters: "Sessions are the foundation — every other metric flows from traffic.",
       findings: chFindings,
       actions,
@@ -473,12 +519,21 @@ function summaryRules(m: Record<string, any>): Recommendation[] {
       actions.push(`While impressions recover, fix the CTR on "${slug(lowCTRPage.page)}" — ${num(lowCTRPage.impressions)} impressions at ${lowCTRPage.ctr}% CTR is leaving ~${num(missed)} clicks on the table right now`);
     }
 
+    // Build the drop date sentence
+    const dropDateSentence = imprCliff
+      ? imprIsCliff
+        ? `Impressions dropped on ${imprCliff.date} — fell from ~${num(imprCliff.before)}/day to ~${num(imprCliff.after)}/day overnight (${imprCliff.pct.toFixed(0)}% single-day drop). This is a cliff, not a gradual drift — it was triggered by a specific event on that date (site relaunch, robots.txt change, or URL restructure).`
+        : `Impressions started declining around ${imprCliff.date}, falling from ~${num(imprCliff.before)}/day to ~${num(imprCliff.after)}/day. This is a gradual drift — more consistent with ranking erosion or crawl frequency reduction than a one-time event.`
+      : "";
+
     const rootCauseLabel = disappearedPages.length > 0
       ? `Root cause: ${disappearedPages.length} pages that ranked before are now completely missing from Google — they had impressions in the prior period and now show zero. This is a missing 301 redirect problem.`
       : isFewerPagesIndexed
       ? "Root cause: position is improving but impressions fell — the site is ranking for fewer distinct queries. Most likely old URLs were not redirected after the site relaunch."
       : isRankingLoss
       ? "Root cause: ranking loss on specific pages."
+      : imprIsCliff
+      ? "Root cause: the cliff-shaped drop points to a specific event — relaunch, robots.txt block, or URL change — not a gradual crawl frequency reduction."
       : pos != null && pos < 15
       ? "Root cause: rankings are intact — Google reduced crawl frequency temporarily after recent site changes."
       : "";
@@ -487,7 +542,7 @@ function summaryRules(m: Record<string, any>): Recommendation[] {
       id: "summary_impressions_drop",
       status: "action_required",
       headline: `Search impressions dropped ${Math.abs(impDelta).toFixed(1)}%${totalImpressions ? ` — ${num(totalImpressions)} total this period` : ""}`,
-      detail: `${imprPeriod ? imprPeriod.label + ". " : `Impressions fell ${Math.abs(impDelta).toFixed(1)}% vs. the prior period. `}${rootCauseLabel} ${hasPriorPages ? "Below is each page's before → after." : "Below are your highest-impression pages."}`,
+      detail: `${imprPeriod ? imprPeriod.label + ". " : ""}${dropDateSentence ? " " + dropDateSentence : ""} ${rootCauseLabel} ${hasPriorPages || disappearedPages.length > 0 ? "Below is each page's before → after." : "Below are your highest-impression pages."}`,
       whyItMatters: "Impressions are the upstream metric — fixing them unlocks clicks and sessions.",
       findings: pageFindings,
       actions,
@@ -638,6 +693,76 @@ function summaryRules(m: Record<string, any>): Recommendation[] {
       ],
       benchmark: "B2B target: 3–5%",
       metric: "Avg CTR", currentValue: `${ctr}%`,
+    });
+  }
+
+  // ── 6b. BRANDED QUERY DOMINANCE ──────────────────────────────────────────
+  // If 80%+ of clicks come from branded queries, the site has no non-branded organic reach
+  if (totalQueryClicks > 50 && brandedClickPct > 75) {
+    const topNonBranded = nonBrandedQueries
+      .filter((q: any) => (q.impressions ?? 0) > 100)
+      .sort((a: any, b: any) => b.impressions - a.impressions)
+      .slice(0, 5);
+
+    recs.push({
+      id: "summary_branded_dominance",
+      status: "attention",
+      headline: `${brandedClickPct.toFixed(0)}% of search clicks are branded — non-branded product pages aren't driving organic traffic`,
+      detail: `Out of ${num(totalQueryClicks)} tracked clicks, ${num(brandedClicks)} come from people already searching your brand name. Only ${num(nonBrandedClicks)} clicks come from people searching product terms they don't yet associate with your brand. This means the site is capturing existing demand but not creating new demand — a risk if brand awareness drops.`,
+      whyItMatters: "Branded traffic is fragile — it only comes from people who already know you. Non-branded traffic is where growth comes from.",
+      findings: topNonBranded.length > 0
+        ? topNonBranded.map((q: any) => {
+            const missed = Math.round(q.impressions * 0.04) - Math.round(q.impressions * (q.ctr / 100));
+            return {
+              label: `"${q.query}"`,
+              value: `${num(q.impressions)} impr · ${q.ctr}% CTR · pos ${q.position}${missed > 0 ? ` · missing ~${num(missed)} clicks` : ""}`,
+              severity: q.ctr < 2 ? "high" as const : "medium" as const,
+            };
+          })
+        : [],
+      actions: [
+        topNonBranded.length > 0
+          ? `"${topNonBranded[0].query}" has ${num(topNonBranded[0].impressions)} impressions at pos ${topNonBranded[0].position} but only ${topNonBranded[0].ctr}% CTR — find the page ranking for this query and rewrite its title tag to include the query in the first 55 characters`
+          : "Identify which pages rank for non-branded product terms and improve their title tags",
+        "Create dedicated landing pages for your highest-impression non-branded queries — one page per product category targeting how customers search, not how the brand categorises products",
+        "Add FAQ schema to category pages — this creates rich snippets for non-branded queries and lifts CTR by 20–40% without needing better rankings",
+      ],
+      metric: "Branded clicks %", currentValue: `${brandedClickPct.toFixed(0)}%`,
+    });
+  }
+
+  // ── 6c. HOMEPAGE TRAFFIC CONCENTRATION ───────────────────────────────────
+  // If homepage gets >40% of sessions, internal navigation or redirects may be broken
+  const homepagePage = topPages.find((p: any) => {
+    const s = slug(p.page);
+    return s === "/" || s === "";
+  });
+  const homepageSessionShare = homepagePage && totalSessions
+    ? (homepagePage.clicks / (totalClicks || 1)) * 100
+    : null;
+  // Use GA4 channels to proxy homepage share — check if homepage dominates impressions
+  const homepageImprShare = homepagePage && totalImpressions
+    ? (homepagePage.impressions / totalImpressions) * 100
+    : null;
+
+  if (homepagePage && (homepagePage.impressions / (totalImpressions || 1)) > 0.15) {
+    recs.push({
+      id: "summary_homepage_concentration",
+      status: "attention",
+      headline: `Homepage is receiving a disproportionate share of search traffic — product pages may not be indexed`,
+      detail: `The homepage (/) is getting ${num(homepagePage.impressions)} impressions — ${((homepagePage.impressions / (totalImpressions || 1)) * 100).toFixed(0)}% of total. In a healthy site, most search traffic should land on category and product pages, not the homepage. This pattern often appears after a relaunch where old product URLs redirect to the homepage instead of their equivalent new pages.`,
+      whyItMatters: "Homepage visitors see everything and convert to nothing specific. Product page visitors convert.",
+      findings: topPages.slice(0, 5).map((p: any) => ({
+        label: slug(p.page) || "/",
+        value: `${num(p.impressions)} impr · ${p.ctr}% CTR · pos ${p.position}`,
+        severity: (slug(p.page) === "/" || slug(p.page) === "") ? "high" as const : "low" as const,
+      })),
+      actions: [
+        `Check whether old product URLs (e.g. /old-bathtubs, /old-shower-kits) redirect to the homepage (/) instead of their equivalent new page — each one that does is sending product searchers to a page that can't convert them`,
+        `In GSC → Performance → Pages, look for a spike in homepage impressions after the launch date — if the homepage gained impressions while product pages lost them, the redirect destinations are wrong`,
+        `For every product category, confirm there is a dedicated indexed page (not just the homepage) by searching Google for: site:bootz.com bathtubs — the category page should appear, not just the homepage`,
+      ],
+      metric: "Homepage impr share", currentValue: `${((homepagePage.impressions / (totalImpressions || 1)) * 100).toFixed(0)}%`,
     });
   }
 

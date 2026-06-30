@@ -110,7 +110,7 @@ Deno.serve(async (req) => {
       }),
       fetch(apiUrl, {
         method: "POST", headers: authHeader,
-        body: JSON.stringify({ startDate, endDate, dimensions: ["page"], rowLimit: 20 }),
+        body: JSON.stringify({ startDate, endDate, dimensions: ["page"], rowLimit: 50 }),
       }),
     ]);
 
