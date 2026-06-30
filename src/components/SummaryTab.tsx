@@ -804,46 +804,52 @@ export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
                   className="rounded-lg border border-border bg-card overflow-hidden"
                   style={{ borderLeft: `4px solid ${accent}` }}
                 >
-                  {/* Header row */}
+                  {/* Header */}
                   <div className="flex items-start justify-between gap-3 px-5 pt-4 pb-2">
                     <div className="flex items-start gap-3 flex-1 min-w-0">
-                      <div
-                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-black text-white mt-0.5"
-                        style={{ backgroundColor: accent }}
-                      >
+                      <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-black text-white mt-0.5" style={{ backgroundColor: accent }}>
                         {i + 1}
                       </div>
                       <p className="text-sm font-bold text-foreground leading-snug">{rec.headline}</p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      {rec.benchmark && (
-                        <span className="text-[10px] text-muted-foreground hidden sm:block">{rec.benchmark}</span>
-                      )}
-                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${badgeBg}`}>
-                        {badgeLabel}
-                      </span>
+                      {rec.benchmark && <span className="text-[10px] text-muted-foreground hidden sm:block">{rec.benchmark}</span>}
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${badgeBg}`}>{badgeLabel}</span>
                     </div>
                   </div>
 
                   {/* Diagnosis */}
-                  <div className="px-5 pb-3 ml-9">
+                  <div className="px-5 pb-3 pl-14">
                     <p className="text-xs text-muted-foreground leading-relaxed">{rec.detail}</p>
                   </div>
 
-                  {/* Actions */}
+                  {/* Data findings — inline table */}
+                  {rec.findings && rec.findings.length > 0 && (
+                    <div className="mx-5 mb-3 ml-14 rounded-md border border-border overflow-hidden">
+                      {rec.findings.map((f, fi) => {
+                        const rowAccent = f.severity === "high" ? "border-l-red-400" : f.severity === "medium" ? "border-l-amber-400" : "border-l-border";
+                        return (
+                          <div key={fi} className={`flex items-center justify-between gap-3 px-3 py-2 border-l-2 ${rowAccent} ${fi > 0 ? "border-t border-border" : ""} bg-muted/30`}>
+                            <span className="text-[11px] font-mono text-foreground truncate max-w-[55%]">{f.label}</span>
+                            <span className="text-[11px] text-muted-foreground text-right">{f.value}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Specific fix steps */}
                   {rec.actions && rec.actions.length > 0 && (
-                    <div className="mx-5 mb-4 ml-14 rounded-md bg-muted/50 px-4 py-3">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">
-                        Actions to take
-                      </p>
-                      <ol className="space-y-1.5">
-                        {rec.actions.map((action, ai) => (
-                          <li key={ai} className="flex items-start gap-2 text-xs text-foreground">
-                            <span className="shrink-0 font-bold text-muted-foreground mt-0.5">{ai + 1}.</span>
-                            <span className="leading-relaxed">{action}</span>
-                          </li>
-                        ))}
-                      </ol>
+                    <div className="mx-5 mb-4 ml-14 space-y-2">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">What to do</p>
+                      {rec.actions.map((action, ai) => (
+                        <div key={ai} className="flex items-start gap-2">
+                          <div className="mt-1 h-4 w-4 shrink-0 rounded-full flex items-center justify-center text-[9px] font-black text-white" style={{ backgroundColor: accent }}>
+                            {ai + 1}
+                          </div>
+                          <p className="text-xs text-foreground leading-relaxed">{action}</p>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
