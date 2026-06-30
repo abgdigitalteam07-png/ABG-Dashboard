@@ -201,10 +201,12 @@ function ChartTooltip({ active, payload, label }: any) {
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
-  const [ga4, setGa4]       = useState<any>(null);
-  const [gsc, setGsc]       = useState<any>(null);
-  const [hubspot, setHubspot] = useState<any>(null);
-  const [channels, setChannels] = useState<any[]>([]);
+  const [ga4, setGa4]             = useState<any>(null);
+  const [gsc, setGsc]             = useState<any>(null);
+  const [gscPrior, setGscPrior]   = useState<any>(null);
+  const [hubspot, setHubspot]     = useState<any>(null);
+  const [channels, setChannels]       = useState<any[]>([]);
+  const [channelsPrior, setChannelsPrior] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const showLoader = useFirstLoad(loading);
@@ -298,10 +300,17 @@ export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    setGa4(null); setGsc(null); setHubspot(null); setChannels([]);
+    setGa4(null); setGsc(null); setGscPrior(null); setHubspot(null); setChannels([]); setChannelsPrior([]);
 
     const startDate = dateFrom.toISOString().split("T")[0];
     const endDate   = dateTo.toISOString().split("T")[0];
+
+    // Prior period: same duration, shifted back immediately before dateFrom
+    const periodMs   = dateTo.getTime() - dateFrom.getTime();
+    const priorTo    = new Date(dateFrom.getTime() - 86_400_000); // day before current period starts
+    const priorFrom  = new Date(priorTo.getTime() - periodMs);
+    const priorStart = priorFrom.toISOString().split("T")[0];
+    const priorEnd   = priorTo.toISOString().split("T")[0];
 
     const channelFetch = brand.hasGA4 && brand.ga4PropertyIds?.length
       ? supabase.functions
@@ -309,14 +318,23 @@ export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
           .then(({ data }) => data?.channels ?? []).catch(() => [])
       : Promise.resolve([]);
 
+    const channelPriorFetch = brand.hasGA4 && brand.ga4PropertyIds?.length
+      ? supabase.functions
+          .invoke("ga4-channel-data", { body: { propertyIds: brand.ga4PropertyIds, startDate: priorStart, endDate: priorEnd } })
+          .then(({ data }) => data?.channels ?? []).catch(() => [])
+      : Promise.resolve([]);
+
     Promise.all([
       brand.hasGA4    ? fetchGA4Data(brand, dateFrom, dateTo)                        : Promise.resolve(null),
       brand.hasGSC    ? fetchGSCData(brand, dateFrom, dateTo)                        : Promise.resolve(null),
+      brand.hasGSC    ? fetchGSCData(brand, priorFrom, priorTo).catch(() => null)    : Promise.resolve(null),
       brand.hasHubSpot? fetchHubSpotData(brand, dateFrom, dateTo).catch(() => null)  : Promise.resolve(null),
       channelFetch,
-    ]).then(([ga4Data, gscData, hubspotData, channelData]) => {
+      channelPriorFetch,
+    ]).then(([ga4Data, gscData, gscPriorData, hubspotData, channelData, channelPriorData]) => {
       if (cancelled) return;
-      setGa4(ga4Data); setGsc(gscData); setHubspot(hubspotData); setChannels(channelData);
+      setGa4(ga4Data); setGsc(gscData); setGscPrior(gscPriorData);
+      setHubspot(hubspotData); setChannels(channelData); setChannelsPrior(channelPriorData);
       setLoading(false);
     });
 
@@ -324,8 +342,6 @@ export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
   }, [brand.id, dateFrom.getTime(), dateTo.getTime()]);
 
   const recommendations = useMemo(() => {
-    // Edge functions return deltas hardcoded to 0 — compute real deltas
-    // from the daily time series by comparing first half vs second half of period.
     function computeDelta(series: any[], key: string): number | null {
       if (!series || series.length < 4) return null;
       const mid = Math.floor(series.length / 2);
@@ -335,35 +351,72 @@ export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
       return parseFloat((((curr - prev) / prev) * 100).toFixed(1));
     }
 
-    const sessionsDelta   = computeDelta(ga4?.sessionsOverTime, "sessions");
+    const sessionsDelta    = computeDelta(ga4?.sessionsOverTime, "sessions");
     const impressionsDelta = computeDelta(gsc?.clicksImpressionsOverTime, "impressions");
     const clicksDelta      = computeDelta(gsc?.clicksImpressionsOverTime, "clicks");
 
+    // Per-page comparison: current period vs prior period
+    const pageComparison = (() => {
+      const curr = gsc?.topLandingPages ?? [];
+      const prior = gscPrior?.topLandingPages ?? [];
+      if (!curr.length || !prior.length) return [];
+      const priorMap = new Map(prior.map((p: any) => [p.page, p]));
+      return curr.map((c: any) => {
+        const p = priorMap.get(c.page);
+        if (!p) return null;
+        return {
+          page:            c.page,
+          prevImpressions: p.impressions,  currImpressions: c.impressions,
+          prevClicks:      p.clicks,       currClicks:      c.clicks,
+          prevCTR:         p.ctr,          currCTR:         c.ctr,
+          prevPosition:    p.position,     currPosition:    c.position,
+          imprDelta:  p.impressions > 0 ? ((c.impressions - p.impressions) / p.impressions) * 100 : null,
+          clickDelta: p.clicks > 0       ? ((c.clicks - p.clicks) / p.clicks) * 100               : null,
+          posDelta:   c.position - p.position,  // positive = ranking got worse
+        };
+      }).filter(Boolean);
+    })();
+
+    // Per-channel comparison: current period vs prior period
+    const channelComparison = (() => {
+      if (!channels.length || !channelsPrior.length) return [];
+      const priorMap = new Map(channelsPrior.map((c: any) => [c.channel, c]));
+      return channels.map((c: any) => {
+        const p = priorMap.get(c.channel);
+        const currSess = c.sessions ?? c.users ?? 0;
+        const prevSess = p ? (p.sessions ?? p.users ?? 0) : 0;
+        return {
+          channel: c.channel,
+          prev:    prevSess,
+          curr:    currSess,
+          delta:   prevSess > 0 ? ((currSess - prevSess) / prevSess) * 100 : null,
+        };
+      });
+    })();
+
     const m: Record<string, any> = {
-      // Computed real deltas
       sessionsDelta,
       organicSessionsDelta: computeDelta(ga4?.sessionsOverTime, "organicSessions") ?? ga4?.organicSessionsDelta,
       totalImpressionsDelta: impressionsDelta,
       totalClicksDelta: clicksDelta,
-      // Static metrics
-      averageCTR:      gsc?.averageCTR,
-      averagePosition: gsc?.averagePosition,
-      totalSessions:   ga4?.sessions,
+      averageCTR:       gsc?.averageCTR,
+      averagePosition:  gsc?.averagePosition,
+      totalSessions:    ga4?.sessions,
       totalImpressions: gsc?.totalImpressions,
-      totalClicks:     gsc?.totalClicks,
-      // Raw time series — used for before/after period breakdown
+      totalClicks:      gsc?.totalClicks,
       impressionsSeries: gsc?.clicksImpressionsOverTime ?? [],
       sessionsSeries:    ga4?.sessionsOverTime ?? [],
-      // Rich context for deeper analysis
-      channels:        channels,
+      channels,
+      channelComparison,
       topQueries:      gsc?.topQueries ?? [],
       topLandingPages: gsc?.topLandingPages ?? [],
-      brandName:       brand.name,
+      pageComparison,
+      brandName: brand.name,
       dateFrom,
       dateTo,
     };
     return generateRecommendations("summary", m);
-  }, [ga4, gsc, channels, brand.name, dateFrom, dateTo]);
+  }, [ga4, gsc, gscPrior, channels, channelsPrior, brand.name, dateFrom, dateTo]);
 
   const execSummary = useMemo(
     () => buildExecutiveSummary(brand.name, ga4, gsc, dateFrom, dateTo),

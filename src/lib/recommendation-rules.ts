@@ -239,9 +239,11 @@ function summaryRules(m: Record<string, any>): Recommendation[] {
   const pos         = m.averagePosition as number | null;
   const ctr         = m.averageCTR as number | null;
   const osd         = m.organicSessionsDelta as number | null;
-  const channels: any[]   = m.channels ?? [];
-  const topQueries: any[] = m.topQueries ?? [];
-  const topPages: any[]   = m.topLandingPages ?? [];
+  const channels: any[]          = m.channels ?? [];
+  const channelComparison: any[] = m.channelComparison ?? [];
+  const topQueries: any[]        = m.topQueries ?? [];
+  const topPages: any[]          = m.topLandingPages ?? [];
+  const pageComparison: any[]    = m.pageComparison ?? [];
   const totalSessions     = m.totalSessions as number | null;
   const totalImpressions  = m.totalImpressions as number | null;
   const totalClicks       = m.totalClicks as number | null;
@@ -251,60 +253,102 @@ function summaryRules(m: Record<string, any>): Recommendation[] {
   const clicksPeriod  = periodTotals(m.impressionsSeries ?? [], "clicks");
   const sessionPeriod = periodTotals(m.sessionsSeries ?? [], "sessions");
 
+  // Flag: do we have real prior-period comparison data?
+  const hasPriorPages    = pageComparison.length > 0;
+  const hasPriorChannels = channelComparison.some((c: any) => c.prev > 0);
+
   // ── 1. SESSION DROP ───────────────────────────────────────────────────────
   if (sc != null && sc < -5) {
-    const sortedCh = [...channels].sort((a, b) => (b.sessions ?? b.users ?? 0) - (a.sessions ?? a.users ?? 0));
-    const topCh    = sortedCh[0];
-    const organic  = channels.find((c: any) => /organic.search/i.test(c.channel ?? ""));
-    const direct   = channels.find((c: any) => /direct/i.test(c.channel ?? ""));
-    const paid     = channels.find((c: any) => /paid/i.test(c.channel ?? ""));
+    // Use real channel comparison when available; fall back to current-period totals
+    const chFindings: InsightFinding[] = hasPriorChannels
+      ? channelComparison
+          .filter((c: any) => c.prev > 0 || c.curr > 0)
+          .sort((a: any, b: any) => Math.abs(b.delta ?? 0) - Math.abs(a.delta ?? 0))
+          .slice(0, 5)
+          .map((c: any) => {
+            const dir = (c.delta ?? 0) >= 0 ? "+" : "";
+            return {
+              label: c.channel ?? "Unknown",
+              value: `${num(c.prev)} → ${num(c.curr)} sessions (${dir}${(c.delta ?? 0).toFixed(0)}%)`,
+              severity: (c.delta ?? 0) < -20 ? "high" as const : (c.delta ?? 0) < 0 ? "medium" as const : "low" as const,
+            };
+          })
+      : [...channels]
+          .sort((a, b) => (b.sessions ?? b.users ?? 0) - (a.sessions ?? a.users ?? 0))
+          .slice(0, 5)
+          .map((c: any) => ({
+            label: c.channel ?? "Unknown",
+            value: `${num(c.sessions ?? c.users ?? 0)} sessions`,
+            severity: "low" as const,
+          }));
 
-    const chFindings: InsightFinding[] = sortedCh.slice(0, 5).map((c: any) => ({
-      label: c.channel ?? "Unknown",
-      value: `${num(c.sessions ?? c.users ?? 0)} sessions`,
-      severity: c === sortedCh[0] ? "high" : "low",
-    }));
+    // Channel that dropped the most
+    const biggestDrop = channelComparison
+      .filter((c: any) => (c.delta ?? 0) < -5)
+      .sort((a: any, b: any) => (a.delta ?? 0) - (b.delta ?? 0))[0];
 
     const actions: string[] = [];
-    if (organic) {
-      actions.push(`Organic Search brought ${num(organic.sessions ?? organic.users ?? 0)} sessions — if this dropped vs. prior period, it is your SEO issue. Open Google Search Console → Performance → compare current vs. previous ${Math.round(Math.abs(sc))} days`);
+    if (biggestDrop) {
+      const lostSessions = biggestDrop.prev - biggestDrop.curr;
+      actions.push(`${biggestDrop.channel} lost ${num(lostSessions)} sessions (${biggestDrop.prev > 0 ? Math.abs(biggestDrop.delta ?? 0).toFixed(0) : "?"}% drop, from ${num(biggestDrop.prev)} → ${num(biggestDrop.curr)}) — this is the primary cause of the overall decline`);
     }
-    if (direct) {
-      actions.push(`Direct traffic is ${num(direct.sessions ?? direct.users ?? 0)} sessions — a Direct drop means either (a) your GA4 tag stopped firing or (b) branded search volume declined. Check GA4 → Admin → Data Streams → DebugView to confirm the tag is live`);
+    const organic = channelComparison.find((c: any) => /organic.search/i.test(c.channel ?? ""));
+    const direct  = channelComparison.find((c: any) => /direct/i.test(c.channel ?? ""));
+    const paid    = channelComparison.find((c: any) => /paid/i.test(c.channel ?? ""));
+    if (organic && (organic.delta ?? 0) < -5) {
+      actions.push(`Organic Search dropped from ${num(organic.prev)} → ${num(organic.curr)} sessions — the GSC impressions data above will show which specific pages lost visibility`);
     }
-    if (paid) {
-      actions.push(`Paid Search contributed ${num(paid.sessions ?? paid.users ?? 0)} sessions — if budget was cut or ads paused this period, that explains the drop. Check your Google Ads dashboard for campaign status`);
+    if (direct && (direct.delta ?? 0) < -10) {
+      actions.push(`Direct traffic dropped from ${num(direct.prev)} → ${num(direct.curr)} — this usually means either (a) the GA4 tracking tag stopped firing on some pages, or (b) branded search demand declined. Check GA4 → Admin → Data Streams → DebugView`);
     }
-    if (!organic && !direct && !paid && topCh) {
-      actions.push(`Your top channel is ${topCh.channel} at ${num(topCh.sessions ?? topCh.users ?? 0)} sessions. Compare this channel against the same period last month to isolate the decline`);
+    if (paid && (paid.delta ?? 0) < -10) {
+      actions.push(`Paid Search dropped from ${num(paid.prev)} → ${num(paid.curr)} sessions — check whether ad budget was cut or campaigns paused during this period`);
     }
-    if (impDelta != null && impDelta < -10) {
-      actions.push(`Search impressions also dropped ${Math.abs(impDelta).toFixed(0)}% — this confirms an SEO/indexing issue is part of the session decline, not just a tracking problem`);
+    if (!biggestDrop && !organic && !direct && !paid) {
+      if (impDelta != null && impDelta < -10) {
+        actions.push(`Search impressions dropped ${Math.abs(impDelta).toFixed(0)}% alongside sessions — this points to an SEO/indexing issue, not a tracking problem`);
+      } else {
+        actions.push(`No single channel shows a clear drop — rule out a GA4 tracking gap first: if the tag stopped firing for a few days, sessions vanish from the report even though real visitors came`);
+      }
     }
 
     recs.push({
       id: "summary_sessions_drop",
       status: sc < -15 ? "action_required" : "attention",
       headline: `Sessions are down ${Math.abs(sc).toFixed(1)}%${totalSessions ? ` — ${num(totalSessions)} total this period` : ""}`,
-      detail: `${sessionPeriod ? sessionPeriod.label + ". " : `Traffic fell ${Math.abs(sc).toFixed(1)}% period-over-period. `}${chFindings.length ? "Here is the channel breakdown — the channel that declined most is causing the drop." : ""} Before escalating, rule out a GA4 tracking gap: if the tag stopped firing for even a few days, sessions disappear from the report even though real visitors came.`,
+      detail: `${sessionPeriod ? sessionPeriod.label + ". " : `Traffic fell ${Math.abs(sc).toFixed(1)}% vs. the prior period. `}${hasPriorChannels ? "Here is each channel's before → after — the one with the biggest drop is where to look first." : "Here is the current channel breakdown."}`,
       whyItMatters: "Sessions are the foundation — every other metric flows from traffic.",
       findings: chFindings,
       actions,
       metric: "Sessions Δ", currentValue: `${sc.toFixed(1)}%`,
     });
   } else if (sc != null && sc >= 10) {
-    const topCh = [...channels].sort((a, b) => (b.sessions ?? b.users ?? 0) - (a.sessions ?? a.users ?? 0))[0];
+    const chFindings: InsightFinding[] = hasPriorChannels
+      ? channelComparison
+          .filter((c: any) => c.prev > 0 || c.curr > 0)
+          .sort((a: any, b: any) => (b.delta ?? 0) - (a.delta ?? 0))
+          .slice(0, 4)
+          .map((c: any) => ({
+            label: c.channel ?? "Unknown",
+            value: `${num(c.prev)} → ${num(c.curr)} sessions (+${(c.delta ?? 0).toFixed(0)}%)`,
+            severity: "low" as const,
+          }))
+      : channels.slice(0, 4).map((c: any) => ({ label: c.channel, value: `${num(c.sessions ?? c.users ?? 0)} sessions` }));
+
+    const topGrowthCh = channelComparison.sort((a: any, b: any) => (b.delta ?? 0) - (a.delta ?? 0))[0];
     recs.push({
       id: "summary_sessions_up",
       status: "strong",
       headline: `Traffic grew ${sc.toFixed(1)}%${totalSessions ? ` — ${num(totalSessions)} sessions this period` : ""}`,
-      detail: `${sessionPeriod ? sessionPeriod.label + ". " : `Sessions increased ${sc.toFixed(1)}% period-over-period. `}${topCh ? `Top channel: ${topCh.channel} with ${num(topCh.sessions ?? topCh.users ?? 0)} sessions.` : ""} Identify what drove this before the conditions change.`,
+      detail: `${sessionPeriod ? sessionPeriod.label + ". " : `Sessions increased ${sc.toFixed(1)}% vs. the prior period. `}${hasPriorChannels ? "Here is which channels drove the growth:" : ""}`,
       whyItMatters: "Growth compounds — double down on whatever is working.",
-      findings: channels.slice(0, 4).map((c: any) => ({ label: c.channel, value: `${num(c.sessions ?? c.users ?? 0)} sessions` })),
+      findings: chFindings,
       actions: [
-        topCh ? `${topCh.channel} is your top channel at ${num(topCh.sessions ?? topCh.users ?? 0)} sessions — invest more here` : "Identify your top-growing channel in GA4 → Acquisition",
-        "Find the top landing pages driving this growth — those are your best-performing content assets",
-        "Replicate the content format or campaign driving the spike for other brands",
+        topGrowthCh && topGrowthCh.delta > 0
+          ? `${topGrowthCh.channel} grew from ${num(topGrowthCh.prev)} → ${num(topGrowthCh.curr)} sessions — identify the specific campaigns or content driving this and replicate them`
+          : "Identify your top-growing channel in GA4 → Acquisition",
+        "Find the top landing pages driving this growth in GSC — those are your best-performing content assets",
+        "Replicate the content format or campaign driving the spike across other brands",
       ],
       metric: "Sessions Δ", currentValue: `+${sc.toFixed(1)}%`,
     });
@@ -312,53 +356,118 @@ function summaryRules(m: Record<string, any>): Recommendation[] {
 
   // ── 2. SEARCH IMPRESSIONS DROP ────────────────────────────────────────────
   if (impDelta != null && impDelta < -10) {
-    const highImpLowCTR = [...topPages]
-      .filter((p: any) => (p.impressions ?? 0) > 50)
-      .sort((a: any, b: any) => a.ctr - b.ctr)
-      .slice(0, 5);
+    // Build page findings: prefer real before→after; fall back to current-period only
+    let pageFindings: InsightFinding[] = [];
+    let biggestDropPage: any = null;
 
-    const pageFindings: InsightFinding[] = highImpLowCTR.map((p: any) => ({
-      label: slug(p.page),
-      value: `${num(p.impressions)} impr · ${p.ctr}% CTR · pos ${p.position}`,
-      severity: p.ctr < 1.5 ? "high" : p.ctr < 3 ? "medium" : "low",
-    }));
+    if (hasPriorPages) {
+      const droppedPages = [...pageComparison]
+        .filter((p: any) => (p.imprDelta ?? 0) < -5)
+        .sort((a: any, b: any) => (a.imprDelta ?? 0) - (b.imprDelta ?? 0)) // most dropped first
+        .slice(0, 6);
+      biggestDropPage = droppedPages[0];
+
+      pageFindings = droppedPages.map((p: any) => {
+        const reason = p.posDelta > 2
+          ? `pos dropped ${p.prevPosition.toFixed(1)} → ${p.currPosition.toFixed(1)} (ranking loss)`
+          : p.posDelta < -2
+          ? `pos improved ${p.prevPosition.toFixed(1)} → ${p.currPosition.toFixed(1)}`
+          : `pos held ~${p.currPosition.toFixed(1)} (crawl/index issue)`;
+        return {
+          label: slug(p.page),
+          value: `${num(p.prevImpressions)} → ${num(p.currImpressions)} impr (${p.imprDelta!.toFixed(0)}%) · ${reason}`,
+          severity: p.imprDelta! < -30 ? "high" as const : p.imprDelta! < -15 ? "medium" as const : "low" as const,
+        };
+      });
+    } else {
+      // No prior data — show current period sorted by lowest CTR
+      pageFindings = [...topPages]
+        .filter((p: any) => (p.impressions ?? 0) > 50)
+        .sort((a: any, b: any) => a.ctr - b.ctr)
+        .slice(0, 5)
+        .map((p: any) => ({
+          label: slug(p.page),
+          value: `${num(p.impressions)} impr · ${p.ctr}% CTR · pos ${p.position}`,
+          severity: p.ctr < 1.5 ? "high" as const : p.ctr < 3 ? "medium" as const : "low" as const,
+        }));
+    }
+
+    // Determine root cause from page-level position data
+    const rankingLossPages = hasPriorPages
+      ? pageComparison.filter((p: any) => (p.posDelta ?? 0) > 2 && (p.imprDelta ?? 0) < -5)
+      : [];
+    const indexingIssuePages = hasPriorPages
+      ? pageComparison.filter((p: any) => Math.abs(p.posDelta ?? 0) <= 2 && (p.imprDelta ?? 0) < -10)
+      : [];
+    const isRankingLoss = rankingLossPages.length > indexingIssuePages.length;
 
     const actions: string[] = [];
-    if (highImpLowCTR.length > 0) {
-      const worst = highImpLowCTR[0];
-      const expectedClicks = Math.round(worst.impressions * 0.04);
-      const actualClicks   = Math.round(worst.impressions * (worst.ctr / 100));
-      actions.push(`"${slug(worst.page)}" gets ${num(worst.impressions)} impressions but only ${worst.ctr}% CTR — at a healthy 4% CTR that page should deliver ~${num(expectedClicks)} clicks/period instead of ${num(actualClicks)}. Rewrite its title tag to be more specific and keyword-forward`);
+    if (biggestDropPage) {
+      const cause = biggestDropPage.posDelta > 2
+        ? `position dropped from ${biggestDropPage.prevPosition.toFixed(1)} → ${biggestDropPage.currPosition.toFixed(1)}, meaning Google lowered its ranking`
+        : `position held at ~${biggestDropPage.currPosition.toFixed(1)}, meaning rankings are intact but Google is crawling it less frequently`;
+      actions.push(`"${slug(biggestDropPage.page)}" lost the most impressions: ${num(biggestDropPage.prevImpressions)} → ${num(biggestDropPage.currImpressions)} (${biggestDropPage.imprDelta!.toFixed(0)}%). Root cause: ${cause}`);
     }
-    if (highImpLowCTR.length > 1) {
-      actions.push(`The next ${Math.min(highImpLowCTR.length - 1, 3)} pages with the same problem: ${highImpLowCTR.slice(1, 4).map(p => `"${slug(p.page)}" (${p.ctr}% CTR, ${num(p.impressions)} impr)`).join(", ")} — prioritise these title tag rewrites`);
-    }
-    if (pos != null && pos < 15) {
-      actions.push(`Average position is ${pos.toFixed(1)} — rankings are intact. This impressions drop is most likely Google temporarily reducing crawl frequency after site changes (re-indexing). Submit your sitemap in GSC → Sitemaps to speed up re-indexing`);
+    if (isRankingLoss && rankingLossPages.length > 0) {
+      actions.push(`${rankingLossPages.length} page${rankingLossPages.length > 1 ? "s" : ""} lost rankings: ${rankingLossPages.slice(0, 3).map((p: any) => `"${slug(p.page)}" (pos ${p.prevPosition.toFixed(1)} → ${p.currPosition.toFixed(1)})`).join(", ")}. Update their content and add internal links pointing to them from high-authority pages`);
+    } else if (indexingIssuePages.length > 0 || (pos != null && pos < 15)) {
+      actions.push(`Average position is ${pos?.toFixed(1) ?? "—"} — rankings are intact. The impression drop is Google temporarily reducing crawl frequency after site changes. Submit your sitemap in GSC → Sitemaps to accelerate re-indexing`);
     } else {
-      actions.push(`Check GSC → Coverage → Indexing report to confirm your key pages are still indexed — a de-indexed page disappears from impressions completely`);
+      actions.push(`Check GSC → Coverage → Indexing to confirm key pages are still indexed — a de-indexed page disappears from impressions completely`);
     }
+    // CTR opportunity on remaining high-impression pages
+    const lowCTRPage = [...topPages].filter((p: any) => p.impressions > 500 && p.ctr < 2.5).sort((a: any, b: any) => b.impressions - a.impressions)[0];
+    if (lowCTRPage) {
+      const missed = Math.round(lowCTRPage.impressions * 0.04) - Math.round(lowCTRPage.impressions * lowCTRPage.ctr / 100);
+      actions.push(`While impressions recover, fix the CTR on "${slug(lowCTRPage.page)}" — ${num(lowCTRPage.impressions)} impressions at ${lowCTRPage.ctr}% CTR is leaving ~${num(missed)} clicks on the table right now`);
+    }
+
+    const rootCauseLabel = isRankingLoss
+      ? "Root cause: ranking loss on specific pages."
+      : pos != null && pos < 15
+      ? "Root cause: rankings are intact — this is a crawl frequency / re-indexing issue."
+      : "";
 
     recs.push({
       id: "summary_impressions_drop",
       status: "action_required",
       headline: `Search impressions dropped ${Math.abs(impDelta).toFixed(1)}%${totalImpressions ? ` — ${num(totalImpressions)} total this period` : ""}`,
-      detail: `${imprPeriod ? imprPeriod.label + ". " : `Impressions fell ${Math.abs(impDelta).toFixed(1)}% period-over-period. `}${pageFindings.length ? "Below are your highest-impression pages sorted by lowest CTR. These pages have the visibility but are not getting the clicks — fixing their title tags recovers traffic without needing better rankings." : ""} ${pos != null && pos < 15 ? `Average position (${pos.toFixed(1)}) is holding on page 1–2, which means rankings are intact — this is likely a crawl frequency issue, not a ranking loss.` : ""}`,
+      detail: `${imprPeriod ? imprPeriod.label + ". " : `Impressions fell ${Math.abs(impDelta).toFixed(1)}% vs. the prior period. `}${rootCauseLabel} ${hasPriorPages ? "Below is each page's before → after with the reason for its drop." : "Below are your highest-impression pages sorted by lowest CTR."}`,
       whyItMatters: "Impressions are the upstream metric — fixing them unlocks clicks and sessions.",
       findings: pageFindings,
       actions,
       metric: "Impressions Δ", currentValue: `${impDelta.toFixed(1)}%`,
     });
   } else if (impDelta != null && impDelta >= 15) {
+    const gainedPages = hasPriorPages
+      ? [...pageComparison]
+          .filter((p: any) => (p.imprDelta ?? 0) > 10)
+          .sort((a: any, b: any) => (b.imprDelta ?? 0) - (a.imprDelta ?? 0))
+          .slice(0, 4)
+          .map((p: any) => ({
+            label: slug(p.page),
+            value: `${num(p.prevImpressions)} → ${num(p.currImpressions)} impr (+${p.imprDelta!.toFixed(0)}%) · pos ${p.currPosition.toFixed(1)}`,
+            severity: "low" as const,
+          }))
+      : topPages.slice(0, 4).map((p: any) => ({ label: slug(p.page), value: `${num(p.impressions)} impr · ${p.ctr}% CTR · pos ${p.position}`, severity: p.ctr < 3 ? "medium" as const : "low" as const }));
+
+    const topGained = hasPriorPages
+      ? [...pageComparison].sort((a: any, b: any) => (b.imprDelta ?? 0) - (a.imprDelta ?? 0))[0]
+      : topPages[0];
+
     recs.push({
       id: "summary_impressions_up",
       status: "strong",
       headline: `Search impressions up ${impDelta.toFixed(1)}%${totalImpressions ? ` — ${num(totalImpressions)} total` : ""}`,
-      detail: `More searches are surfacing your pages. The next step is converting those impressions into clicks by improving CTR on your highest-impression pages.`,
+      detail: `${imprPeriod ? imprPeriod.label + ". " : `Impressions grew ${impDelta.toFixed(1)}% vs. the prior period. `}${hasPriorPages ? "Here are the pages that gained the most visibility:" : "More searches are surfacing your pages."}`,
       whyItMatters: "Growing impressions × better CTR = compounding traffic gains.",
-      findings: topPages.slice(0, 4).map((p: any) => ({ label: slug(p.page), value: `${num(p.impressions)} impr · ${p.ctr}% CTR · pos ${p.position}`, severity: p.ctr < 3 ? "medium" as const : "low" as const })),
+      findings: gainedPages,
       actions: [
-        topPages.length > 0 ? `"${slug(topPages[0].page)}" is your most-visible page at ${num(topPages[0].impressions)} impressions — its CTR is ${topPages[0].ctr}%${topPages[0].ctr < 4 ? `, which means rewriting its title tag could unlock ${num(Math.round(topPages[0].impressions * 0.04) - Math.round(topPages[0].impressions * topPages[0].ctr / 100))} extra clicks per period` : ", which is healthy"}` : "Find your top impression pages in GSC and optimise their CTR",
+        topGained
+          ? hasPriorPages
+            ? `"${slug(topGained.page)}" grew from ${num(topGained.prevImpressions)} → ${num(topGained.currImpressions)} impressions — its CTR is ${topGained.currCTR}%${topGained.currCTR < 4 ? `, rewrite its title tag to recover ~${num(Math.round(topGained.currImpressions * 0.04) - Math.round(topGained.currImpressions * topGained.currCTR / 100))} extra clicks` : ""}`
+            : `"${slug(topGained.page)}" is your most-visible page — CTR is ${topGained.ctr}%${topGained.ctr < 4 ? `, rewriting its title tag recovers ~${num(Math.round(topGained.impressions * 0.04) - Math.round(topGained.impressions * topGained.ctr / 100))} extra clicks` : ""}`
+          : "Find your top impression pages and optimise their CTR",
         "Add FAQ schema to category and product pages — rich snippets lift CTR by 20–30% with no ranking change needed",
       ],
       metric: "Impressions Δ", currentValue: `+${impDelta.toFixed(1)}%`,
