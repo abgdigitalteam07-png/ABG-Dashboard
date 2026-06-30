@@ -378,6 +378,18 @@ export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
       }).filter(Boolean);
     })();
 
+    // Pages that existed in prior period but completely vanished from current period
+    // These are the strongest signal for missing 301 redirects after a site relaunch
+    const disappearedPages = (() => {
+      const prior = gscPrior?.topLandingPages ?? [];
+      const curr  = gsc?.topLandingPages ?? [];
+      if (!prior.length || !curr.length) return [];
+      const currUrls = new Set(curr.map((p: any) => p.page));
+      return prior
+        .filter((p: any) => !currUrls.has(p.page) && p.impressions > 50)
+        .sort((a: any, b: any) => b.impressions - a.impressions);
+    })();
+
     // Per-channel comparison: current period vs prior period
     const channelComparison = (() => {
       if (!channels.length || !channelsPrior.length) return [];
@@ -412,6 +424,7 @@ export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
       topQueries:      gsc?.topQueries ?? [],
       topLandingPages: gsc?.topLandingPages ?? [],
       pageComparison,
+      disappearedPages,
       brandName: brand.name,
       dateFrom,
       dateTo,

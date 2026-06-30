@@ -254,8 +254,9 @@ function summaryRules(m: Record<string, any>): Recommendation[] {
   const sessionPeriod = periodTotals(m.sessionsSeries ?? [], "sessions");
 
   // Flag: do we have real prior-period comparison data?
-  const hasPriorPages    = pageComparison.length > 0;
-  const hasPriorChannels = channelComparison.some((c: any) => c.prev > 0);
+  const hasPriorPages      = pageComparison.length > 0;
+  const hasPriorChannels   = channelComparison.some((c: any) => c.prev > 0);
+  const disappearedPages: any[] = m.disappearedPages ?? [];
 
   // ── 1. SESSION DROP ───────────────────────────────────────────────────────
   if (sc != null && sc < -5) {
@@ -360,18 +361,38 @@ function summaryRules(m: Record<string, any>): Recommendation[] {
     let pageFindings: InsightFinding[] = [];
     let biggestDropPage: any = null;
 
-    if (hasPriorPages) {
+    if (disappearedPages.length > 0) {
+      // Best signal: pages that ranked before but are completely gone now = missing redirects
+      const disappeared: InsightFinding[] = disappearedPages.slice(0, 6).map((p: any) => ({
+        label: slug(p.page),
+        value: `${num(p.impressions)} impr before · now MISSING from GSC — check 301 redirect`,
+        severity: "high" as const,
+      }));
+      // Also show pages that dropped heavily (still exist but lost impressions)
+      const heavyDroppers: InsightFinding[] = hasPriorPages
+        ? [...pageComparison]
+            .filter((p: any) => (p.imprDelta ?? 0) < -30)
+            .sort((a: any, b: any) => (a.imprDelta ?? 0) - (b.imprDelta ?? 0))
+            .slice(0, 3)
+            .map((p: any) => ({
+              label: slug(p.page),
+              value: `${num(p.prevImpressions)} → ${num(p.currImpressions)} impr (${p.imprDelta!.toFixed(0)}%) · pos ${p.currPosition.toFixed(1)}`,
+              severity: "medium" as const,
+            }))
+        : [];
+      pageFindings = [...disappeared, ...heavyDroppers];
+      biggestDropPage = disappearedPages[0];
+    } else if (hasPriorPages) {
       const droppedPages = [...pageComparison]
         .filter((p: any) => (p.imprDelta ?? 0) < -5)
         .sort((a: any, b: any) => (a.imprDelta ?? 0) - (b.imprDelta ?? 0))
         .slice(0, 6);
       biggestDropPage = droppedPages[0];
-
       pageFindings = droppedPages.map((p: any) => {
         const reason = p.posDelta > 2
           ? `pos dropped ${p.prevPosition.toFixed(1)} → ${p.currPosition.toFixed(1)} (ranking lost)`
           : p.posDelta < -1.5
-          ? `pos improved ${p.prevPosition.toFixed(1)} → ${p.currPosition.toFixed(1)} (fewer queries served — check redirects)`
+          ? `pos improved ${p.prevPosition.toFixed(1)} → ${p.currPosition.toFixed(1)} (fewer queries — check redirects)`
           : `pos held ~${p.currPosition.toFixed(1)} (crawl frequency reduced)`;
         return {
           label: slug(p.page),
@@ -413,23 +434,37 @@ function summaryRules(m: Record<string, any>): Recommendation[] {
     const isRankingLoss = !isFewerPagesIndexed && rankingLossPages.length > 0;
 
     const actions: string[] = [];
-    if (biggestDropPage) {
+
+    if (disappearedPages.length > 0) {
+      const topMissing = disappearedPages.slice(0, 3);
+      const totalMissingImpr = disappearedPages.reduce((s: number, p: any) => s + p.impressions, 0);
+      actions.push(
+        `${disappearedPages.length} page${disappearedPages.length > 1 ? "s" : ""} that ranked before are now completely gone from GSC — they had ${num(totalMissingImpr)} impressions combined and are now generating zero. These pages need 301 redirects to their new URLs: ${topMissing.map((p: any) => `"${slug(p.page)}" (${num(p.impressions)} impr)`).join(", ")}`
+      );
+      actions.push(
+        `For each missing page: open the old URL in a browser — if it shows a 404 error, there is no redirect. Ask your developer to add a 301 redirect from that URL to the closest equivalent page on the new site`
+      );
+      actions.push(
+        `In GSC → Indexing → Pages → filter by "Not found (404)" — confirm these pages appear in that list. Submit the new equivalent URLs using GSC → URL Inspection → Request Indexing after redirects are in place`
+      );
+    } else if (biggestDropPage) {
       const cause = biggestDropPage.posDelta > 2
         ? `position dropped from ${biggestDropPage.prevPosition.toFixed(1)} → ${biggestDropPage.currPosition.toFixed(1)} — Google lowered its ranking`
         : biggestDropPage.posDelta < -1.5
-        ? `position actually improved from ${biggestDropPage.prevPosition.toFixed(1)} → ${biggestDropPage.currPosition.toFixed(1)} but impressions fell — this page is now ranking for fewer search queries, likely because old URLs weren't redirected after the site relaunch`
-        : `position held at ~${biggestDropPage.currPosition.toFixed(1)} — rankings are intact but Google is crawling it less frequently after recent site changes`;
+        ? `position improved from ${biggestDropPage.prevPosition.toFixed(1)} → ${biggestDropPage.currPosition.toFixed(1)} but impressions fell — this page is ranking for fewer queries, likely because related old URLs have no redirect`
+        : `position held at ~${biggestDropPage.currPosition.toFixed(1)} — rankings intact but Google reduced crawl frequency after recent site changes`;
       actions.push(`"${slug(biggestDropPage.page)}" lost the most impressions: ${num(biggestDropPage.prevImpressions)} → ${num(biggestDropPage.currImpressions)} (${biggestDropPage.imprDelta!.toFixed(0)}%). Root cause: ${cause}`);
     }
 
-    if (isFewerPagesIndexed) {
-      actions.push(`Rankings improved (avg position ${avgPosDelta < 0 ? "up" : "down"} ${Math.abs(avgPosDelta).toFixed(1)} pts) but impressions fell — this is the signature of a site relaunch where old URLs weren't 301-redirected. Pull the GSC Pages report filtered to before vs after the launch date and find which URLs disappeared`);
-      actions.push(`In GSC → Indexing → Pages, check for a spike in "Page not found (404)" or "Crawled, not indexed" after the launch date — each 404 is a page that used to rank dropping out of search entirely`);
-      actions.push(`Compare total indexed pages now vs before launch in GSC → Indexing → Pages → "All submitted pages" count — if the new site has fewer indexed pages, you've confirmed pages are missing`);
-    } else if (isRankingLoss) {
-      actions.push(`${rankingLossPages.length} page${rankingLossPages.length > 1 ? "s" : ""} lost rankings: ${rankingLossPages.slice(0, 3).map((p: any) => `"${slug(p.page)}" (pos ${p.prevPosition.toFixed(1)} → ${p.currPosition.toFixed(1)})`).join(", ")}. Update and expand their content and build internal links from other pages`);
-    } else {
-      actions.push(`Average position is ${pos?.toFixed(1) ?? "—"} — rankings are intact. Submit your sitemap in GSC → Sitemaps to prompt Google to re-crawl and recover impressions faster`);
+    if (disappearedPages.length === 0) {
+      if (isFewerPagesIndexed) {
+        actions.push(`Rankings improved but impressions fell — signature of a relaunch with missing redirects. Pull the GSC Pages report filtered to before vs after the launch date to find which URLs disappeared`);
+        actions.push(`GSC → Indexing → Pages → look for a "Page not found (404)" spike — each 404 is a page that used to rank and is now gone`);
+      } else if (isRankingLoss) {
+        actions.push(`${rankingLossPages.length} page${rankingLossPages.length > 1 ? "s" : ""} lost rankings: ${rankingLossPages.slice(0, 3).map((p: any) => `"${slug(p.page)}" (pos ${p.prevPosition.toFixed(1)} → ${p.currPosition.toFixed(1)})`).join(", ")}. Update and expand their content and build internal links from other pages`);
+      } else {
+        actions.push(`Average position is ${pos?.toFixed(1) ?? "—"} — rankings are intact. Submit your sitemap in GSC → Sitemaps to prompt Google to re-crawl and recover impressions faster`);
+      }
     }
 
     const lowCTRPage = [...topPages].filter((p: any) => p.impressions > 500 && p.ctr < 2.5).sort((a: any, b: any) => b.impressions - a.impressions)[0];
@@ -438,8 +473,10 @@ function summaryRules(m: Record<string, any>): Recommendation[] {
       actions.push(`While impressions recover, fix the CTR on "${slug(lowCTRPage.page)}" — ${num(lowCTRPage.impressions)} impressions at ${lowCTRPage.ctr}% CTR is leaving ~${num(missed)} clicks on the table right now`);
     }
 
-    const rootCauseLabel = isFewerPagesIndexed
-      ? "Root cause: position is improving but impressions fell — the site is ranking for fewer distinct queries, most likely because old URLs weren't redirected after a relaunch."
+    const rootCauseLabel = disappearedPages.length > 0
+      ? `Root cause: ${disappearedPages.length} pages that ranked before are now completely missing from Google — they had impressions in the prior period and now show zero. This is a missing 301 redirect problem.`
+      : isFewerPagesIndexed
+      ? "Root cause: position is improving but impressions fell — the site is ranking for fewer distinct queries. Most likely old URLs were not redirected after the site relaunch."
       : isRankingLoss
       ? "Root cause: ranking loss on specific pages."
       : pos != null && pos < 15
