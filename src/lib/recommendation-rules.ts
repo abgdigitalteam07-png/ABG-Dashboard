@@ -304,6 +304,61 @@ function summaryRules(m: Record<string, any>): Recommendation[] {
   const hasPriorPages      = pageComparison.length > 0;
   const hasPriorChannels   = channelComparison.some((c: any) => c.prev > 0);
   const disappearedPages: any[] = m.disappearedPages ?? [];
+  const canonicalIssue: { detected: boolean; inspectedUrl: string; declaredCanonical: string; googleCanonical: string; coverageState: string; verdict: string } | null = m.canonicalIssue ?? null;
+
+  // ── 0. CANONICAL TAG ISSUE — proactive check, fires before any other insight ─
+  // This is the most severe indexing failure possible: every page on the site tells
+  // Google to index a different domain. Surfaces even when impressions haven't dropped
+  // yet (e.g. brand just launched a new site today).
+  if (canonicalIssue?.detected) {
+    let declaredDomain = "";
+    try { declaredDomain = new URL(canonicalIssue.declaredCanonical).hostname; } catch { /* ignore */ }
+    const inspectedSlug = canonicalIssue.inspectedUrl.replace(/^https?:\/\/[^/]+/, "") || "/";
+
+    recs.push({
+      id: "summary_canonical_tag",
+      status: "action_required",
+      headline: `Canonical tag misconfiguration detected — Google is ignoring this domain`,
+      detail: `We checked the page "${inspectedSlug}" and found its canonical tag points to "${declaredDomain}" instead of this site's domain. This tells Google that every page on this site is a duplicate of a page on a different server — so Google refuses to index it. This is the most likely root cause of any impression collapse after a site relaunch.`,
+      whyItMatters: "A wrong canonical tag blocks indexing of the entire site — no other SEO work matters until this is fixed.",
+      whyChain: [
+        `The canonical tag on "${inspectedSlug}" declares: "${canonicalIssue.declaredCanonical}"`,
+        `A canonical tag tells Google "this page is a copy — the original lives at that URL." Google trusts it and stops indexing the copy`,
+        `"${declaredDomain}" is the old staging server the developer used to build the site. When the site launched, the WordPress Site URL setting was never updated from staging to the live domain`,
+        `Google visits every page, reads "I'm a copy of the staging server," tries to index the staging URL instead, finds it's not publicly accessible, and marks the live page as "crawled but not indexed"`,
+        `Root cause: WordPress Site URL is still set to the staging domain (${declaredDomain}). Fix: WordPress → Settings → General → change both "WordPress Address" and "Site Address" to the live domain, then run a database find-and-replace to update any remaining staging URLs`,
+      ],
+      findings: [
+        {
+          label: `Inspected page`,
+          value: inspectedSlug,
+          severity: "high",
+        },
+        {
+          label: `Canonical tag declares`,
+          value: canonicalIssue.declaredCanonical || "—",
+          severity: "high",
+        },
+        {
+          label: `Google's canonical`,
+          value: canonicalIssue.googleCanonical || "—",
+          severity: canonicalIssue.googleCanonical && canonicalIssue.googleCanonical !== canonicalIssue.inspectedUrl ? "high" : "low",
+        },
+        {
+          label: `GSC coverage state`,
+          value: canonicalIssue.coverageState || "—",
+          severity: canonicalIssue.coverageState?.toLowerCase().includes("not indexed") ? "high" : "medium",
+        },
+      ],
+      actions: [
+        `In WordPress → Settings → General: change "WordPress Address (URL)" and "Site Address (URL)" from "${declaredDomain}" to the live domain. Save. This fixes the canonical tag on every page at once`,
+        `Run a database search-and-replace (using WP-CLI or the Better Search Replace plugin) to replace all remaining "${declaredDomain}" URLs in the database with the live domain`,
+        `After fixing: go to GSC → URL Inspection → type the homepage URL → click "Request Indexing". Do the same for your 5 most important pages. Google will begin re-indexing within 24–48 hours`,
+        `Confirm the fix worked: View Source on any page and search for "canonical" — it should now say rel="canonical" href="https://[live-domain]/..."`,
+      ],
+      metric: "Canonical tag", currentValue: `Wrong domain: ${declaredDomain}`,
+    });
+  }
 
   // ── 1. SESSION DROP ───────────────────────────────────────────────────────
   if (sc != null && sc < -5) {
@@ -511,13 +566,12 @@ function summaryRules(m: Record<string, any>): Recommendation[] {
     const isRankingLoss = !isFewerPagesIndexed && rankingLossPages.length > 0;
 
     // Canonical tag misconfiguration pattern:
-    // Many pages disappeared at once (cliff drop) + position is GOOD on surviving pages
+    // Confirmed by live URL inspection (canonicalIssue.detected), OR inferred from:
+    // many pages disappeared at once (cliff drop) + position is GOOD on surviving pages
     // = Google can see some pages fine, but most are pointing canonical to a wrong domain (e.g. staging URL)
     // This is MORE severe than missing redirects — it affects every page simultaneously
-    const isCanonicalTagPattern = disappearedPages.length >= 5
-      && imprIsCliff
-      && pos != null && pos < 13
-      && impDelta < -35;
+    const isCanonicalTagPattern = (canonicalIssue?.detected === true)
+      || (disappearedPages.length >= 5 && imprIsCliff && pos != null && pos < 13 && impDelta < -35);
 
     const actions: string[] = [];
 

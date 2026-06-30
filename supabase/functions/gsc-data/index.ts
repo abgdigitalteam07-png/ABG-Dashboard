@@ -184,6 +184,88 @@ Deno.serve(async (req) => {
       }));
     }
 
+    // ── Canonical tag check via URL Inspection API ────────────────────────────
+    // Inspect the homepage + up to 2 top landing pages to detect canonical misconfig.
+    // A canonical pointing to a different domain (e.g. staging server) means Google
+    // ignores the live domain entirely — the most severe indexing failure possible.
+    let canonicalIssue: {
+      detected: boolean;
+      inspectedUrl: string;
+      declaredCanonical: string;
+      googleCanonical: string;
+      coverageState: string;
+      verdict: string;
+    } | null = null;
+
+    try {
+      const liveDomain = new URL(siteUrl).hostname.replace(/^www\./, "");
+      // Pick up to 3 URLs to inspect: homepage first, then top pages
+      const urlsToInspect: string[] = [];
+      // Normalise siteUrl to get the homepage
+      const homepageUrl = siteUrl.endsWith("/") ? siteUrl.slice(0, -1) : siteUrl;
+      urlsToInspect.push(homepageUrl);
+      for (const p of topLandingPages.slice(0, 2)) {
+        if (p.page && p.page !== homepageUrl && p.page !== homepageUrl + "/") {
+          urlsToInspect.push(p.page);
+        }
+      }
+
+      const inspectApiUrl = "https://searchconsole.googleapis.com/v1/urlInspection/index:inspect";
+
+      for (const inspectUrl of urlsToInspect) {
+        const inspRes = await fetch(inspectApiUrl, {
+          method: "POST",
+          headers: { ...authHeader },
+          body: JSON.stringify({ inspectionUrl: inspectUrl, siteUrl }),
+        });
+        if (!inspRes.ok) break; // API unavailable — skip silently
+
+        const inspData = await inspRes.json();
+        const result = inspData?.inspectionResult?.indexStatusResult;
+        if (!result) continue;
+
+        const declared: string = result.userDeclaredCanonical ?? "";
+        const google: string   = result.googleCanonical ?? "";
+        const coverage: string = result.coverageState ?? "";
+
+        // Canonical mismatch: declared canonical points to a different domain than the live site
+        if (declared) {
+          let declaredDomain = "";
+          try { declaredDomain = new URL(declared).hostname.replace(/^www\./, ""); } catch { /* ignore */ }
+          if (declaredDomain && declaredDomain !== liveDomain) {
+            canonicalIssue = {
+              detected: true,
+              inspectedUrl: inspectUrl,
+              declaredCanonical: declared,
+              googleCanonical: google,
+              coverageState: coverage,
+              verdict: `Page canonical tag points to "${declaredDomain}" instead of "${liveDomain}" — Google will not index this page`,
+            };
+            break; // Found the issue — no need to check more pages
+          }
+        }
+
+        // Also flag if Google's canonical disagrees with the live domain (even if declared looks OK)
+        if (!canonicalIssue && google) {
+          let googleDomain = "";
+          try { googleDomain = new URL(google).hostname.replace(/^www\./, ""); } catch { /* ignore */ }
+          if (googleDomain && googleDomain !== liveDomain) {
+            canonicalIssue = {
+              detected: true,
+              inspectedUrl: inspectUrl,
+              declaredCanonical: declared,
+              googleCanonical: google,
+              coverageState: coverage,
+              verdict: `Google is treating "${googleDomain}" as the canonical domain instead of "${liveDomain}"`,
+            };
+            break;
+          }
+        }
+      }
+    } catch (_e) {
+      // Canonical check is non-blocking — if it fails, proceed without it
+    }
+
     return new Response(JSON.stringify({
       totalClicks,
       totalClicksDelta: 0,
@@ -197,6 +279,7 @@ Deno.serve(async (req) => {
       topQueries,
       opportunityQueries,
       topLandingPages,
+      canonicalIssue,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

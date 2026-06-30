@@ -428,6 +428,7 @@ export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
       topLandingPages: gsc?.topLandingPages ?? [],
       pageComparison,
       disappearedPages,
+      canonicalIssue:  gsc?.canonicalIssue ?? null,
       brandName: brand.name,
       dateFrom,
       dateTo,
