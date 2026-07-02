@@ -22,7 +22,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   ArrowLeft, Users, UserCheck, UserX, Activity, MoreHorizontal,
   Send, Download, ChevronLeft, ChevronRight, BarChart2, Eye, LogIn,
-  Mail, Plus, Trash2, Calendar, Clock, ToggleLeft, ToggleRight, Play,
+  Mail, Plus, Trash2, Calendar, Clock, ToggleLeft, ToggleRight, Play, Shield,
 } from "lucide-react";
 import { brands } from "@/lib/brands";
 import { format, formatDistanceToNow, subDays, eachDayOfInterval, startOfDay } from "date-fns";
@@ -68,7 +68,12 @@ export default function Admin() {
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const [loginsLast7, setLoginsLast7] = useState(0);
-  const [activeAdminTab, setActiveAdminTab] = useState<"users" | "usage" | "schedules">("users");
+  const [activeAdminTab, setActiveAdminTab] = useState<"users" | "usage" | "schedules" | "access">("users");
+
+  // ── Tab Access Permissions state ───────────────────────────────────────────
+  interface TabPermRow { user_id: string; tab_id: string; can_view: boolean; show_insights: boolean; }
+  const [tabPermissions, setTabPermissions] = useState<TabPermRow[]>([]);
+  const [permSaving, setPermSaving] = useState<string | null>(null);
 
   // ── Report Schedules state ─────────────────────────────────────────────
   interface EmailSchedule {
@@ -358,6 +363,33 @@ export default function Admin() {
     return Object.values(map).sort((a, b) => b.views - a.views);
   }, [activity]);
 
+  // ── Tab Access helpers ────────────────────────────────────────────────────
+  async function loadTabPermissions() {
+    const { data } = await supabase.from("user_tab_permissions").select("*");
+    setTabPermissions(data ?? []);
+  }
+
+  async function upsertPerm(userId: string, tabId: string, field: "can_view" | "show_insights", value: boolean) {
+    const key = `${userId}:${tabId}:${field}`;
+    setPermSaving(key);
+    // Optimistic update
+    setTabPermissions(prev => {
+      const existing = prev.find(p => p.user_id === userId && p.tab_id === tabId);
+      if (existing) return prev.map(p => p.user_id === userId && p.tab_id === tabId ? { ...p, [field]: value } : p);
+      return [...prev, { user_id: userId, tab_id: tabId, can_view: true, show_insights: true, [field]: value }];
+    });
+    await supabase.from("user_tab_permissions").upsert(
+      { user_id: userId, tab_id: tabId, [field]: value, updated_at: new Date().toISOString() },
+      { onConflict: "user_id,tab_id" }
+    );
+    setPermSaving(null);
+  }
+
+  function getEffectivePerm(userId: string, tabId: string): { can_view: boolean; show_insights: boolean } {
+    const row = tabPermissions.find(p => p.user_id === userId && p.tab_id === tabId);
+    return { can_view: row?.can_view ?? true, show_insights: row?.show_insights ?? true };
+  }
+
   // ── Schedule helpers ─────────────────────────────────────────────────────
   async function loadSchedules() {
     setSchedLoading(true);
@@ -454,10 +486,15 @@ export default function Admin() {
               { id: "users", label: "Users & Activity", icon: Users },
               { id: "usage", label: "Daily Usage", icon: BarChart2 },
               { id: "schedules", label: "Report Schedules", icon: Mail },
+              { id: "access", label: "Tab Access", icon: Shield },
             ] as const).map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
-                onClick={() => { setActiveAdminTab(id); if (id === "schedules") loadSchedules(); }}
+                onClick={() => {
+                  setActiveAdminTab(id);
+                  if (id === "schedules") loadSchedules();
+                  if (id === "access") loadTabPermissions();
+                }}
                 className={`flex items-center gap-2 rounded-lg px-4 py-1.5 text-sm font-medium transition-all ${
                   activeAdminTab === id
                     ? "bg-white shadow-sm text-foreground"
@@ -817,6 +854,96 @@ export default function Admin() {
           </CardContent>
         </Card>
         </>}
+        {/* ══ TAB ACCESS TAB ══ */}
+        {activeAdminTab === "access" && (
+          <div className="space-y-4">
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Shield className="h-4 w-4 text-primary" /> Tab Visibility Per User
+                </CardTitle>
+                <p className="text-xs text-muted-foreground pt-1">
+                  Unchecking a tab hides it completely for that user. "Insights" sub-toggle only applies to the Summary Report tab.
+                </p>
+              </CardHeader>
+              <CardContent className="p-0 overflow-x-auto">
+                {(() => {
+                  const TAB_COLS: { id: string; label: string }[] = [
+                    { id: "readme",      label: "Read Me" },
+                    { id: "performance", label: "Analytics" },
+                    { id: "social",      label: "Social" },
+                    { id: "hubspot",     label: "Emails" },
+                    { id: "hubspot-crm", label: "CRM" },
+                    { id: "summary",     label: "Summary" },
+                  ];
+                  const activeUsersList = users.filter(u => u.is_active);
+                  return (
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-muted/40">
+                          <TableHead className="w-52">User</TableHead>
+                          {TAB_COLS.map(t => (
+                            <TableHead key={t.id} className="text-center whitespace-nowrap">{t.label}</TableHead>
+                          ))}
+                          <TableHead className="text-center whitespace-nowrap border-l">Insights<br /><span className="text-[10px] font-normal text-muted-foreground">(Summary only)</span></TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {activeUsersList.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={TAB_COLS.length + 2} className="py-8 text-center text-sm text-muted-foreground">
+                              No active users found.
+                            </TableCell>
+                          </TableRow>
+                        ) : activeUsersList.map(u => (
+                          <TableRow key={u.id} className="hover:bg-muted/30">
+                            <TableCell>
+                              <div className="font-medium text-sm">{u.full_name || "—"}</div>
+                              <div className="text-xs text-muted-foreground">{u.email}</div>
+                            </TableCell>
+                            {TAB_COLS.map(t => {
+                              const perm = getEffectivePerm(u.id, t.id);
+                              const key = `${u.id}:${t.id}:can_view`;
+                              return (
+                                <TableCell key={t.id} className="text-center">
+                                  <input
+                                    type="checkbox"
+                                    className="h-4 w-4 cursor-pointer accent-primary"
+                                    checked={perm.can_view}
+                                    disabled={permSaving === key}
+                                    onChange={e => upsertPerm(u.id, t.id, "can_view", e.target.checked)}
+                                  />
+                                </TableCell>
+                              );
+                            })}
+                            <TableCell className="text-center border-l">
+                              {(() => {
+                                const perm = getEffectivePerm(u.id, "summary");
+                                const key = `${u.id}:summary:show_insights`;
+                                const summaryVisible = getEffectivePerm(u.id, "summary").can_view;
+                                return (
+                                  <input
+                                    type="checkbox"
+                                    className="h-4 w-4 cursor-pointer accent-primary disabled:opacity-30"
+                                    checked={perm.show_insights}
+                                    disabled={!summaryVisible || permSaving === key}
+                                    title={!summaryVisible ? "Summary tab is hidden for this user" : "Show Insights section"}
+                                    onChange={e => upsertPerm(u.id, "summary", "show_insights", e.target.checked)}
+                                  />
+                                );
+                              })()}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  );
+                })()}
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
       </main>
 
       {/* ══ REPORT SCHEDULES TAB ══ */}

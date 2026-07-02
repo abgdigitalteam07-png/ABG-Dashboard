@@ -9,6 +9,7 @@ import Login from "./pages/Login.tsx";
 import ResetPassword from "./pages/ResetPassword.tsx";
 import Admin from "./pages/Admin.tsx";
 import CRMProposal from "./pages/CRMProposal.tsx";
+import Demo from "./pages/Demo.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
 const queryClient = new QueryClient();
@@ -40,6 +41,8 @@ const App = () => (
           />
           {/* Proposal pages — no auth guard */}
           <Route path="/crm-proposal" element={<CRMProposal />} />
+          {/* Demo / screenshot-safe page — no auth, fake data only */}
+          <Route path="/demo" element={<Demo />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

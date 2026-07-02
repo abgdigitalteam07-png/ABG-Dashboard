@@ -1,0 +1,972 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mostafa — CRM Performance Dashboard</title>
+
+<!-- Tailwind CDN (works inside HubSpot Custom HTML modules) -->
+<script src="https://cdn.tailwindcss.com"></script>
+
+<style>
+  :root{
+    --navy:#1F2A44; --navy-90:#2C3E5F; --coral:#E04E68; --coral-bg:#FDEAEF;
+    --blue:#5B7CFA; --blue-bg:#E8EEFD; --ink:#0F172A; --muted:#94A3B8;
+    --hs-orange:#FF7A59; --hs-teal:#007A8C; --hs-bg:#F5F8FA; --hs-border:#CBD6E2;
+    --hs-ink:#33475B; --hs-mute:#516F90;
+  }
+  html,body{background:var(--hs-bg);color:var(--hs-ink);font-family:Lexend,Inter,system-ui,sans-serif}
+  .tabular{font-variant-numeric:tabular-nums}
+  .demo-watermark{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:9999;overflow:hidden}
+  .demo-watermark span{font-weight:900;letter-spacing:.25em;color:var(--navy);opacity:.08;transform:rotate(-28deg);white-space:nowrap;font-size:clamp(48px,8vw,110px)}
+  /* HubSpot-orange outline button */
+  .hs-btn-out{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--hs-orange);background:#fff;color:var(--hs-orange);padding:6px 12px;border-radius:4px;font-weight:600;font-size:14px;cursor:pointer;line-height:1}
+  .hs-btn-out:hover{background:#FFF1EE}
+  .hs-btn-fill{display:inline-flex;align-items:center;gap:4px;background:var(--hs-orange);color:#fff;padding:6px 12px;border-radius:4px;font-weight:600;font-size:14px;cursor:pointer;line-height:1}
+  .hs-btn-fill:hover{background:#FF8F73}
+  /* Tableau-ish accents used in charts */
+  .t-blue{color:#4E79A7}.t-orange{color:#F28E2B}.t-cyan{color:#76B7B2}.t-purple{color:#B07AA1}
+  .t-yellow{color:#EDC948}.t-green{color:#59A14F}.t-red{color:#E15759}
+  /* state map polish */
+  .state path{transition:fill .18s}
+  .state path:hover{opacity:.85}
+  .borders{stroke:#fff;stroke-width:1.25}
+  .separator1{stroke:#C8D5E3;stroke-width:1.4}
+</style>
+</head>
+<body class="antialiased">
+
+<!-- ── DEMO DATA watermark ── -->
+<div class="demo-watermark" aria-hidden="true"><span>DEMO DATA</span></div>
+
+<div class="max-w-[1400px] mx-auto">
+
+  <!-- ── Action bar ── -->
+  <div class="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--hs-border)] bg-white px-6 py-3.5">
+    <div class="flex items-center gap-2">
+      <svg class="h-4 w-4 text-[var(--hs-mute)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+      <h1 class="flex items-center gap-1 text-[20px] font-bold" style="color:var(--hs-teal)">
+        Mostafa – CRM Performance Dashboard
+        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="6 9 12 15 18 9"></polyline></svg>
+      </h1>
+    </div>
+    <div class="flex flex-wrap items-center gap-3">
+      <a class="text-sm font-semibold text-[#0091AE] hover:text-[#00637A]" href="#">Manage dashboards</a>
+      <button class="hs-btn-out">Create dashboard</button>
+      <button class="hs-btn-out">Actions <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="6 9 12 15 18 9"></polyline></svg></button>
+      <button class="hs-btn-out">Share <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="6 9 12 15 18 9"></polyline></svg></button>
+      <button class="hs-btn-fill">Add content <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="6 9 12 15 18 9"></polyline></svg></button>
+    </div>
+  </div>
+
+  <!-- ── Filter bar ── -->
+  <div class="flex flex-wrap items-center gap-5 bg-[#EAF0F6]/40 px-6 py-2.5 text-sm">
+    <span class="inline-flex items-center gap-1.5 font-semibold text-[#0091AE]">
+      <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4Z"></path></svg>
+      Quick filters
+    </span>
+    <span class="inline-flex items-center gap-1 text-[var(--hs-ink)]">Activity date
+      <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+    </span>
+    <span class="inline-flex items-center gap-1 text-[var(--hs-ink)]">Team
+      <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+    </span>
+    <span class="h-5 w-px bg-[var(--hs-border)]"></span>
+    <span class="inline-flex items-center gap-1.5 font-semibold text-[#0091AE]">
+      <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+      Advanced filters
+    </span>
+    <div class="flex-1"></div>
+    <svg class="h-4 w-4 text-[var(--hs-mute)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+    <span class="text-[var(--hs-mute)]">Assigned: <span class="font-semibold text-[#0091AE]">Everyone can view</span></span>
+  </div>
+
+  <!-- ── Main content ── -->
+  <div class="space-y-8 p-6">
+
+    <!-- ── KPI tiles ── -->
+    <section class="grid gap-4 grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6" id="kpi-row"></section>
+
+    <!-- ── Customer Success KPI Row ── -->
+    <div class="flex items-center gap-3">
+      <div class="flex h-8 w-8 items-center justify-center rounded-lg" style="background:#76B7B2">
+        <svg class="h-4 w-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+      </div>
+      <h2 class="text-base font-bold" style="color:var(--navy)">Customer Success</h2>
+      <div class="flex-1 border-t border-slate-200"></div>
+    </div>
+    <section class="grid gap-4 grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6" id="cs-kpi-row"></section>
+
+    <!-- ── Lifecycle Funnel ── -->
+    <div class="flex items-center gap-3">
+      <div class="flex h-8 w-8 items-center justify-center rounded-lg" style="background:#4E79A7">
+        <svg class="h-4 w-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      </div>
+      <h2 class="text-base font-bold" style="color:var(--navy)">Lifecycle Funnel</h2>
+      <div class="flex-1 border-t border-slate-200"></div>
+    </div>
+    <div class="rounded-2xl border border-slate-200 bg-white p-6">
+      <h3 class="text-sm font-semibold" style="color:var(--navy)">Subscriber → Customer Funnel</h3>
+      <p class="mt-0.5 text-xs text-slate-500">Conversion through each lifecycle stage in the selected period</p>
+      <div class="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6" id="funnel-cards"></div>
+      <div class="mt-6 space-y-2" id="funnel-bars"></div>
+    </div>
+
+    <!-- ── Geographic Distribution (top states bar list — compact for HubSpot) ── -->
+    <div class="flex items-center gap-3">
+      <div class="flex h-8 w-8 items-center justify-center rounded-lg" style="background:#59A14F">
+        <svg class="h-4 w-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+      </div>
+      <h2 class="text-base font-bold" style="color:var(--navy)">Geographic Distribution</h2>
+      <div class="flex-1 border-t border-slate-200"></div>
+    </div>
+    <div class="rounded-2xl border border-slate-200 bg-white p-5">
+      <div class="mb-4 flex items-center justify-between flex-wrap gap-3">
+        <div class="flex items-center gap-3">
+          <span class="flex h-9 w-9 items-center justify-center rounded-xl text-sm font-bold text-white" style="background:#4E79A7">M</span>
+          <div>
+            <h4 class="text-base font-bold" style="color:var(--navy)">Brand Mostafa</h4>
+            <p class="text-[11px] text-slate-500">Contact distribution across U.S. states</p>
+          </div>
+        </div>
+        <span class="rounded-full px-3 py-1 text-xs font-bold text-white" style="background:#4E79A7">8,420 contacts</span>
+      </div>
+      <div class="grid lg:grid-cols-2 gap-6" id="states-grid"></div>
+    </div>
+
+    <!-- ── Customer Health & NPS ── -->
+    <div class="flex items-center gap-3">
+      <div class="flex h-8 w-8 items-center justify-center rounded-lg" style="background:#59A14F">
+        <svg class="h-4 w-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+      </div>
+      <h2 class="text-base font-bold" style="color:var(--navy)">Customer Health &amp; Sentiment</h2>
+      <div class="flex-1 border-t border-slate-200"></div>
+    </div>
+    <div class="grid gap-4 lg:grid-cols-3">
+      <!-- Health Distribution Donut -->
+      <div class="rounded-2xl border border-slate-200 bg-white p-6">
+        <h3 class="text-sm font-semibold" style="color:var(--navy)">Customer Health</h3>
+        <p class="mt-0.5 text-xs text-slate-500">Distribution by overall health score</p>
+        <div class="mt-3 flex items-center justify-center" id="health-donut"></div>
+        <div class="mt-3 space-y-1.5 text-xs" id="health-legend"></div>
+      </div>
+      <!-- NPS Breakdown -->
+      <div class="rounded-2xl border border-slate-200 bg-white p-6 lg:col-span-2">
+        <div class="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <h3 class="text-sm font-semibold" style="color:var(--navy)">Net Promoter Score (NPS)</h3>
+            <p class="mt-0.5 text-xs text-slate-500">Based on 1,284 responses in the last 90 days</p>
+          </div>
+          <div class="text-right">
+            <p class="text-[10px] uppercase tracking-wider text-slate-500">NPS Score</p>
+            <p class="text-4xl font-black tabular" style="color:#59A14F">62</p>
+            <p class="text-[10px] text-slate-500 mt-0.5">▲ +8 vs prev quarter</p>
+          </div>
+        </div>
+        <div class="mt-4 space-y-3" id="nps-bars"></div>
+      </div>
+    </div>
+
+    <!-- ── Acquisition & Industry Mix ── -->
+    <div class="flex items-center gap-3">
+      <div class="flex h-8 w-8 items-center justify-center rounded-lg" style="background:#B07AA1">
+        <svg class="h-4 w-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      </div>
+      <h2 class="text-base font-bold" style="color:var(--navy)">Acquisition &amp; Industry Mix</h2>
+      <div class="flex-1 border-t border-slate-200"></div>
+    </div>
+    <div class="grid gap-4 lg:grid-cols-2">
+      <!-- Lead Source Donut -->
+      <div class="rounded-2xl border border-slate-200 bg-white p-6">
+        <h3 class="text-sm font-semibold" style="color:var(--navy)">Lead Source Breakdown</h3>
+        <p class="mt-0.5 text-xs text-slate-500">Where contacts are coming from across all channels</p>
+        <div class="mt-4 flex items-center justify-center" id="donut-host"></div>
+        <div class="mt-3 grid grid-cols-2 gap-1.5 text-xs" id="donut-legend"></div>
+      </div>
+      <!-- Top Industries -->
+      <div class="rounded-2xl border border-slate-200 bg-white p-6">
+        <h3 class="text-sm font-semibold" style="color:var(--navy)">Top Industries</h3>
+        <p class="mt-0.5 text-xs text-slate-500">B2B contact distribution by industry segment</p>
+        <div class="mt-3 space-y-2.5" id="industry-bars"></div>
+      </div>
+    </div>
+
+    <!-- ── Lifecycle Trend + Deal Velocity ── -->
+    <div class="grid gap-4 lg:grid-cols-3">
+      <div class="lg:col-span-2 rounded-2xl border border-slate-200 bg-white p-6">
+        <h3 class="text-sm font-semibold" style="color:var(--navy)">Lifecycle Stages Over Time</h3>
+        <p class="mt-0.5 text-xs text-slate-500">Weekly volume per stage across the last 12 weeks</p>
+        <div class="mt-4" id="area-host"></div>
+        <div class="mt-3 flex flex-wrap gap-3 text-xs" id="area-legend"></div>
+      </div>
+      <div class="rounded-2xl border border-slate-200 bg-white p-6">
+        <h3 class="text-sm font-semibold" style="color:var(--navy)">Deal Velocity</h3>
+        <p class="mt-0.5 text-xs text-slate-500">Average days to advance between stages</p>
+        <div class="mt-4 space-y-4" id="velocity-bars"></div>
+        <div class="mt-4 rounded-xl bg-slate-100 p-3">
+          <p class="text-[11px] uppercase tracking-wider text-slate-500">Total Sales Cycle</p>
+          <p class="mt-0.5 text-2xl font-bold tabular" style="color:var(--navy)">43.0 days</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Retention & Cohorts ── -->
+    <div class="flex items-center gap-3">
+      <div class="flex h-8 w-8 items-center justify-center rounded-lg" style="background:#4E79A7">
+        <svg class="h-4 w-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+      </div>
+      <h2 class="text-base font-bold" style="color:var(--navy)">Retention &amp; Cohorts</h2>
+      <div class="flex-1 border-t border-slate-200"></div>
+    </div>
+    <div class="grid gap-4 lg:grid-cols-2">
+      <!-- Monthly Retention curve -->
+      <div class="rounded-2xl border border-slate-200 bg-white p-6">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <h3 class="text-sm font-semibold" style="color:var(--navy)">Monthly Retention Rate</h3>
+            <p class="mt-0.5 text-xs text-slate-500">Rolling 12-month customer retention</p>
+          </div>
+          <div class="text-right">
+            <p class="text-[10px] uppercase tracking-wider text-slate-500">Current</p>
+            <p class="text-2xl font-bold tabular" style="color:#59A14F">94.8%</p>
+          </div>
+        </div>
+        <div class="mt-4" id="retention-chart"></div>
+      </div>
+      <!-- Cohort Heatmap -->
+      <div class="rounded-2xl border border-slate-200 bg-white p-6">
+        <h3 class="text-sm font-semibold" style="color:var(--navy)">Customer Retention by Cohort</h3>
+        <p class="mt-0.5 text-xs text-slate-500">% retained N months after signup, by signup cohort</p>
+        <div class="mt-4 overflow-x-auto" id="cohort-heatmap"></div>
+      </div>
+    </div>
+
+    <!-- ── At-Risk Accounts & Renewals ── -->
+    <div class="flex items-center gap-3">
+      <div class="flex h-8 w-8 items-center justify-center rounded-lg" style="background:#E15759">
+        <svg class="h-4 w-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      </div>
+      <h2 class="text-base font-bold" style="color:var(--navy)">Renewals &amp; At-Risk Accounts</h2>
+      <div class="flex-1 border-t border-slate-200"></div>
+    </div>
+    <div class="grid gap-4 lg:grid-cols-3">
+      <!-- Upcoming renewals summary -->
+      <div class="rounded-2xl border border-slate-200 bg-white p-6">
+        <h3 class="text-sm font-semibold" style="color:var(--navy)">Upcoming Renewals</h3>
+        <p class="mt-0.5 text-xs text-slate-500">Next 90 days, grouped by risk</p>
+        <div class="mt-4 space-y-3" id="renewals-summary"></div>
+      </div>
+      <!-- At-risk accounts table -->
+      <div class="rounded-2xl border border-slate-200 bg-white p-6 lg:col-span-2">
+        <h3 class="text-sm font-semibold" style="color:var(--navy)">At-Risk Accounts</h3>
+        <p class="mt-0.5 text-xs text-slate-500">Customers with declining health and immediate risk of churn</p>
+        <div class="mt-4 overflow-x-auto">
+          <table class="w-full text-xs">
+            <thead><tr class="border-b border-slate-200 text-left text-slate-500">
+              <th class="py-2 pr-4 font-semibold">Account</th>
+              <th class="py-2 pr-4 text-right font-semibold">MRR</th>
+              <th class="py-2 pr-4 text-right font-semibold">Health</th>
+              <th class="py-2 pr-4 text-right font-semibold">Last Touch</th>
+              <th class="py-2 text-left font-semibold">Risk Factor</th>
+            </tr></thead>
+            <tbody id="risk-rows"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Top Accounts ── -->
+    <div class="flex items-center gap-3">
+      <div class="flex h-8 w-8 items-center justify-center rounded-lg" style="background:#F28E2B">
+        <svg class="h-4 w-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h2"/><path d="M18 9h2a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-2"/><path d="M4 22h16"/><path d="M10 22V14"/><path d="M14 22V14"/><path d="M8 14h8"/><path d="M6 3h12v5a6 6 0 0 1-12 0z"/></svg>
+      </div>
+      <h2 class="text-base font-bold" style="color:var(--navy)">Top Accounts</h2>
+      <div class="flex-1 border-t border-slate-200"></div>
+    </div>
+    <div class="rounded-2xl border border-slate-200 bg-white p-6">
+      <h3 class="text-sm font-semibold" style="color:var(--navy)">Highest-Value Accounts</h3>
+      <p class="mt-0.5 text-xs text-slate-500">Accounts ranked by ARR and active deal count</p>
+      <div class="mt-4 overflow-x-auto">
+        <table class="w-full text-xs">
+          <thead><tr class="border-b border-slate-200 text-left text-slate-500">
+            <th class="py-2 pr-4 font-semibold">Account</th>
+            <th class="py-2 pr-4 text-right font-semibold">Contacts</th>
+            <th class="py-2 pr-4 text-right font-semibold">Active Deals</th>
+            <th class="py-2 text-right font-semibold">ARR</th>
+          </tr></thead>
+          <tbody id="acct-rows"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── Support Insights ── -->
+    <div class="flex items-center gap-3">
+      <div class="flex h-8 w-8 items-center justify-center rounded-lg" style="background:#B07AA1">
+        <svg class="h-4 w-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      </div>
+      <h2 class="text-base font-bold" style="color:var(--navy)">Support &amp; Service Insights</h2>
+      <div class="flex-1 border-t border-slate-200"></div>
+    </div>
+    <section class="grid gap-4 grid-cols-2 lg:grid-cols-4" id="support-kpi-row"></section>
+    <div class="grid gap-4 lg:grid-cols-2">
+      <div class="rounded-2xl border border-slate-200 bg-white p-6">
+        <h3 class="text-sm font-semibold" style="color:var(--navy)">Top Support Topics</h3>
+        <p class="mt-0.5 text-xs text-slate-500">Ticket volume by category (last 30 days)</p>
+        <div class="mt-3 space-y-2.5" id="support-topics"></div>
+      </div>
+      <div class="rounded-2xl border border-slate-200 bg-white p-6">
+        <h3 class="text-sm font-semibold" style="color:var(--navy)">Ticket Volume Trend</h3>
+        <p class="mt-0.5 text-xs text-slate-500">Daily tickets opened vs resolved (last 30 days)</p>
+        <div class="mt-3" id="ticket-trend"></div>
+        <div class="mt-3 flex gap-4 text-xs">
+          <div class="flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-sm" style="background:#E15759"></span><span style="color:var(--navy)">Opened</span></div>
+          <div class="flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-sm" style="background:#59A14F"></span><span style="color:var(--navy)">Resolved</span></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+/* ── DATA ── */
+const NAVY="#1F2A44", CORAL="#E04E68", BLUE="#5B7CFA";
+const T={blue:"#4E79A7",orange:"#F28E2B",red:"#E15759",cyan:"#76B7B2",green:"#59A14F",yellow:"#EDC948",purple:"#B07AA1",pink:"#FF9DA7",brown:"#9C755F"};
+
+const KPIS = [
+  {label:"Total Contacts", value:"18.4K",  prev:"17.2K", delta:+7.2, gauge:100, accent:CORAL,
+    spark:[20,18,22,16,24,21,19,23,25,22,28,26,24,22,28,30,26,22,25,28,30,29,27,28,32,30,28,30,33,31]},
+  {label:"New Contacts",   value:"2,840",  prev:"2,486", delta:+14.2, gauge:78, accent:BLUE,
+    spark:[80,76,84,72,90,82,76,90,98,86,104,98,90,84,108,116,98,84,100,108,116,114,106,108,128,118,108,118,130,120]},
+  {label:"Assigned",       value:"1,980",  prev:"1,823", delta:+8.6, gauge:70, accent:NAVY,
+    spark:[60,58,64,55,68,62,60,65,72,66,74,70,66,62,76,80,72,64,70,76,80,79,74,76,86,80,76,80,87,82]},
+  {label:"Unassigned",     value:"860",    prev:"982",   delta:-12.4, gauge:30, accent:CORAL,
+    spark:[34,32,36,30,40,36,34,38,44,38,46,42,38,34,46,50,42,36,40,44,48,46,42,42,50,46,42,44,50,46]},
+  {label:"Customers",      value:"412",    prev:"337",   delta:+22.1, gauge:22, accent:BLUE,
+    spark:[10,9,11,8,13,11,9,12,15,13,17,15,13,11,16,19,16,12,15,18,19,18,16,17,21,19,17,18,21,20]},
+  {label:"Pipeline Value", value:"$3.42M", prev:"$2.89M", delta:+18.4, gauge:92, accent:NAVY,
+    spark:[78,75,82,72,90,82,76,86,95,87,100,94,88,82,102,110,96,84,98,106,114,110,103,105,124,116,106,116,126,118]},
+];
+
+const FUNNEL = [
+  {stage:"Subscriber", count:8420, color:T.blue},
+  {stage:"Lead",       count:5240, color:T.orange},
+  {stage:"MQL",        count:2180, color:T.cyan},
+  {stage:"SQL",        count:1120, color:T.purple},
+  {stage:"Opportunity",count:640,  color:T.yellow},
+  {stage:"Customer",   count:412,  color:T.green},
+];
+
+const TOP_STATES = [
+  {state:"California",  code:"CA", count:1240, pct:13.6},
+  {state:"Texas",       code:"TX", count:980,  pct:10.8},
+  {state:"Florida",     code:"FL", count:820,  pct:9.0},
+  {state:"New York",    code:"NY", count:640,  pct:7.0},
+  {state:"Arizona",     code:"AZ", count:540,  pct:5.9},
+  {state:"Washington",  code:"WA", count:420,  pct:4.6},
+  {state:"Colorado",    code:"CO", count:380,  pct:4.2},
+  {state:"Georgia",     code:"GA", count:360,  pct:4.0},
+  {state:"N. Carolina", code:"NC", count:340,  pct:3.7},
+  {state:"Illinois",    code:"IL", count:320,  pct:3.5},
+  {state:"Pennsylvania",code:"PA", count:280,  pct:3.1},
+  {state:"Ohio",        code:"OH", count:260,  pct:2.9},
+];
+
+const LEAD_SOURCE = [
+  {label:"Organic Search", value:4820, color:T.blue},
+  {label:"Paid Search",    value:3140, color:T.orange},
+  {label:"Direct",         value:2620, color:T.green},
+  {label:"Email",          value:1980, color:T.red},
+  {label:"Social",         value:1420, color:T.cyan},
+  {label:"Referral",       value:1220, color:T.purple},
+  {label:"Trade Show",     value:640,  color:T.brown},
+];
+
+const INDUSTRIES = [
+  {label:"Construction & Remodel", count:4820},
+  {label:"Architecture & Design",  count:3240},
+  {label:"Property Management",    count:2410},
+  {label:"Hospitality",            count:1820},
+  {label:"Real Estate",            count:1640},
+  {label:"Plumbing & Trades",      count:1280},
+  {label:"Retail Showroom",        count:920},
+];
+
+const LIFECYCLE_TREND = [
+  {w:"W1", Subscriber:640, Lead:420, MQL:180, SQL:90, Customer:34},
+  {w:"W2", Subscriber:728, Lead:472, MQL:204, SQL:102, Customer:38},
+  {w:"W3", Subscriber:800, Lead:524, MQL:222, SQL:112, Customer:42},
+  {w:"W4", Subscriber:874, Lead:564, MQL:242, SQL:121, Customer:45},
+  {w:"W5", Subscriber:947, Lead:613, MQL:262, SQL:130, Customer:49},
+  {w:"W6", Subscriber:1022,Lead:660, MQL:282, SQL:139, Customer:52},
+  {w:"W7", Subscriber:1099,Lead:704, MQL:300, SQL:148, Customer:55},
+  {w:"W8", Subscriber:1170,Lead:746, MQL:317, SQL:157, Customer:58},
+  {w:"W9", Subscriber:1241,Lead:790, MQL:336, SQL:167, Customer:62},
+  {w:"W10",Subscriber:1310,Lead:836, MQL:356, SQL:175, Customer:65},
+  {w:"W11",Subscriber:1380,Lead:885, MQL:376, SQL:184, Customer:69},
+  {w:"W12",Subscriber:1452,Lead:932, MQL:395, SQL:193, Customer:72},
+];
+
+const VELOCITY = [
+  {stage:"Lead → MQL", days:4.2},
+  {stage:"MQL → SQL", days:7.8},
+  {stage:"SQL → Opp", days:12.4},
+  {stage:"Opp → Customer", days:18.6},
+];
+
+const ACCOUNTS = [
+  {name:"Westside Bath Pros",        contacts:142, deals:18, arr:"$84,200"},
+  {name:"Pacific Plumb Supply",      contacts:118, deals:14, arr:"$71,400"},
+  {name:"Mountain View Remodel Co.", contacts:96,  deals:11, arr:"$62,800"},
+  {name:"Coastline Hospitality Grp.",contacts:84,  deals:9,  arr:"$58,100"},
+  {name:"Atlas Property Services",   contacts:72,  deals:8,  arr:"$44,600"},
+  {name:"Sunbelt Renovations",       contacts:64,  deals:7,  arr:"$38,900"},
+];
+
+/* ── RENDER HELPERS ── */
+function sparklinePath(values,w,h,pad){
+  const min=Math.min(...values), max=Math.max(...values);
+  const range=max-min||1;
+  const step=(w-pad*2)/(values.length-1);
+  return values.map((v,i)=>{
+    const x=(pad+i*step).toFixed(1);
+    const y=(h-pad - ((v-min)/range)*(h-pad*2)).toFixed(1);
+    return (i===0?"M":"L")+x+","+y;
+  }).join(" ");
+}
+
+/* ── KPI TILES ── */
+const kpiHost=document.getElementById("kpi-row");
+kpiHost.innerHTML = KPIS.map(k=>{
+  const up=k.delta>=0;
+  const pillBg=up?"#E8EEFD":"#FDEAEF";
+  const pillFg=up?BLUE:CORAL;
+  const arrow=up?'<polyline points="18 15 12 9 6 15"/>':'<polyline points="6 9 12 15 18 9"/>';
+  return `
+  <div class="relative overflow-hidden rounded-xl bg-white border border-slate-200 shadow-[0_2px_8px_-2px_rgba(15,23,42,.06)]">
+    <div class="p-5 pb-3">
+      <p class="text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">${k.label}</p>
+      <div class="mt-3 flex items-stretch gap-2">
+        <span class="block w-1.5 rounded-full" style="background:${k.accent}"></span>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-baseline gap-1.5">
+            <p class="text-[22px] font-bold tabular leading-none truncate" style="color:${NAVY}">${k.value}</p>
+            <span class="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap" style="background:${pillBg};color:${pillFg}">
+              <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">${arrow}</svg>
+              ${up?"+":""}${k.delta.toFixed(1)}%
+            </span>
+          </div>
+          <p class="mt-1 text-[11px] text-slate-500">PM: <span class="font-semibold tabular" style="color:${NAVY}">${k.prev}</span></p>
+        </div>
+      </div>
+      <div class="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+        <div class="h-full rounded-full" style="width:${Math.min(100,k.gauge)}%;background:${NAVY}"></div>
+      </div>
+    </div>
+    <div class="px-2 pt-1 pb-2 h-[64px]">
+      <svg viewBox="0 0 200 64" preserveAspectRatio="none" class="w-full h-full">
+        <path d="${sparklinePath(k.spark,200,64,4)}" fill="none" stroke="${NAVY}" stroke-width="1.8" stroke-linejoin="round"/>
+      </svg>
+    </div>
+  </div>`;
+}).join("");
+
+/* ── FUNNEL ── */
+const funnelMax=Math.max(...FUNNEL.map(f=>f.count));
+document.getElementById("funnel-cards").innerHTML=FUNNEL.map((s,i)=>{
+  const prev=i>0?FUNNEL[i-1].count:null;
+  const rate=prev?((s.count/prev)*100).toFixed(1):null;
+  return `
+  <div class="rounded-xl bg-slate-50 p-4">
+    <p class="text-[11px] font-semibold uppercase tracking-wider" style="color:${s.color}">${s.stage}</p>
+    <p class="mt-1.5 text-2xl font-bold tabular" style="color:${NAVY}">${s.count.toLocaleString()}</p>
+    ${rate?`<p class="mt-0.5 text-[10px] text-slate-500">${rate}% from prev</p>`:""}
+  </div>`;
+}).join("");
+document.getElementById("funnel-bars").innerHTML=FUNNEL.map(s=>`
+  <div class="grid grid-cols-[110px_1fr_60px] items-center gap-3">
+    <span class="text-xs font-semibold" style="color:${NAVY}">${s.stage}</span>
+    <div class="h-5 w-full overflow-hidden rounded-md" style="background:#EEF2F7">
+      <div class="h-full rounded-md" style="width:${(s.count/funnelMax)*100}%;background:${s.color}"></div>
+    </div>
+    <span class="text-xs tabular text-right text-slate-600">${s.count.toLocaleString()}</span>
+  </div>`).join("");
+
+/* ── GEOGRAPHIC ── show choropleth-style colored badge grid + top states list ── */
+function heatColor(r){
+  if(r<.15) return "#D6E8F9"; if(r<.3) return "#B3D3F2"; if(r<.5) return "#85B8E8";
+  if(r<.7) return "#5A99D8"; return "#3A7BC8";
+}
+const maxState=Math.max(...TOP_STATES.map(s=>s.count));
+const statesLeft = TOP_STATES.map(s=>{
+  const r=s.count/maxState;
+  const bg=heatColor(r);
+  const ink=r>=.5?"#fff":NAVY;
+  return `<div class="rounded-lg px-3 py-2 flex items-center justify-between gap-2" style="background:${bg};color:${ink}">
+    <div class="flex items-center gap-2">
+      <span class="text-[10px] font-bold opacity-80">${s.code}</span>
+      <span class="text-xs font-semibold">${s.state}</span>
+    </div>
+    <span class="text-xs font-bold tabular">${s.count.toLocaleString()}</span>
+  </div>`;
+}).join("");
+const statesRight = TOP_STATES.map((s,i)=>`
+  <div class="flex items-center justify-between gap-3 py-1.5 ${i<TOP_STATES.length-1?'border-b border-slate-100':''}">
+    <div class="flex items-center gap-2">
+      <span class="text-xs text-slate-400 tabular w-4">${i+1}</span>
+      <span class="text-xs font-semibold" style="color:${NAVY}">${s.state}</span>
+      <span class="rounded bg-slate-100 px-1 text-[10px] font-semibold text-slate-500">${s.code}</span>
+    </div>
+    <div class="flex items-center gap-2 flex-1 ml-2">
+      <div class="h-1.5 flex-1 overflow-hidden rounded-full" style="background:#EEF2F7">
+        <div class="h-full rounded-full" style="width:${(s.count/maxState)*100}%;background:${T.blue}"></div>
+      </div>
+      <span class="text-xs font-bold tabular w-12 text-right" style="color:${NAVY}">${s.count.toLocaleString()}</span>
+      <span class="text-[10px] tabular w-10 text-right text-slate-500">${s.pct.toFixed(1)}%</span>
+    </div>
+  </div>`).join("");
+document.getElementById("states-grid").innerHTML = `
+  <div>
+    <h4 class="mb-3 text-xs font-bold uppercase tracking-wider text-slate-500">Heatmap</h4>
+    <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">${statesLeft}</div>
+  </div>
+  <div>
+    <h4 class="mb-3 text-xs font-bold uppercase tracking-wider text-slate-500">Top States</h4>
+    ${statesRight}
+  </div>`;
+
+/* ── DONUT ── */
+(function(){
+  const total=LEAD_SOURCE.reduce((s,x)=>s+x.value,0);
+  const C=2*Math.PI*50; // circumference for r=50
+  let offset=0;
+  const arcs=LEAD_SOURCE.map(s=>{
+    const len=(s.value/total)*C;
+    const seg=`<circle r="50" cx="80" cy="80" fill="none" stroke="${s.color}" stroke-width="22" stroke-dasharray="${len.toFixed(2)} ${C.toFixed(2)}" stroke-dashoffset="${(-offset).toFixed(2)}" transform="rotate(-90 80 80)"/>`;
+    offset+=len; return seg;
+  }).join("");
+  document.getElementById("donut-host").innerHTML = `
+    <svg width="200" height="180" viewBox="0 0 160 160">
+      <circle cx="80" cy="80" r="50" fill="none" stroke="#F1F5F9" stroke-width="22"/>
+      ${arcs}
+      <text x="80" y="78" text-anchor="middle" font-size="10" fill="#94A3B8" font-weight="600">Total</text>
+      <text x="80" y="93" text-anchor="middle" font-size="16" fill="${NAVY}" font-weight="700">${total.toLocaleString()}</text>
+    </svg>`;
+  document.getElementById("donut-legend").innerHTML = LEAD_SOURCE.map(s=>`
+    <div class="flex items-center gap-2">
+      <span class="h-2 w-2 rounded-full" style="background:${s.color}"></span>
+      <span style="color:${NAVY}">${s.label}</span>
+      <span class="text-slate-500 tabular">${s.value.toLocaleString()}</span>
+    </div>`).join("");
+})();
+
+/* ── INDUSTRIES ── */
+(function(){
+  const total=INDUSTRIES.reduce((s,i)=>s+i.count,0);
+  const max=Math.max(...INDUSTRIES.map(i=>i.count));
+  document.getElementById("industry-bars").innerHTML=INDUSTRIES.map((row,idx)=>{
+    const pct=(row.count/total)*100;
+    const width=(row.count/max)*100;
+    const isTop=idx===0;
+    return `
+    <div class="grid grid-cols-[1fr_auto] items-center gap-3 rounded-lg px-3 py-2">
+      <div class="min-w-0">
+        <p class="text-xs font-semibold truncate mb-1.5" style="color:${NAVY}">${row.label}</p>
+        <div class="relative h-4 w-full overflow-hidden rounded-md" style="background:#EEF2F7">
+          <div class="h-full rounded-md" style="width:${width}%;background:${isTop?CORAL:NAVY}"></div>
+        </div>
+      </div>
+      <div class="text-right whitespace-nowrap">
+        <span class="text-sm font-bold tabular" style="color:${NAVY}">${pct.toFixed(0)}%</span>
+        <span class="ml-2 text-xs tabular text-slate-500">(${row.count.toLocaleString()})</span>
+      </div>
+    </div>`;
+  }).join("");
+})();
+
+/* ── LIFECYCLE TREND STACKED AREA (inline SVG) ── */
+(function(){
+  const W=720, H=280, padL=36, padR=12, padT=12, padB=28;
+  const keys=["Subscriber","Lead","MQL","SQL","Customer"];
+  const colors={Subscriber:T.blue, Lead:T.orange, MQL:T.cyan, SQL:T.purple, Customer:T.green};
+  const stack=LIFECYCLE_TREND.map(d=>{
+    let acc=0; const out={w:d.w, layers:{}};
+    keys.forEach(k=>{ out.layers[k]=[acc,acc+d[k]]; acc+=d[k]; });
+    out.total=acc; return out;
+  });
+  const maxY=Math.max(...stack.map(s=>s.total));
+  const stepX=(W-padL-padR)/(stack.length-1);
+  const xAt=(i)=>padL+i*stepX;
+  const yAt=(v)=>H-padB - (v/maxY)*(H-padT-padB);
+  // Build polygon per layer
+  const polys=keys.map(k=>{
+    const top=stack.map((s,i)=>`${xAt(i)},${yAt(s.layers[k][1])}`).join(" ");
+    const bot=stack.slice().reverse().map((s,j)=>{const i=stack.length-1-j;return `${xAt(i)},${yAt(s.layers[k][0])}`;}).join(" ");
+    return `<polygon points="${top} ${bot}" fill="${colors[k]}" fill-opacity="0.75" stroke="${colors[k]}" stroke-width="1"/>`;
+  }).join("");
+  // X axis labels
+  const xLabels=stack.map((s,i)=>`<text x="${xAt(i)}" y="${H-padB+16}" font-size="10" fill="#94A3B8" text-anchor="middle">${s.w}</text>`).join("");
+  // Y axis ticks (4 levels)
+  const yTicks=[0,.25,.5,.75,1].map(r=>{
+    const yv=Math.round(maxY*r);
+    const y=yAt(yv);
+    return `<g><line x1="${padL}" x2="${W-padR}" y1="${y}" y2="${y}" stroke="#E2E8F0" stroke-dasharray="3 3"/><text x="${padL-6}" y="${y+3}" font-size="10" fill="#94A3B8" text-anchor="end">${yv.toLocaleString()}</text></g>`;
+  }).join("");
+  document.getElementById("area-host").innerHTML=`<svg viewBox="0 0 ${W} ${H}" class="w-full">${yTicks}${polys}${xLabels}</svg>`;
+  document.getElementById("area-legend").innerHTML=keys.map(k=>`<div class="flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-sm" style="background:${colors[k]}"></span><span class="text-xs" style="color:${NAVY}">${k}</span></div>`).join("");
+})();
+
+/* ── DEAL VELOCITY ── */
+(function(){
+  const max=Math.max(...VELOCITY.map(v=>v.days));
+  document.getElementById("velocity-bars").innerHTML=VELOCITY.map(v=>`
+    <div>
+      <div class="mb-1 flex items-baseline justify-between">
+        <span class="text-xs font-semibold" style="color:${NAVY}">${v.stage}</span>
+        <span class="text-xs tabular text-slate-500">${v.days.toFixed(1)} days</span>
+      </div>
+      <div class="h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
+        <div class="h-full rounded-full" style="width:${(v.days/max)*100}%;background:linear-gradient(90deg,${T.green},${T.yellow},${T.orange},${T.red})"></div>
+      </div>
+    </div>`).join("");
+})();
+
+/* ── ACCOUNTS ── */
+(function(){
+  document.getElementById("acct-rows").innerHTML=ACCOUNTS.map((a,i)=>{
+    const top=i===0;
+    return `<tr ${top?'style="background:#FDEAEF"':''} class="border-b border-slate-100 last:border-0">
+      <td class="py-3 pr-4">
+        <div class="flex items-center gap-3">
+          <span class="flex h-7 w-7 items-center justify-center rounded-lg text-[11px] font-bold text-white" style="background:${top?CORAL:NAVY}">${i+1}</span>
+          <span class="font-semibold" style="color:${NAVY}">${a.name}</span>
+        </div>
+      </td>
+      <td class="py-3 pr-4 text-right tabular" style="color:${NAVY}">${a.contacts}</td>
+      <td class="py-3 pr-4 text-right tabular" style="color:${NAVY}">${a.deals}</td>
+      <td class="py-3 text-right">
+        <span class="rounded-full px-2.5 py-0.5 font-bold tabular text-white" style="background:${top?CORAL:NAVY}">${a.arr}</span>
+      </td>
+    </tr>`;
+  }).join("");
+})();
+
+/* ══════════════════════════════════════════════════ */
+/* ══ CUSTOMER SUCCESS — additional data + render ══ */
+/* ══════════════════════════════════════════════════ */
+
+/* ── Customer Success KPI tiles ── */
+const CS_KPIS = [
+  {label:"NPS Score",       value:"62",     prev:"54",     delta:+14.8, gauge:62, accent:T.green,
+    spark:[44,46,45,48,50,49,52,54,53,55,57,56,58,59,58,60,61,60,62,63,62,63,64,63,62,63,64,63,62,62]},
+  {label:"CSAT",            value:"4.6 / 5",prev:"4.2 / 5",delta:+9.5,  gauge:92, accent:T.cyan,
+    spark:[40,41,42,41,43,43,42,44,44,45,44,45,45,46,46,45,46,46,46,45,46,46,45,46,46,46,46,46,46,46]},
+  {label:"Health Score",    value:"78",     prev:"72",     delta:+8.3,  gauge:78, accent:T.blue,
+    spark:[68,69,70,69,71,72,71,72,73,72,74,75,74,75,76,75,76,77,76,77,77,77,78,77,78,78,78,77,78,78]},
+  {label:"Churn Rate",      value:"3.2%",   prev:"4.8%",   delta:-33.3, gauge:32, accent:T.red,
+    spark:[48,47,46,47,45,44,45,43,42,43,41,40,41,39,38,38,37,36,37,35,34,34,33,34,33,32,33,32,32,32]},
+  {label:"MRR",             value:"$284K",  prev:"$248K",  delta:+14.5, gauge:88, accent:NAVY,
+    spark:[230,234,238,236,242,246,250,254,252,258,262,260,266,270,268,272,276,274,278,280,278,282,282,280,284,282,284,283,284,284]},
+  {label:"Avg LTV",         value:"$12.4K", prev:"$10.8K", delta:+14.8, gauge:84, accent:T.purple,
+    spark:[100,102,104,103,106,108,107,109,111,110,112,114,113,115,117,116,118,120,119,121,122,121,122,123,122,123,124,123,124,124]},
+];
+
+(function(){
+  document.getElementById("cs-kpi-row").innerHTML = CS_KPIS.map(k=>{
+    // For Churn Rate, a DOWN delta is GOOD (less churn)
+    const isChurn = /Churn/i.test(k.label);
+    const goodDirection = isChurn ? (k.delta < 0) : (k.delta >= 0);
+    const pillBg = goodDirection ? "#E8EEFD" : "#FDEAEF";
+    const pillFg = goodDirection ? BLUE : CORAL;
+    const arrow = k.delta>=0 ? '<polyline points="18 15 12 9 6 15"/>' : '<polyline points="6 9 12 15 18 9"/>';
+    return `
+    <div class="relative overflow-hidden rounded-xl bg-white border border-slate-200 shadow-[0_2px_8px_-2px_rgba(15,23,42,.06)]">
+      <div class="p-5 pb-3">
+        <p class="text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">${k.label}</p>
+        <div class="mt-3 flex items-stretch gap-2">
+          <span class="block w-1.5 rounded-full" style="background:${k.accent}"></span>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-baseline gap-1.5">
+              <p class="text-[22px] font-bold tabular leading-none truncate" style="color:${NAVY}">${k.value}</p>
+              <span class="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap" style="background:${pillBg};color:${pillFg}">
+                <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">${arrow}</svg>
+                ${k.delta>=0?"+":""}${k.delta.toFixed(1)}%
+              </span>
+            </div>
+            <p class="mt-1 text-[11px] text-slate-500">PM: <span class="font-semibold tabular" style="color:${NAVY}">${k.prev}</span></p>
+          </div>
+        </div>
+        <div class="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+          <div class="h-full rounded-full" style="width:${Math.min(100,k.gauge)}%;background:${NAVY}"></div>
+        </div>
+      </div>
+      <div class="px-2 pt-1 pb-2 h-[64px]">
+        <svg viewBox="0 0 200 64" preserveAspectRatio="none" class="w-full h-full">
+          <path d="${sparklinePath(k.spark,200,64,4)}" fill="none" stroke="${NAVY}" stroke-width="1.8" stroke-linejoin="round"/>
+        </svg>
+      </div>
+    </div>`;
+  }).join("");
+})();
+
+/* ── Customer Health Donut ── */
+const HEALTH = [
+  {label:"Healthy",  value:312, color:"#59A14F"},
+  {label:"At Risk",  value:78,  color:"#F28E2B"},
+  {label:"Critical", value:22,  color:"#E15759"},
+];
+(function(){
+  const total = HEALTH.reduce((s,h)=>s+h.value,0);
+  const C = 2*Math.PI*50;
+  let offset = 0;
+  const arcs = HEALTH.map(h=>{
+    const len = (h.value/total)*C;
+    const seg = `<circle r="50" cx="80" cy="80" fill="none" stroke="${h.color}" stroke-width="22" stroke-dasharray="${len.toFixed(2)} ${C.toFixed(2)}" stroke-dashoffset="${(-offset).toFixed(2)}" transform="rotate(-90 80 80)"/>`;
+    offset += len; return seg;
+  }).join("");
+  document.getElementById("health-donut").innerHTML = `
+    <svg width="180" height="160" viewBox="0 0 160 160">
+      <circle cx="80" cy="80" r="50" fill="none" stroke="#F1F5F9" stroke-width="22"/>
+      ${arcs}
+      <text x="80" y="76" text-anchor="middle" font-size="10" fill="#94A3B8" font-weight="600">Customers</text>
+      <text x="80" y="92" text-anchor="middle" font-size="18" fill="${NAVY}" font-weight="700">${total.toLocaleString()}</text>
+    </svg>`;
+  document.getElementById("health-legend").innerHTML = HEALTH.map(h=>{
+    const pct = ((h.value/total)*100).toFixed(0);
+    return `<div class="flex items-center justify-between gap-2">
+      <div class="flex items-center gap-2">
+        <span class="h-2.5 w-2.5 rounded-sm" style="background:${h.color}"></span>
+        <span style="color:${NAVY}">${h.label}</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <span class="font-bold tabular" style="color:${NAVY}">${h.value}</span>
+        <span class="text-slate-500 tabular w-9 text-right">${pct}%</span>
+      </div>
+    </div>`;
+  }).join("");
+})();
+
+/* ── NPS Breakdown ── */
+const NPS = [
+  {label:"Promoters",  pct:68, count:873, color:"#59A14F"},
+  {label:"Passives",   pct:26, count:334, color:"#EDC948"},
+  {label:"Detractors", pct:6,  count:77,  color:"#E15759"},
+];
+(function(){
+  document.getElementById("nps-bars").innerHTML = NPS.map(n=>`
+    <div>
+      <div class="mb-1 flex items-baseline justify-between">
+        <div class="flex items-center gap-2">
+          <span class="h-2.5 w-2.5 rounded-sm" style="background:${n.color}"></span>
+          <span class="text-xs font-semibold" style="color:${NAVY}">${n.label}</span>
+        </div>
+        <span class="text-xs tabular text-slate-500"><span class="font-bold" style="color:${NAVY}">${n.count.toLocaleString()}</span> · ${n.pct}%</span>
+      </div>
+      <div class="h-3 w-full overflow-hidden rounded-md" style="background:#EEF2F7">
+        <div class="h-full rounded-md" style="width:${n.pct}%;background:${n.color}"></div>
+      </div>
+    </div>`).join("");
+})();
+
+/* ── Retention curve ── */
+const RETENTION = [
+  {m:"Jun '25", v:92.4}, {m:"Jul", v:92.8}, {m:"Aug", v:93.1}, {m:"Sep", v:93.4},
+  {m:"Oct", v:93.6}, {m:"Nov", v:93.9}, {m:"Dec", v:94.0}, {m:"Jan '26", v:94.2},
+  {m:"Feb", v:94.3}, {m:"Mar", v:94.5}, {m:"Apr", v:94.7}, {m:"May", v:94.8},
+];
+(function(){
+  const W=600, H=200, padL=36, padR=12, padT=12, padB=28;
+  const min=90, max=96;
+  const step=(W-padL-padR)/(RETENTION.length-1);
+  const xAt=i=>padL+i*step;
+  const yAt=v=>H-padB - ((v-min)/(max-min))*(H-padT-padB);
+  const pts = RETENTION.map((d,i)=>`${xAt(i)},${yAt(d.v)}`).join(" ");
+  const area = `${xAt(0)},${H-padB} ${pts} ${xAt(RETENTION.length-1)},${H-padB}`;
+  const xLabels = RETENTION.map((d,i)=>`<text x="${xAt(i)}" y="${H-padB+16}" font-size="9" fill="#94A3B8" text-anchor="middle">${d.m.replace(" '25","").replace(" '26","")}</text>`).join("");
+  const yTicks = [90,92,94,96].map(v=>`<g><line x1="${padL}" x2="${W-padR}" y1="${yAt(v)}" y2="${yAt(v)}" stroke="#E2E8F0" stroke-dasharray="3 3"/><text x="${padL-6}" y="${yAt(v)+3}" font-size="10" fill="#94A3B8" text-anchor="end">${v}%</text></g>`).join("");
+  document.getElementById("retention-chart").innerHTML = `<svg viewBox="0 0 ${W} ${H}" class="w-full">
+    <defs><linearGradient id="retGrad" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#59A14F" stop-opacity="0.5"/><stop offset="100%" stop-color="#59A14F" stop-opacity="0"/></linearGradient></defs>
+    ${yTicks}
+    <polygon points="${area}" fill="url(#retGrad)"/>
+    <polyline points="${pts}" fill="none" stroke="#59A14F" stroke-width="2.4" stroke-linejoin="round"/>
+    ${RETENTION.map((d,i)=>`<circle cx="${xAt(i)}" cy="${yAt(d.v)}" r="3" fill="#fff" stroke="#59A14F" stroke-width="2"/>`).join("")}
+    ${xLabels}
+  </svg>`;
+})();
+
+/* ── Cohort Heatmap ── */
+(function(){
+  const cohorts = ["Jul '25","Aug","Sep","Oct","Nov","Dec","Jan '26","Feb","Mar","Apr","May"];
+  // size: cohorts.length rows × 11 months. Each cell is a retention %.
+  // Decreasing slightly over months, slight variance.
+  const rows = cohorts.map((c,r) => {
+    const monthsAvail = cohorts.length - r;
+    return Array.from({length:monthsAvail}, (_,m)=>{
+      if (m===0) return 100;
+      const decay = 100 - (m*1.6) - (r*0.2) + Math.sin(r+m)*1.2;
+      return Math.max(70, Math.min(100, +decay.toFixed(1)));
+    });
+  });
+  function color(v){
+    if (v>=95) return "#59A14F";
+    if (v>=90) return "#A4C95A";
+    if (v>=85) return "#EDC948";
+    if (v>=80) return "#F0A35E";
+    if (v>=75) return "#F28E2B";
+    return "#E15759";
+  }
+  // Build table
+  let html = '<table class="w-full text-[10px]"><thead><tr><th class="text-left py-1 pr-2 font-semibold text-slate-500">Cohort</th>';
+  for (let m=0;m<11;m++){ html += `<th class="py-1 px-1 font-semibold text-slate-500 text-center">M${m}</th>`; }
+  html += '</tr></thead><tbody>';
+  rows.forEach((row,r) => {
+    html += `<tr><td class="py-1 pr-2 font-semibold whitespace-nowrap" style="color:${NAVY}">${cohorts[r]}</td>`;
+    for (let m=0;m<11;m++){
+      const v = row[m];
+      if (v === undefined) { html += '<td class="px-1"></td>'; continue; }
+      const ink = v>=85 ? NAVY : "#fff";
+      html += `<td class="px-0.5 py-0.5"><div class="rounded text-center font-bold tabular" style="background:${color(v)};color:${ink};padding:3px 0;min-width:32px">${Math.round(v)}</div></td>`;
+    }
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  document.getElementById("cohort-heatmap").innerHTML = html;
+})();
+
+/* ── Renewals & At-Risk Accounts ── */
+const RENEWALS = [
+  {label:"Low Risk",    count:48, value:"$184K", color:"#59A14F"},
+  {label:"Medium Risk", count:14, value:"$62K",  color:"#EDC948"},
+  {label:"High Risk",   count:6,  value:"$38K",  color:"#E15759"},
+];
+const AT_RISK = [
+  {name:"Northstar Holdings",     mrr:"$8,400", health:32, last:"22d ago", reason:"Low feature adoption",       sev:"High"},
+  {name:"Apex Industrial Group",  mrr:"$6,200", health:38, last:"18d ago", reason:"Support ticket spike",       sev:"High"},
+  {name:"Riverview Hospitality",  mrr:"$5,800", health:44, last:"14d ago", reason:"NPS detractor (responded 3)", sev:"Med"},
+  {name:"Beacon Property Mgmt.",  mrr:"$4,900", health:48, last:"11d ago", reason:"Renewal in 30 days",          sev:"Med"},
+  {name:"Hilltop Builders",       mrr:"$3,200", health:52, last:"9d ago",  reason:"Sponsor departed company",    sev:"Med"},
+];
+(function(){
+  document.getElementById("renewals-summary").innerHTML = RENEWALS.map(r=>`
+    <div class="rounded-xl p-3" style="background:${r.color}15;border:1px solid ${r.color}33">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="h-2.5 w-2.5 rounded-full" style="background:${r.color}"></span>
+          <span class="text-xs font-bold uppercase tracking-wide" style="color:${r.color}">${r.label}</span>
+        </div>
+        <span class="text-xs font-bold tabular" style="color:${NAVY}">${r.value}</span>
+      </div>
+      <p class="mt-1 text-2xl font-bold tabular" style="color:${NAVY}">${r.count} <span class="text-xs font-normal text-slate-500">accounts</span></p>
+    </div>`).join("");
+  document.getElementById("risk-rows").innerHTML = AT_RISK.map((a,i)=>{
+    const sevColor = a.sev==="High" ? "#E15759" : a.sev==="Med" ? "#F28E2B" : "#EDC948";
+    const healthColor = a.health < 40 ? "#E15759" : a.health < 55 ? "#F28E2B" : "#EDC948";
+    return `<tr class="border-b border-slate-100 last:border-0">
+      <td class="py-3 pr-4">
+        <div class="flex items-center gap-2">
+          <span class="h-2 w-2 rounded-full" style="background:${sevColor}"></span>
+          <span class="font-semibold" style="color:${NAVY}">${a.name}</span>
+        </div>
+      </td>
+      <td class="py-3 pr-4 text-right tabular" style="color:${NAVY}">${a.mrr}</td>
+      <td class="py-3 pr-4 text-right">
+        <span class="inline-flex items-center justify-center rounded-md px-2 py-0.5 text-[11px] font-bold text-white" style="background:${healthColor}">${a.health}</span>
+      </td>
+      <td class="py-3 pr-4 text-right tabular text-slate-500">${a.last}</td>
+      <td class="py-3 text-slate-600">${a.reason}</td>
+    </tr>`;
+  }).join("");
+})();
+
+/* ── Support Insights ── */
+const SUPPORT_KPIS = [
+  {label:"Open Tickets",       value:"142",   prev:"168",  delta:-15.5, gauge:42, accent:T.red},
+  {label:"Avg First Response", value:"2.4h",  prev:"3.1h", delta:-22.6, gauge:80, accent:T.blue},
+  {label:"Avg Resolution",     value:"18.6h", prev:"21.2h",delta:-12.3, gauge:74, accent:T.cyan},
+  {label:"Support CSAT",       value:"4.7/5", prev:"4.4/5",delta:+6.8,  gauge:94, accent:T.green},
+];
+const SUPPORT_TOPICS = [
+  {label:"Login / Account Access", count:142, color:T.blue},
+  {label:"Billing & Invoicing",    count:118, color:T.orange},
+  {label:"Product Bug Reports",    count:96,  color:T.red},
+  {label:"Integration Setup",      count:74,  color:T.cyan},
+  {label:"Feature Requests",       count:62,  color:T.purple},
+  {label:"Onboarding Help",        count:48,  color:T.green},
+  {label:"Other",                  count:34,  color:T.brown},
+];
+const TICKET_TREND = Array.from({length:30}, (_,i)=>({
+  d: i+1,
+  opened:   Math.round(18 + Math.sin(i/3)*4 + (Math.cos(i*0.7))*3 + (i<8?2:0)),
+  resolved: Math.round(16 + Math.sin(i/3 + 0.5)*4 + (Math.cos(i*0.9))*2 + (i>20?3:0)),
+}));
+(function(){
+  // KPI cards
+  document.getElementById("support-kpi-row").innerHTML = SUPPORT_KPIS.map(k=>{
+    const isOpenTickets = /Open Tickets|Response|Resolution/i.test(k.label);
+    const goodDirection = isOpenTickets ? (k.delta < 0) : (k.delta >= 0);
+    const pillBg = goodDirection ? "#E8EEFD" : "#FDEAEF";
+    const pillFg = goodDirection ? BLUE : CORAL;
+    const arrow = k.delta>=0 ? '<polyline points="18 15 12 9 6 15"/>' : '<polyline points="6 9 12 15 18 9"/>';
+    return `
+    <div class="rounded-xl bg-white border border-slate-200 p-5">
+      <p class="text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">${k.label}</p>
+      <div class="mt-3 flex items-stretch gap-2">
+        <span class="block w-1.5 rounded-full" style="background:${k.accent}"></span>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-baseline gap-1.5">
+            <p class="text-[22px] font-bold tabular leading-none" style="color:${NAVY}">${k.value}</p>
+            <span class="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap" style="background:${pillBg};color:${pillFg}">
+              <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">${arrow}</svg>
+              ${k.delta>=0?"+":""}${k.delta.toFixed(1)}%
+            </span>
+          </div>
+          <p class="mt-1 text-[11px] text-slate-500">PM: <span class="font-semibold tabular" style="color:${NAVY}">${k.prev}</span></p>
+        </div>
+      </div>
+      <div class="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+        <div class="h-full rounded-full" style="width:${Math.min(100,k.gauge)}%;background:${NAVY}"></div>
+      </div>
+    </div>`;
+  }).join("");
+
+  // Top topics bars
+  const topicsTotal = SUPPORT_TOPICS.reduce((s,t)=>s+t.count,0);
+  const topicsMax = Math.max(...SUPPORT_TOPICS.map(t=>t.count));
+  document.getElementById("support-topics").innerHTML = SUPPORT_TOPICS.map((row,idx)=>{
+    const pct = (row.count/topicsTotal)*100;
+    const width = (row.count/topicsMax)*100;
+    const isTop = idx===0;
+    return `
+    <div class="grid grid-cols-[1fr_auto] items-center gap-3 rounded-lg px-3 py-2">
+      <div class="min-w-0">
+        <p class="text-xs font-semibold truncate mb-1.5" style="color:${NAVY}">${row.label}</p>
+        <div class="relative h-4 w-full overflow-hidden rounded-md" style="background:#EEF2F7">
+          <div class="h-full rounded-md" style="width:${width}%;background:${isTop?CORAL:NAVY}"></div>
+        </div>
+      </div>
+      <div class="text-right whitespace-nowrap">
+        <span class="text-sm font-bold tabular" style="color:${NAVY}">${pct.toFixed(0)}%</span>
+        <span class="ml-2 text-xs tabular text-slate-500">(${row.count.toLocaleString()})</span>
+      </div>
+    </div>`;
+  }).join("");
+
+  // Ticket trend dual line
+  const W=580, H=200, padL=36, padR=12, padT=12, padB=28;
+  const max = Math.max(...TICKET_TREND.flatMap(d=>[d.opened, d.resolved])) + 4;
+  const step = (W-padL-padR)/(TICKET_TREND.length-1);
+  const xAt = i => padL+i*step;
+  const yAt = v => H-padB - (v/max)*(H-padT-padB);
+  const openedPts = TICKET_TREND.map((d,i)=>`${xAt(i)},${yAt(d.opened)}`).join(" ");
+  const resolvedPts = TICKET_TREND.map((d,i)=>`${xAt(i)},${yAt(d.resolved)}`).join(" ");
+  const yTicks = [0, max/2, max].map(v=>`<g><line x1="${padL}" x2="${W-padR}" y1="${yAt(v)}" y2="${yAt(v)}" stroke="#E2E8F0" stroke-dasharray="3 3"/><text x="${padL-6}" y="${yAt(v)+3}" font-size="10" fill="#94A3B8" text-anchor="end">${Math.round(v)}</text></g>`).join("");
+  document.getElementById("ticket-trend").innerHTML = `<svg viewBox="0 0 ${W} ${H}" class="w-full">
+    ${yTicks}
+    <polyline points="${openedPts}" fill="none" stroke="#E15759" stroke-width="2.2" stroke-linejoin="round"/>
+    <polyline points="${resolvedPts}" fill="none" stroke="#59A14F" stroke-width="2.2" stroke-linejoin="round"/>
+  </svg>`;
+})();
+</script>
+
+</body>
+</html>

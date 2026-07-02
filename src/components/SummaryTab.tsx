@@ -39,6 +39,7 @@ interface SummaryTabProps {
   brand: Brand;
   dateFrom: Date;
   dateTo: Date;
+  showInsights?: boolean;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -201,7 +202,7 @@ function ChartTooltip({ active, payload, label }: any) {
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
+export function SummaryTab({ brand, dateFrom, dateTo, showInsights = true }: SummaryTabProps) {
   const [ga4, setGa4]             = useState<any>(null);
   const [gsc, setGsc]             = useState<any>(null);
   const [gscPrior, setGscPrior]   = useState<any>(null);
@@ -854,7 +855,7 @@ export function SummaryTab({ brand, dateFrom, dateTo }: SummaryTabProps) {
       )}
 
       {/* ── 7. RECOMMENDATIONS ────────────────────────────────────────────── */}
-      {recommendations.length > 0 && (
+      {showInsights && recommendations.length > 0 && (
         <section>
           <SectionHeader label="Insights" />
           <div className="space-y-3">

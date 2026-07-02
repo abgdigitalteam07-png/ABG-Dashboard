@@ -4,8 +4,8 @@
     {
       "name": "Vite Dev Server",
       "runtimeExecutable": "/Users/mali/.nvm/versions/node/v25.9.0/bin/node",
-      "runtimeArgs": ["/Users/mali/brand-performance-hub/node_modules/.bin/vite", "--port", "8080"],
-      "cwd": "/Users/mali/brand-performance-hub",
+      "runtimeArgs": ["/Users/mali/projects/brand-performance-hub/node_modules/.bin/vite", "--port", "8080"],
+      "cwd": "/Users/mali/projects/brand-performance-hub",
       "port": 8080
     },
     {
@@ -19,6 +19,12 @@
       "runtimeExecutable": "supabase",
       "runtimeArgs": ["start"],
       "port": 54321
+    },
+    {
+      "name": "florestone-dev",
+      "runtimeExecutable": "/bin/sh",
+      "runtimeArgs": ["-c", "cd /Users/mali/projects/florestone && npm run dev"],
+      "port": 3000
     }
   ]
 }

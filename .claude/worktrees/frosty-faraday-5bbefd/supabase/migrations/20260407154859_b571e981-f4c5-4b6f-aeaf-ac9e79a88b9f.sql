@@ -1,0 +1,1 @@
+UPDATE public.app_config SET value = 'ABG@2026#!', updated_at = now() WHERE key = 'shared_password';

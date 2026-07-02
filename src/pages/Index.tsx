@@ -11,9 +11,12 @@ import { ReadMeTab } from "@/components/ReadMeTab";
 import { SummaryTab } from "@/components/SummaryTab";
 import { toast } from "sonner";
 
+interface TabPerm { can_view: boolean; show_insights: boolean; }
+
 const Index = () => {
   const [selectedBrand, setSelectedBrand] = useState(brands.find(b => b.name === "Bootz") ?? brands[0]);
   const [userEmail, setUserEmail] = useState("");
+  const [tabPerms, setTabPerms] = useState<Record<string, TabPerm>>({});
   const welcomeShown = useRef(false);
 
   useEffect(() => {
@@ -23,14 +26,20 @@ const Index = () => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (!session) return;
       setUserEmail(session.user.email ?? "");
-      const { data: profile } = await supabase
-        .from("user_profiles")
-        .select("full_name")
-        .eq("id", session.user.id)
-        .single();
+
+      const [{ data: profile }, { data: perms }] = await Promise.all([
+        supabase.from("user_profiles").select("full_name").eq("id", session.user.id).single(),
+        supabase.from("user_tab_permissions").select("tab_id, can_view, show_insights").eq("user_id", session.user.id),
+      ]);
 
       const firstName = profile?.full_name?.split(" ")[0];
       toast.success(firstName ? `Welcome back, ${firstName}!` : "Welcome back!");
+
+      if (perms) {
+        const map: Record<string, TabPerm> = {};
+        for (const p of perms) map[p.tab_id] = { can_view: p.can_view, show_insights: p.show_insights };
+        setTabPerms(map);
+      }
     });
   }, []);
   const [activeTab, setActiveTab] = useState("performance");
@@ -61,42 +70,19 @@ const Index = () => {
   const hasSocialMedia = socialMediaBrandNames.includes(selectedBrand.name);
   const hasLinkedIn = linkedinBrandNames.includes(selectedBrand.name);
 
-  const tabs = [
-    {
-      id: "readme",
-      label: "Read Me",
-    },
-    {
-      id: "performance",
-      label: "Google Analytics & Search Console",
-      disabled: !selectedBrand.hasGA4 && !selectedBrand.hasGSC,
-      tooltip: "No GA4/GSC property linked for this brand.",
-    },
-    {
-      id: "social",
-      label: "Social Media",
-      disabled: !hasSocialMedia && !hasLinkedIn,
-      tooltip: "No social media data for this brand.",
-    },
-    {
-      id: "hubspot",
-      label: "Emails",
-      disabled: !selectedBrand.hasHubSpot,
-      tooltip: "No HubSpot data for this brand.",
-    },
-    {
-      id: "hubspot-crm",
-      label: "HubSpot CRM",
-      disabled: !selectedBrand.hasHubSpot,
-      tooltip: "No HubSpot data for this brand.",
-    },
-    {
-      id: "summary",
-      label: "Summary Report",
-      disabled: !selectedBrand.hasGA4 && !selectedBrand.hasGSC && !selectedBrand.hasHubSpot,
-      tooltip: "No data sources linked for this brand.",
-    },
+  const canView = (tabId: string) => tabPerms[tabId]?.can_view !== false;
+
+  const allTabs = [
+    { id: "readme",       label: "Read Me" },
+    { id: "performance",  label: "Google Analytics & Search Console", disabled: !selectedBrand.hasGA4 && !selectedBrand.hasGSC, tooltip: "No GA4/GSC property linked for this brand." },
+    { id: "social",       label: "Social Media",   disabled: !hasSocialMedia && !hasLinkedIn, tooltip: "No social media data for this brand." },
+    { id: "hubspot",      label: "Emails",         disabled: !selectedBrand.hasHubSpot, tooltip: "No HubSpot data for this brand." },
+    { id: "hubspot-crm",  label: "HubSpot CRM",    disabled: !selectedBrand.hasHubSpot, tooltip: "No HubSpot data for this brand." },
+    { id: "summary",      label: "Summary Report", disabled: !selectedBrand.hasGA4 && !selectedBrand.hasGSC && !selectedBrand.hasHubSpot, tooltip: "No data sources linked for this brand." },
   ];
+
+  const tabs = allTabs.filter(t => canView(t.id));
+  const showInsights = tabPerms["summary"]?.show_insights !== false;
 
   const effectiveTab =
     activeTab === "performance" && !selectedBrand.hasGA4 && !selectedBrand.hasGSC ? "hubspot-crm" : activeTab;
@@ -144,7 +130,7 @@ const Index = () => {
         {effectiveTab === "hubspot" && <HubSpotTab key={selectedBrand.id} brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />}
         {effectiveTab === "hubspot-crm" && <HubSpotCRMTab key={selectedBrand.id} brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} userEmail={userEmail} />}
         {effectiveTab === "readme" && <ReadMeTab key={selectedBrand.id} brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />}
-        {effectiveTab === "summary" && <SummaryTab key={selectedBrand.id} brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />}
+        {effectiveTab === "summary" && <SummaryTab key={selectedBrand.id} brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} showInsights={showInsights} />}
       </main>
     </div>
   );
