@@ -70,17 +70,27 @@ function renderTable(brandName: string, weekOf: string, threads: Thread[]): stri
 </div>`;
 }
 
-// Recursively walk layoutSections and replace the html param of the module containing MARKER.
-function replaceMarkerModule(node: unknown, html: string): boolean {
-  if (Array.isArray(node)) return node.some(n => replaceMarkerModule(n, html));
+// Recursively replace ANY string field containing MARKER, anywhere in the page JSON.
+// Covers drag-and-drop pages (layoutSections → params.html) and coded templates
+// (widgets / widgetContainers → body.html).
+function replaceMarkerDeep(node: unknown, html: string): boolean {
+  if (Array.isArray(node)) {
+    let found = false;
+    node.forEach((v, i) => {
+      if (typeof v === "string" && v.includes(MARKER)) { node[i] = html; found = true; }
+      else if (replaceMarkerDeep(v, html)) found = true;
+    });
+    return found;
+  }
   if (node && typeof node === "object") {
+    let found = false;
     const obj = node as Record<string, unknown>;
-    const params = obj.params as Record<string, unknown> | undefined;
-    if (params && typeof params.html === "string" && params.html.includes(MARKER)) {
-      params.html = html;
-      return true;
+    for (const k of Object.keys(obj)) {
+      const v = obj[k];
+      if (typeof v === "string" && v.includes(MARKER)) { obj[k] = html; found = true; }
+      else if (replaceMarkerDeep(v, html)) found = true;
     }
-    return Object.values(obj).some(v => replaceMarkerModule(v, html));
+    return found;
   }
   return false;
 }
@@ -135,17 +145,27 @@ Deno.serve(async (req: Request) => {
   if (!pageRes.ok) return json({ error: `HubSpot page read failed (${pageRes.status}): ${await pageRes.text()}` }, 502);
   const page = await pageRes.json();
 
-  const replaced = replaceMarkerModule(page.layoutSections, html);
-  if (!replaced) {
+  // Find which top-level page fields contain the marker, replace in place.
+  const changedKeys: string[] = [];
+  for (const key of ["layoutSections", "widgets", "widgetContainers", "flexAreas"]) {
+    if (page[key] && JSON.stringify(page[key]).includes(MARKER)) {
+      replaceMarkerDeep(page[key], html);
+      changedKeys.push(key);
+    }
+  }
+  if (!changedKeys.length) {
     return json({
-      error: `No module containing the marker ${MARKER} found on page ${landingPageId}. ` +
-        `Add a Rich Text module to the page whose source HTML starts with ${MARKER}, save, then retry.`,
+      error: `No content containing the marker ${MARKER} found on page ${landingPageId}. ` +
+        `Edit a text block on the page, switch to source code view, paste ${MARKER}, save, then retry.`,
+      hint: { topLevelKeys: Object.keys(page) },
     }, 422);
   }
 
+  const patchBody: Record<string, unknown> = {};
+  for (const k of changedKeys) patchBody[k] = page[k];
   const patchRes = await hs(`/cms/v3/pages/landing-pages/${landingPageId}/draft`, {
     method: "PATCH",
-    body: JSON.stringify({ layoutSections: page.layoutSections }),
+    body: JSON.stringify(patchBody),
   });
   if (!patchRes.ok) return json({ error: `HubSpot page update failed (${patchRes.status}): ${await patchRes.text()}` }, 502);
 
