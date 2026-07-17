@@ -22,6 +22,7 @@ interface ScanRequest {
   brandName: string;
   siteUrl: string;          // from brands.ts gscSiteUrl or website
   competitors?: string[];   // optional override; defaults derived per category
+  landingPageId?: string;   // HubSpot page id — if set, auto-publishes Reddit results after the scan
 }
 
 function mondayOfWeek(d = new Date()): string {
@@ -208,7 +209,7 @@ Deno.serve(async (req: Request) => {
   } // no JWT = internal cron invocation with service key
 
   const body = await req.json();
-  const { brandId, brandName, siteUrl }: ScanRequest = body;
+  const { brandId, brandName, siteUrl, landingPageId }: ScanRequest = body;
   const weekOf = mondayOfWeek();
 
   // Debug mode: run ONLY the Apify Reddit search and return raw results.
@@ -422,6 +423,23 @@ Deno.serve(async (req: Request) => {
         }, { onConflict: "brand_id,title", ignoreDuplicates: true }); // never clobber statuses
       }
     } catch { /* recommendations are best-effort */ }
+
+    // 6. If this brand has a HubSpot landing page configured, publish the Reddit
+    // table + weekly PDF archive automatically — no separate manual step needed.
+    if (landingPageId) {
+      try {
+        await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/reddit-publish`, {
+          method: "POST",
+          headers: { "content-type": "application/json", authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}` },
+          body: JSON.stringify({
+            brandId, brandName, landingPageId, weekOf,
+            introFind: "Territory Sales Manager", tableFind: "Gary Bruch",
+          }),
+        });
+      } catch (e) {
+        console.error("Auto-publish to HubSpot failed:", e);
+      }
+    }
 
     await supabase.from("aeo_scan_log").update({
       status: "completed", api_calls_used: apiCalls, finished_at: new Date().toISOString(),

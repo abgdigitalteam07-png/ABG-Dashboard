@@ -74,6 +74,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
           brandId: brand.id,
           brandName: brand.name,
           siteUrl: brand.gscSiteUrl ?? `https://${brand.id.replace(/-/g, "")}.com/`,
+          landingPageId: brand.redditLandingPageId,
         },
       });
       if (error || res?.error) throw new Error(res?.error ?? error?.message);

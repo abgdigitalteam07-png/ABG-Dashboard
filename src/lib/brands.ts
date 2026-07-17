@@ -6,6 +6,7 @@ export interface Brand {
   gscSiteUrl?: string;
   hubspotBusinessUnitId?: string;
   hubspotAccount?: "primary" | "secondary"; // secondary = MAAX Sauna / Vita Spa / American Whirlpool account
+  redditLandingPageId?: string; // HubSpot page id — weekly Reddit results auto-publish here after each scan
   hasGA4: boolean;
   hasGSC: boolean;
   hasHubSpot: boolean;
@@ -41,6 +42,6 @@ export const brands: Brand[] = [
   { id: "rbs", name: "RBS", logoUrl: clearbitLogo("renovativebathsystems.com"), gscSiteUrl: "https://renovativebathsystems.com/", hubspotBusinessUnitId: "1982893", hasGA4: false, hasGSC: true, hasHubSpot: true },
   { id: "swan", name: "Swan", logoUrl: clearbitLogo("swanstone.com"), ga4PropertyIds: ["353105661"], gscSiteUrl: "https://swanstone.com/", hubspotBusinessUnitId: "843133", hasGA4: true, hasGSC: true, hasHubSpot: true },
   { id: "vintage-ca", name: "Vintage.ca", logoUrl: clearbitLogo("vintage.ca"), hubspotBusinessUnitId: "2659249", hasGA4: false, hasGSC: false, hasHubSpot: true },
-  { id: "vita-spa", name: "Vita Spa", logoUrl: clearbitLogo("vitaspa.com"), ga4PropertyIds: ["360436693"], gscSiteUrl: "https://vitaspa.com/", hubspotAccount: "secondary", hasGA4: true, hasGSC: true, hasHubSpot: true },
+  { id: "vita-spa", name: "Vita Spa", logoUrl: clearbitLogo("vitaspa.com"), ga4PropertyIds: ["360436693"], gscSiteUrl: "https://vitaspa.com/", hubspotAccount: "secondary", redditLandingPageId: "370024805096", hasGA4: true, hasGSC: true, hasHubSpot: true },
   { id: "maax-sauna", name: "MAAX Sauna", logoUrl: clearbitLogo("maax.com"), hubspotAccount: "secondary", hasGA4: false, hasGSC: false, hasHubSpot: true },
 ];
