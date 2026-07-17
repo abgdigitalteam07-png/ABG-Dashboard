@@ -5,6 +5,7 @@ import { Brand } from "@/lib/brands";
 import { supabase } from "@/integrations/supabase/client";
 import { WaterFillLoader } from "@/components/WaterFillLoader";
 import { toast } from "sonner";
+import "./SeoAeoGeoTab.css";
 
 // New aeo_* tables are not in the generated Database types yet — regenerate after
 // the 20260717000000 migration is applied, then drop this cast.
@@ -26,26 +27,37 @@ function scoreColor(score: number | undefined) {
 }
 
 function DateChip({ children }: { children: React.ReactNode }) {
-  return <span className="inline-block rounded bg-muted px-2 py-0.5 text-[10px] font-bold tracking-wide text-muted-foreground">{children}</span>;
+  return <span className="aeo-datechip">{children}</span>;
 }
 
 function EmptyChart({ reason }: { reason: string }) {
   return (
-    <div className="flex h-full min-h-[160px] flex-col items-center justify-center gap-1 rounded-md border border-dashed text-center">
-      <span className="text-sm font-medium text-muted-foreground">No data yet</span>
-      <span className="max-w-xs text-xs text-muted-foreground/70">{reason}</span>
+    <div className="aeo-empty">
+      <span className="aeo-empty-title">No data yet</span>
+      <span className="aeo-empty-reason">{reason}</span>
     </div>
   );
 }
 
-function Pill({ tone, children }: { tone: "good" | "warn" | "bad" | "neutral"; children: React.ReactNode }) {
-  const map = {
-    good: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
-    warn: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
-    bad: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
-    neutral: "bg-muted text-muted-foreground",
-  } as const;
-  return <span className={`rounded px-2 py-0.5 text-[11px] font-bold whitespace-nowrap ${map[tone]}`}>{children}</span>;
+function Pill({ tone, children }: { tone: "good" | "warn" | "bad" | "neutral" | "acc"; children: React.ReactNode }) {
+  return <span className={`aeo-pill ${tone}`}>{children}</span>;
+}
+
+function Gauge({ pct }: { pct: number }) {
+  const clamped = Math.max(0, Math.min(100, pct));
+  const angle = (clamped / 100) * 180;
+  const rad = (Math.PI / 180) * angle;
+  const x = 120 - 90 * Math.cos(rad);
+  const y = 120 - 90 * Math.sin(rad);
+  const largeArc = angle > 180 ? 1 : 0;
+  return (
+    <svg viewBox="0 0 240 140" width="200" aria-label={`Brand visibility gauge ${pct}%`}>
+      <path d="M30 120 A90 90 0 0 1 210 120" fill="none" stroke="var(--aeo-line)" strokeWidth="16" strokeLinecap="round" />
+      <path d={`M30 120 A90 90 0 ${largeArc} 1 ${x} ${y}`} fill="none" stroke="var(--aeo-accent)" strokeWidth="16" strokeLinecap="round" />
+      <text x="120" y="100" textAnchor="middle" fontSize="34" fontWeight="750" fill="var(--aeo-ink)">{pct}%</text>
+      <text x="120" y="122" textAnchor="middle" fontSize="12" fill="var(--aeo-muted)">Brand Visibility</text>
+    </svg>
+  );
 }
 
 interface Props { brand: Brand; }
@@ -231,6 +243,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
   // company + week_of column for any brand), but the scan only ever writes a row
   // for the brand itself, never competitors, so only one line will ever plot today.
   const competitorSeries = [...new Set((data?.visibility ?? []).map((v: any) => v.company))];
+  const competitorColors = [HS.teal, HS.orange, HS.purple, HS.mint];
 
   const topRecs = [...(data?.recs ?? [])].sort((a: any, b: any) => {
     const rank = { HIGH: 0, MED: 1, LOW: 2 } as Record<string, number>;
@@ -240,21 +253,21 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
   const trend = (curr?: number, prev?: number) => {
     if (curr == null || prev == null) return null;
     const d = Math.round((curr - prev) * 10) / 10;
-    if (d === 0) return <span className="text-muted-foreground text-xs">— flat</span>;
-    return <span className={`text-xs font-semibold ${d > 0 ? "text-green-600" : "text-red-500"}`}>{d > 0 ? "▲" : "▼"} {Math.abs(d)}</span>;
+    if (d === 0) return <span className="aeo-trend-flat">— flat</span>;
+    return <span className={d > 0 ? "aeo-trend-up" : "aeo-trend-down"}>{d > 0 ? "▲" : "▼"} {Math.abs(d)}</span>;
   };
 
   return (
-    <div className="space-y-4">
+    <div className="aeo-tab" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       {/* Header */}
-      <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-card p-4">
-        <span className="rounded-full bg-accent/10 px-2 py-0.5 text-xs font-bold text-accent">BETA · ADMIN ONLY</span>
-        <span className="text-sm text-muted-foreground">
-          Last scanned: <b className="text-foreground">{lastScan ? new Date(lastScan).toLocaleString() : "never"}</b>
+      <div className="aeo-header">
+        <span className="aeo-beta">BETA · ADMIN ONLY</span>
+        <span className="aeo-lastscan">
+          Last scanned: <b>{lastScan ? new Date(lastScan).toLocaleString() : "never"}</b>
         </span>
         {weeks && weeks.length > 0 && (
           <select
-            className="rounded-md border bg-background px-2 py-1 text-sm"
+            className="aeo-select"
             value={week ?? ""}
             onChange={e => setSelectedWeek(e.target.value)}
           >
@@ -263,24 +276,16 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
             ))}
           </select>
         )}
-        <div className="flex-1" />
-        <button
-          onClick={runScan}
-          disabled={scanning}
-          className="rounded-md bg-[#FF5C35] px-4 py-2 text-sm font-semibold text-white hover:brightness-110 disabled:opacity-50"
-        >
+        <div style={{ flex: 1 }} />
+        <button onClick={runScan} disabled={scanning} className="aeo-btn">
           {scanning ? "Scanning… (audit + prompts + Reddit)" : "⟳ Scan now"}
         </button>
       </div>
 
       {/* Sub-tabs */}
-      <div className="flex gap-1 border-b overflow-x-auto">
+      <div className="aeo-subtabs">
         {SUBTABS.map(t => (
-          <button
-            key={t}
-            onClick={() => setSubtab(t)}
-            className={`px-4 py-2 text-sm font-semibold whitespace-nowrap ${subtab === t ? "border-b-2 border-accent text-foreground" : "text-muted-foreground"}`}
-          >
+          <button key={t} onClick={() => setSubtab(t)} className={subtab === t ? "on" : ""}>
             {t}
           </button>
         ))}
@@ -289,7 +294,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
       {isLoading && <WaterFillLoader />}
 
       {!isLoading && !week && (
-        <div className="rounded-lg border bg-card p-10 text-center text-muted-foreground">
+        <div className="aeo-section" style={{ textAlign: "center", color: "var(--aeo-muted)", padding: 40 }}>
           No scans yet for {brand.name}. Click <b>Scan now</b> to run the first SEO/AEO/GEO scan.
         </div>
       )}
@@ -297,65 +302,55 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
       {!isLoading && week && data && (
         <>
           {subtab === "Dashboard" && (
-            <div className="space-y-4">
-              <div className="flex flex-wrap items-center gap-4 rounded-lg border bg-card p-4">
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <div className="aeo-banner" style={{ background: "var(--aeo-card)" }}>
                 <div>
-                  <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Prompt coverage</div>
-                  <div className="text-sm">
+                  <div className="aeo-tile-k" style={{ fontSize: 12, color: "var(--aeo-muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: ".05em" }}>Prompt coverage</div>
+                  <div style={{ fontSize: 14 }}>
                     Tracking <b>{activePrompts}/{MAX_PROMPTS}</b> prompts across <b>{distinctProducts || 1}</b> product line(s), <b>{distinctICPs || 1}</b> ICP(s), <b>{distinctPhases || 1}</b> journey phase(s).
                   </div>
                 </div>
-                <div className="flex-1" />
-                <div className="h-1.5 w-40 rounded-full bg-muted">
-                  <div className="h-full rounded-full bg-accent" style={{ width: `${(activePrompts / MAX_PROMPTS) * 100}%` }} />
-                </div>
+                <div style={{ flex: 1 }} />
+                <div className="aeo-meter"><i style={{ width: `${(activePrompts / MAX_PROMPTS) * 100}%` }} /></div>
               </div>
 
-              <div className="rounded-lg border bg-card p-4">
-                <h2 className="mb-1 flex items-center gap-2 font-semibold">
-                  Weekly Audit Scores <span className="rounded bg-accent/10 px-2 py-0.5 text-[11px] font-bold text-accent">from site crawl</span>
-                </h2>
-                <p className="mb-3 text-sm text-muted-foreground">SEO / GEO / AEO rubric scores for {brand.name} — re-scored on every scan.</p>
-                <div className="grid gap-4 md:grid-cols-3">
+              <div className="aeo-section">
+                <h2>Weekly Audit Scores <Pill tone="acc">from site crawl</Pill></h2>
+                <p className="aeo-sub">SEO / GEO / AEO rubric scores for {brand.name} — re-scored on every scan.</p>
+                <div className="aeo-grid3">
                   {([
                     ["SEO — Traditional Search", latestScore?.seo_score, prevScore?.seo_score],
                     ["GEO — Generative Engines", latestScore?.geo_score, prevScore?.geo_score],
                     ["AEO — Answer Engines", latestScore?.aeo_score, prevScore?.aeo_score],
                   ] as const).map(([label, score, prev]) => (
-                    <div key={label} className="rounded-lg border p-4">
-                      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</div>
-                      <div className="flex items-baseline gap-2">
-                        <span className="text-3xl font-bold tabular-nums">{score ?? "—"}<span className="text-sm text-muted-foreground">/10</span></span>
+                    <div key={label} className="aeo-tile">
+                      <div className="aeo-k">{label}</div>
+                      <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                        <span className="aeo-v">{score ?? "—"}<span style={{ fontSize: 15, color: "var(--aeo-muted)", fontWeight: 400 }}>/10</span></span>
                         {trend(score, prev)}
                       </div>
-                      <div className="mt-2 h-1.5 rounded-full bg-muted">
-                        <div className="h-full rounded-full" style={{ width: `${(Number(score) || 0) * 10}%`, background: scoreColor(score) }} />
-                      </div>
+                      <div className="aeo-scorebar"><i style={{ width: `${(Number(score) || 0) * 10}%`, background: scoreColor(score) }} /></div>
                     </div>
                   ))}
                 </div>
               </div>
 
-              <div className="rounded-lg border bg-card p-4">
-                <h2 className="mb-1 font-semibold">Brand Metrics</h2>
-                <p className="mb-3 text-sm text-muted-foreground">How often {brand.name} appears in AI-generated answers. Weekly snapshots — not tied to the dashboard date filter.</p>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="rounded-lg border p-4">
-                    <div className="flex items-center justify-between">
-                      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Brand visibility</div>
-                      <DateChip>WEEK OF {week}</DateChip>
-                    </div>
-                    <div className="py-6 text-center">
-                      <span className="text-5xl font-bold tabular-nums">{currentVis}%</span>
-                      <div className="mt-1">{trend(currentVis, prevVis)}</div>
-                    </div>
+              <div className="aeo-section">
+                <h2>Brand Metrics</h2>
+                <p className="aeo-sub">How often {brand.name} appears in AI-generated answers. Weekly snapshots — not tied to the dashboard date filter.</p>
+                <div className="aeo-grid2">
+                  <div className="aeo-tile aeo-gauge-wrap">
+                    <div style={{ alignSelf: "flex-start" }} className="aeo-k">Brand visibility</div>
+                    <DateChip>WEEK OF {week}</DateChip>
+                    <Gauge pct={currentVis} />
+                    <div>{trend(currentVis, prevVis)}</div>
                   </div>
-                  <div className="rounded-lg border p-4">
-                    <div className="flex items-center justify-between">
-                      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Visibility over time</div>
+                  <div className="aeo-tile">
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <div className="aeo-k">Visibility over time</div>
                       <DateChip>BY ENGINE</DateChip>
                     </div>
-                    <ResponsiveContainer width="100%" height={190}>
+                    <ResponsiveContainer width="100%" height={170}>
                       <LineChart data={ownVisibility}>
                         <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.3} />
                         <XAxis dataKey="week_of" fontSize={11} />
@@ -368,43 +363,46 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
                 </div>
               </div>
 
-              <div className="rounded-lg border bg-card p-4">
-                <h2 className="mb-1 font-semibold">Competitor Landscape</h2>
-                <p className="mb-3 text-sm text-muted-foreground">Share of voice this week, and visibility trend over time.</p>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm tabular-nums">
-                      <thead><tr className="border-b text-left text-xs uppercase text-muted-foreground">
-                        <th className="py-2">Company</th><th className="text-right">Mentions</th><th className="text-right">Share of voice</th>
-                      </tr></thead>
+              <div className="aeo-section">
+                <h2>Competitor Landscape</h2>
+                <p className="aeo-sub">Share of voice this week, and visibility trend over time.</p>
+                <div className="aeo-grid2">
+                  <div className="aeo-tscroll">
+                    <table>
+                      <thead><tr><th>Company</th><th style={{ textAlign: "right" }}>Mentions</th><th style={{ textAlign: "right" }}>Share of voice</th></tr></thead>
                       <tbody>
                         {shareOfVoice.map(row => (
-                          <tr key={row.company} className={`border-b last:border-0 ${row.company === brand.name ? "font-bold" : ""}`}>
-                            <td className="py-2">{row.company}{row.company === brand.name && <span className="ml-1 text-xs font-normal text-muted-foreground">(you)</span>}</td>
-                            <td className="text-right">{row.mentions}</td>
-                            <td className="text-right">{row.pct}%</td>
+                          <tr key={row.company} style={row.company === brand.name ? { fontWeight: 700 } : undefined}>
+                            <td>{row.company}{row.company === brand.name && <span style={{ marginLeft: 4, fontSize: 11, fontWeight: 400, color: "var(--aeo-muted)" }}>(you)</span>}</td>
+                            <td style={{ textAlign: "right" }}>{row.mentions}</td>
+                            <td style={{ textAlign: "right" }}>{row.pct}%</td>
                           </tr>
                         ))}
                         {!shareOfVoice.some(r => r.mentions > 0) && (
-                          <tr><td colSpan={3} className="py-4 text-center text-muted-foreground">No mentions captured this week.</td></tr>
+                          <tr><td colSpan={3} style={{ textAlign: "center", color: "var(--aeo-muted)", padding: "16px 0" }}>No mentions captured this week.</td></tr>
                         )}
                       </tbody>
                     </table>
                   </div>
                   <div>
-                    <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Visibility over time</div>
+                    <div className="aeo-k" style={{ marginBottom: 8 }}>Visibility over time</div>
                     {competitorSeries.length > 1 ? (
-                      <ResponsiveContainer width="100%" height={180}>
-                        <LineChart data={data?.visibility ?? []}>
-                          <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.3} />
-                          <XAxis dataKey="week_of" fontSize={11} />
-                          <YAxis fontSize={11} unit="%" />
-                          <Tooltip />
-                          {competitorSeries.map((c, i) => (
-                            <Line key={c} type="monotone" dataKey="visibility_pct" data={(data?.visibility ?? []).filter((v: any) => v.company === c)} name={c} stroke={[HS.teal, HS.orange, HS.purple, HS.mint][i % 4]} strokeWidth={2} />
-                          ))}
-                        </LineChart>
-                      </ResponsiveContainer>
+                      <>
+                        <div className="aeo-legend">
+                          {competitorSeries.map((c, i) => <span key={c}><i style={{ background: competitorColors[i % 4] }} />{c}</span>)}
+                        </div>
+                        <ResponsiveContainer width="100%" height={160}>
+                          <LineChart data={data?.visibility ?? []}>
+                            <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.3} />
+                            <XAxis dataKey="week_of" fontSize={11} />
+                            <YAxis fontSize={11} unit="%" />
+                            <Tooltip />
+                            {competitorSeries.map((c, i) => (
+                              <Line key={c} type="monotone" dataKey="visibility_pct" data={(data?.visibility ?? []).filter((v: any) => v.company === c)} name={c} stroke={competitorColors[i % 4]} strokeWidth={2} />
+                            ))}
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </>
                     ) : (
                       <EmptyChart reason="The scan only tracks your own brand's visibility today — competitor visibility snapshots aren't captured yet." />
                     )}
@@ -412,36 +410,34 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
                 </div>
               </div>
 
-              <div className="rounded-lg border bg-card p-4">
-                <h2 className="mb-1 font-semibold">Citation Analysis — Top domains</h2>
-                <p className="mb-3 text-sm text-muted-foreground">The sites AI engines cite when answering the tracked prompts.</p>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm tabular-nums">
-                    <thead><tr className="border-b text-left text-xs uppercase text-muted-foreground">
-                      <th className="py-2">Domain</th><th className="text-right">Frequency</th><th>Brand mentioned</th>
-                    </tr></thead>
+              <div className="aeo-section">
+                <h2>Citation Analysis — Top domains</h2>
+                <p className="aeo-sub">The sites AI engines cite when answering the tracked prompts.</p>
+                <div className="aeo-tscroll">
+                  <table>
+                    <thead><tr><th>Domain</th><th style={{ textAlign: "right" }}>Frequency</th><th>Brand mentioned</th></tr></thead>
                     <tbody>
                       {(data.citations ?? []).slice(0, 10).map((c: any) => (
-                        <tr key={c.id} className="border-b last:border-0">
-                          <td className="py-2 font-medium text-accent">{c.domain}</td>
-                          <td className="text-right">{c.frequency}</td>
+                        <tr key={c.id}>
+                          <td style={{ fontWeight: 600 }}><a href={`https://${c.domain}`} target="_blank" rel="noreferrer">{c.domain}</a></td>
+                          <td style={{ textAlign: "right" }}>{c.frequency}</td>
                           <td>{c.brand_mentioned ? <Pill tone="good">Yes</Pill> : "No"}</td>
                         </tr>
                       ))}
-                      {!data.citations?.length && <tr><td colSpan={3} className="py-4 text-center text-muted-foreground">No citations captured this week.</td></tr>}
+                      {!data.citations?.length && <tr><td colSpan={3} style={{ textAlign: "center", color: "var(--aeo-muted)", padding: "16px 0" }}>No citations captured this week.</td></tr>}
                     </tbody>
                   </table>
                 </div>
               </div>
 
-              <div className="rounded-lg border bg-card p-4">
-                <h2 className="mb-1 font-semibold">Citation Composition</h2>
-                <p className="mb-3 text-sm text-muted-foreground">Which content formats and channels shape the answers AI engines give.</p>
-                <div className="grid gap-4 md:grid-cols-2">
+              <div className="aeo-section">
+                <h2>Citation Composition</h2>
+                <p className="aeo-sub">Which content formats and channels shape the answers AI engines give.</p>
+                <div className="aeo-grid2">
                   <div>
-                    <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">By content type</div>
+                    <div className="aeo-k" style={{ marginBottom: 8 }}>By content type</div>
                     {byContentType.length ? (
-                      <ResponsiveContainer width="100%" height={180}>
+                      <ResponsiveContainer width="100%" height={170}>
                         <BarChart data={byContentType}>
                           <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.3} />
                           <XAxis dataKey="name" fontSize={10} />
@@ -453,9 +449,9 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
                     ) : <EmptyChart reason="The scan doesn't classify citations by content type yet — this needs an extra classification step added to the scan." />}
                   </div>
                   <div>
-                    <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">By channel</div>
+                    <div className="aeo-k" style={{ marginBottom: 8 }}>By channel</div>
                     {byChannelType.length ? (
-                      <ResponsiveContainer width="100%" height={180}>
+                      <ResponsiveContainer width="100%" height={170}>
                         <BarChart data={byChannelType}>
                           <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.3} />
                           <XAxis dataKey="name" fontSize={10} />
@@ -472,47 +468,45 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
           )}
 
           {subtab === "Prompts" && (
-            <div className="rounded-lg border bg-card p-4">
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <h2 className="flex items-center gap-2 font-semibold">
-                  Tracked Prompts <span className="rounded bg-muted px-2 py-0.5 text-xs">{data.prompts?.length ?? 0} / {MAX_PROMPTS} used</span>
-                </h2>
+            <div className="aeo-section">
+              <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 4 }}>
+                <h2>Tracked Prompts <span className="aeo-pill neutral">{data.prompts?.length ?? 0} / {MAX_PROMPTS} used</span></h2>
                 <button
                   onClick={() => setShowAddPrompt(true)}
                   disabled={(data.prompts?.length ?? 0) >= MAX_PROMPTS}
-                  className="rounded-md bg-[#FF5C35] px-3 py-1.5 text-sm font-semibold text-white hover:brightness-110 disabled:opacity-40"
+                  className="aeo-btn"
+                  style={{ padding: "6px 14px", fontSize: 13 }}
                 >
                   ＋ Add prompt
                 </button>
               </div>
-              <p className="mb-3 text-sm text-muted-foreground">Questions we ask each AI engine weekly. Capped at {MAX_PROMPTS} per brand to stay inside API free limits.</p>
+              <p className="aeo-sub">Questions we ask each AI engine weekly. Capped at {MAX_PROMPTS} per brand to stay inside API free limits.</p>
               <input
-                className="mb-3 w-full max-w-xs rounded-md border bg-background px-3 py-1.5 text-sm"
+                className="aeo-searchbox"
+                style={{ maxWidth: 280, marginBottom: 12 }}
                 placeholder="Search prompts"
                 value={promptSearch}
                 onChange={e => setPromptSearch(e.target.value)}
               />
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead><tr className="border-b text-left text-xs uppercase text-muted-foreground">
-                    <th className="py-2">Prompt</th><th>Visibility</th><th>Product</th><th>ICP</th><th>Journey phase</th><th></th>
-                  </tr></thead>
+              <div className="aeo-tscroll">
+                <table>
+                  <thead><tr><th>Prompt</th><th>Visibility</th><th>Product</th><th>ICP</th><th>Journey phase</th><th></th></tr></thead>
                   <tbody>
                     {filteredPrompts.map((p: any) => {
                       const r = data.promptResults?.find((x: any) => x.prompt_id === p.id);
                       return (
-                        <tr key={p.id} className="border-b last:border-0">
-                          <td className="py-2 font-medium">{p.prompt}</td>
-                          <td>{r ? (r.brand_mentioned ? <Pill tone="good">Mentioned</Pill> : <Pill tone="bad">0%</Pill>) : <span className="text-muted-foreground">—</span>}</td>
+                        <tr key={p.id}>
+                          <td style={{ fontWeight: 600 }}>{p.prompt}</td>
+                          <td>{r ? (r.brand_mentioned ? <Pill tone="good">Mentioned</Pill> : <Pill tone="bad">0%</Pill>) : <span style={{ color: "var(--aeo-muted)" }}>—</span>}</td>
                           <td>{p.product_service ?? "—"}</td>
                           <td>{p.icp ?? "—"}</td>
                           <td>{p.journey_phase ?? "—"}</td>
-                          <td><button onClick={() => deactivatePrompt(p.id)} className="text-xs text-muted-foreground hover:text-red-500">Remove</button></td>
+                          <td><button onClick={() => deactivatePrompt(p.id)} style={{ fontSize: 12, color: "var(--aeo-muted)", background: "none", border: 0 }}>Remove</button></td>
                         </tr>
                       );
                     })}
                     {!filteredPrompts.length && (
-                      <tr><td colSpan={6} className="py-4 text-center text-muted-foreground">
+                      <tr><td colSpan={6} style={{ textAlign: "center", color: "var(--aeo-muted)", padding: "16px 0" }}>
                         {data.prompts?.length ? "No prompts match your search." : 'No prompts yet — click "Add prompt" or run a scan (auto-generates 10 on first run).'}
                       </td></tr>
                     )}
@@ -521,39 +515,35 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
               </div>
 
               {showAddPrompt && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowAddPrompt(false)}>
-                  <div className="w-full max-w-md rounded-lg border bg-card p-5" onClick={e => e.stopPropagation()}>
-                    <h3 className="mb-1 font-semibold">Add a tracked prompt</h3>
-                    <p className="mb-3 text-xs text-muted-foreground">{MAX_PROMPTS - (data.prompts?.length ?? 0)} slot(s) remaining this week.</p>
+                <div className="aeo-modal" onClick={() => setShowAddPrompt(false)}>
+                  <div className="aeo-box" onClick={e => e.stopPropagation()}>
+                    <h3 style={{ margin: "0 0 4px", fontWeight: 700 }}>Add a tracked prompt</h3>
+                    <p className="aeo-sub">{MAX_PROMPTS - (data.prompts?.length ?? 0)} slot(s) remaining this week.</p>
                     <textarea
-                      className="mb-2 w-full rounded-md border bg-background p-2 text-sm"
                       rows={3}
                       placeholder="e.g. Which hot tub has the lowest maintenance cost?"
                       value={newPrompt.prompt}
                       onChange={e => setNewPrompt({ ...newPrompt, prompt: e.target.value })}
                     />
                     <input
-                      className="mb-2 w-full rounded-md border bg-background p-2 text-sm"
                       placeholder="Product / Service"
                       value={newPrompt.product_service}
                       onChange={e => setNewPrompt({ ...newPrompt, product_service: e.target.value })}
                     />
                     <input
-                      className="mb-2 w-full rounded-md border bg-background p-2 text-sm"
                       placeholder="Ideal customer profile"
                       value={newPrompt.icp}
                       onChange={e => setNewPrompt({ ...newPrompt, icp: e.target.value })}
                     />
                     <select
-                      className="mb-4 w-full rounded-md border bg-background p-2 text-sm"
                       value={newPrompt.journey_phase}
                       onChange={e => setNewPrompt({ ...newPrompt, journey_phase: e.target.value })}
                     >
                       {["Awareness", "Consideration", "Decision"].map(j => <option key={j}>{j}</option>)}
                     </select>
-                    <div className="flex justify-end gap-2">
-                      <button onClick={() => setShowAddPrompt(false)} className="rounded-md border px-3 py-1.5 text-sm">Cancel</button>
-                      <button onClick={addPrompt} className="rounded-md bg-[#FF5C35] px-3 py-1.5 text-sm font-semibold text-white">Save prompt</button>
+                    <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
+                      <button onClick={() => setShowAddPrompt(false)} style={{ border: "1px solid var(--aeo-line)", borderRadius: 8, padding: "7px 14px", background: "var(--aeo-card)", color: "var(--aeo-ink)" }}>Cancel</button>
+                      <button onClick={addPrompt} className="aeo-btn">Save prompt</button>
                     </div>
                   </div>
                 </div>
@@ -562,27 +552,25 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
           )}
 
           {subtab === "Citations" && (
-            <div className="space-y-4">
-              <div className="rounded-lg border bg-card p-4">
-                <h2 className="mb-3 font-semibold">Top recommendations this week</h2>
-                <div className="grid gap-3 md:grid-cols-3">
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <div className="aeo-section">
+                <h2>Top recommendations this week</h2>
+                <div className="aeo-grid3">
                   {topRecs.map((r: any) => (
-                    <div key={r.id} className="rounded-lg border p-3">
-                      <div className="mb-2 flex items-center justify-between">
-                        <span className="rounded border px-2 py-0.5 text-[11px] font-bold text-accent">{r.rec_type}</span>
-                        <Pill tone={r.priority === "HIGH" ? "bad" : r.priority === "MED" ? "warn" : "neutral"}>{r.priority}</Pill>
-                      </div>
-                      <div className="text-sm font-semibold">{r.title}</div>
+                    <div key={r.id} className="aeo-reccard">
+                      <span className="aeo-cat">{r.rec_type}</span>
+                      <span className="aeo-hi" style={{ float: "right" }}><Pill tone={r.priority === "HIGH" ? "bad" : r.priority === "MED" ? "warn" : "neutral"}>{r.priority}</Pill></span>
+                      <b>{r.title}</b>
                     </div>
                   ))}
-                  {!topRecs.length && <div className="col-span-3 py-4 text-center text-muted-foreground">No recommendations yet — run a scan.</div>}
+                  {!topRecs.length && <div style={{ gridColumn: "1 / -1", textAlign: "center", color: "var(--aeo-muted)", padding: "16px 0" }}>No recommendations yet — run a scan.</div>}
                 </div>
               </div>
 
-              <div className="rounded-lg border bg-card p-4">
-                <h2 className="mb-1 font-semibold">Citations — week of {week}</h2>
-                <p className="mb-3 text-sm text-muted-foreground">Which domains AI engines cited most often when answering the tracked prompts this week.</p>
-                <ResponsiveContainer width="100%" height={220}>
+              <div className="aeo-section">
+                <h2>Citations — week of {week}</h2>
+                <p className="aeo-sub">Which domains AI engines cited most often when answering the tracked prompts this week.</p>
+                <ResponsiveContainer width="100%" height={210}>
                   <BarChart data={(data.citations ?? []).slice(0, 12)}>
                     <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.3} />
                     <XAxis dataKey="domain" fontSize={10} interval={0} angle={-25} textAnchor="end" height={70} />
@@ -593,20 +581,18 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
                 </ResponsiveContainer>
               </div>
 
-              <div className="rounded-lg border bg-card p-4">
-                <h2 className="mb-1 font-semibold">Top URLs</h2>
-                <p className="mb-3 text-sm text-muted-foreground">The exact pages AI engines cited, not just the domain.</p>
+              <div className="aeo-section">
+                <h2>Top URLs</h2>
+                <p className="aeo-sub">The exact pages AI engines cited, not just the domain.</p>
                 {topUrls.length ? (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm tabular-nums">
-                      <thead><tr className="border-b text-left text-xs uppercase text-muted-foreground">
-                        <th className="py-2">URL</th><th className="text-right">Frequency</th><th>Brand mentioned</th>
-                      </tr></thead>
+                  <div className="aeo-tscroll">
+                    <table>
+                      <thead><tr><th>URL</th><th style={{ textAlign: "right" }}>Frequency</th><th>Brand mentioned</th></tr></thead>
                       <tbody>
                         {topUrls.map((c: any) => (
-                          <tr key={c.id} className="border-b last:border-0">
-                            <td className="py-2"><a href={c.url} target="_blank" rel="noreferrer" className="font-medium text-accent hover:underline">{c.url}</a></td>
-                            <td className="text-right">{c.frequency}</td>
+                          <tr key={c.id}>
+                            <td><a href={c.url} target="_blank" rel="noreferrer">{c.url}</a></td>
+                            <td style={{ textAlign: "right" }}>{c.frequency}</td>
                             <td>{c.brand_mentioned ? <Pill tone="good">Yes</Pill> : "No"}</td>
                           </tr>
                         ))}
@@ -621,48 +607,40 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
           )}
 
           {subtab === "Recommendations" && (
-            <div className="rounded-lg border bg-card p-4">
-              <h2 className="mb-3 font-semibold">Recommendations <span className="rounded bg-accent/10 px-2 py-0.5 text-[11px] font-bold text-accent">auto-generated weekly</span></h2>
-              <div className="grid gap-4 md:grid-cols-[180px_1fr]">
-                <div className="flex md:flex-col gap-1 overflow-x-auto md:border-r md:pr-3">
-                  <button
-                    onClick={() => setRecFilter(null)}
-                    className={`rounded-md px-3 py-1.5 text-left text-sm whitespace-nowrap ${!recFilter ? "bg-accent/10 font-semibold text-accent" : "text-muted-foreground"}`}
-                  >
-                    All <span className="float-right md:float-none md:ml-1">{data.recs?.length ?? 0}</span>
+            <div className="aeo-section">
+              <h2>Recommendations <Pill tone="acc">auto-generated weekly</Pill></h2>
+              <div className="aeo-recwrap" style={{ marginTop: 12 }}>
+                <div className="aeo-rail">
+                  <button onClick={() => setRecFilter(null)} className={!recFilter ? "on" : ""}>
+                    All <span className="aeo-cnt">{data.recs?.length ?? 0}</span>
                   </button>
                   {recTypes.map(t => (
-                    <button
-                      key={t}
-                      onClick={() => setRecFilter(t)}
-                      className={`rounded-md px-3 py-1.5 text-left text-sm whitespace-nowrap ${recFilter === t ? "bg-accent/10 font-semibold text-accent" : "text-muted-foreground"}`}
-                    >
-                      {t} <span className="float-right md:float-none md:ml-1">{(data.recs ?? []).filter((r: any) => r.rec_type === t).length}</span>
+                    <button key={t} onClick={() => setRecFilter(t)} className={recFilter === t ? "on" : ""}>
+                      {t} <span className="aeo-cnt">{(data.recs ?? []).filter((r: any) => r.rec_type === t).length}</span>
                     </button>
                   ))}
                 </div>
                 <div>
                   <input
-                    className="mb-3 w-full max-w-xs rounded-md border bg-background px-3 py-1.5 text-sm"
+                    className="aeo-searchbox"
+                    style={{ maxWidth: 280 }}
                     placeholder="Search recommendations"
                     value={recSearch}
                     onChange={e => setRecSearch(e.target.value)}
                   />
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead><tr className="border-b text-left text-xs uppercase text-muted-foreground">
-                        <th className="py-2">Title</th><th>Type</th><th>Channel</th><th>Priority</th><th>Status</th><th>Assignee</th><th>Created</th>
-                      </tr></thead>
+                  <div className="aeo-tscroll">
+                    <table>
+                      <thead><tr><th>Title</th><th>Type</th><th>Channel</th><th>Priority</th><th>Status</th><th>Assignee</th><th>Created</th></tr></thead>
                       <tbody>
                         {filteredRecs.map((r: any) => (
-                          <tr key={r.id} className="border-b last:border-0">
-                            <td className="py-2 font-medium">{r.title}</td>
+                          <tr key={r.id}>
+                            <td style={{ fontWeight: 600 }}>{r.title}</td>
                             <td>{r.rec_type}</td>
                             <td>{r.channel ?? "—"}</td>
                             <td><Pill tone={r.priority === "HIGH" ? "bad" : r.priority === "MED" ? "warn" : "neutral"}>{r.priority}</Pill></td>
                             <td>
                               <select
-                                className="rounded border bg-background px-1 py-0.5 text-xs"
+                                className="aeo-status"
                                 value={r.status}
                                 onChange={async e => {
                                   const { error } = await sb.from("aeo_recommendations").update({ status: e.target.value, updated_at: new Date().toISOString() }).eq("id", r.id);
@@ -673,12 +651,12 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
                                 {["New", "Not started", "In progress", "Completed"].map(s => <option key={s}>{s}</option>)}
                               </select>
                             </td>
-                            <td className="text-muted-foreground">{r.assignee ?? "Unassigned"}</td>
-                            <td className="text-muted-foreground whitespace-nowrap">{new Date(r.created_at).toLocaleDateString()}</td>
+                            <td style={{ color: "var(--aeo-muted)" }}>{r.assignee ?? "Unassigned"}</td>
+                            <td style={{ color: "var(--aeo-muted)", whiteSpace: "nowrap" }}>{new Date(r.created_at).toLocaleDateString()}</td>
                           </tr>
                         ))}
                         {!filteredRecs.length && (
-                          <tr><td colSpan={7} className="py-4 text-center text-muted-foreground">
+                          <tr><td colSpan={7} style={{ textAlign: "center", color: "var(--aeo-muted)", padding: "16px 0" }}>
                             {data.recs?.length ? "No recommendations match your search." : "No recommendations yet — run a scan."}
                           </td></tr>
                         )}
@@ -691,33 +669,29 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
           )}
 
           {subtab === "Reddit Visibility" && (
-            <div className="rounded-lg border bg-card p-4">
-              <h2 className="mb-1 flex items-center gap-2 font-semibold">
-                Reddit Visibility <span className="rounded bg-accent/10 px-2 py-0.5 text-[11px] font-bold text-accent">feeds weekly dealer email</span>
-              </h2>
-              <p className="mb-3 text-sm text-muted-foreground">Threads AI engines cite or that rank for category questions. Stored weekly — the same data is pushed to the HubSpot landing page and archived as a PDF.</p>
-              <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+            <div className="aeo-section">
+              <h2>Reddit Visibility <Pill tone="acc">feeds weekly dealer email</Pill></h2>
+              <p className="aeo-sub">Threads AI engines cite or that rank for category questions. Stored weekly — the same data is pushed to the HubSpot landing page and archived as a PDF.</p>
+              <div className="aeo-grid3" style={{ gridTemplateColumns: "repeat(4,1fr)", marginBottom: 16 }}>
                 {([
                   ["Threads tracked", redditStats.tracked],
                   ["Brand mentioned", redditStats.mentioned],
                   ["Cited by AI", redditStats.cited],
                   ["High opportunity", redditStats.highOpportunity],
                 ] as const).map(([label, val]) => (
-                  <div key={label} className="rounded-lg border p-3">
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</div>
-                    <div className="text-2xl font-bold tabular-nums">{val}</div>
+                  <div key={label} className="aeo-tile">
+                    <div className="aeo-k">{label}</div>
+                    <div className="aeo-v" style={{ fontSize: 24 }}>{val}</div>
                   </div>
                 ))}
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm tabular-nums">
-                  <thead><tr className="border-b text-left text-xs uppercase text-muted-foreground">
-                    <th className="py-2">Thread</th><th>Subreddit</th><th>▲ / 💬</th><th>Brand</th><th>Sentiment</th><th>Opportunity</th><th>Posted</th>
-                  </tr></thead>
+              <div className="aeo-tscroll">
+                <table>
+                  <thead><tr><th>Thread</th><th>Subreddit</th><th>▲ / 💬</th><th>Brand</th><th>Sentiment</th><th>Opportunity</th><th>Posted</th></tr></thead>
                   <tbody>
                     {(data.reddit ?? []).map((t: any) => (
-                      <tr key={t.id} className="border-b last:border-0">
-                        <td className="py-2"><a href={t.thread_url} target="_blank" rel="noreferrer" className="font-medium text-accent hover:underline">{t.title}</a></td>
+                      <tr key={t.id}>
+                        <td><a href={t.thread_url} target="_blank" rel="noreferrer">{t.title}</a></td>
                         <td>{t.subreddit}</td>
                         <td>{t.upvotes} / {t.num_comments}</td>
                         <td>{t.brand_mentioned ? <Pill tone="good">Yes</Pill> : "No"}</td>
@@ -726,7 +700,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
                         <td>{t.posted_at ? new Date(t.posted_at).toLocaleDateString() : "—"}</td>
                       </tr>
                     ))}
-                    {!data.reddit?.length && <tr><td colSpan={7} className="py-4 text-center text-muted-foreground">No Reddit threads captured this week.</td></tr>}
+                    {!data.reddit?.length && <tr><td colSpan={7} style={{ textAlign: "center", color: "var(--aeo-muted)", padding: "16px 0" }}>No Reddit threads captured this week.</td></tr>}
                   </tbody>
                 </table>
               </div>

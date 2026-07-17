@@ -1,0 +1,166 @@
+/* Visual language ported directly from the approved prototype — same font,
+   same color tokens, same card/pill/gauge shapes. Scoped under .aeo-tab so it
+   never leaks into the rest of the dashboard's shadcn/Tailwind styling. */
+
+.aeo-tab {
+  --aeo-accent: #0091AE;
+  --aeo-accent-soft: rgba(0, 145, 174, 0.10);
+  --aeo-primary: #FF5C35;
+  --aeo-card: #FFFFFF;
+  --aeo-ink: #1C1917;
+  --aeo-muted: #6B6660;
+  --aeo-line: #E7E4DF;
+  --aeo-good: #15803D; --aeo-good-bg: #EAF6EE;
+  --aeo-warn: #B45309; --aeo-warn-bg: #FCF3E6;
+  --aeo-bad: #B91C1C; --aeo-bad-bg: #FBEAEA;
+  --aeo-chip: #F1EFEB;
+  font-family: "Lexend Deca", Helvetica, Arial, sans-serif;
+  color: var(--aeo-ink);
+}
+
+.dark .aeo-tab {
+  --aeo-accent: #22B8D8;
+  --aeo-accent-soft: rgba(34, 184, 216, 0.16);
+  --aeo-card: #1D1F22;
+  --aeo-ink: #EDEBE8;
+  --aeo-muted: #9A968F;
+  --aeo-line: #2E3134;
+  --aeo-good: #4ADE80; --aeo-good-bg: #12291A;
+  --aeo-warn: #FBBF24; --aeo-warn-bg: #2E2410;
+  --aeo-bad: #F87171; --aeo-bad-bg: #2E1616;
+  --aeo-chip: #26282B;
+}
+
+.aeo-tab .aeo-header {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+  background: var(--aeo-card); border: 1px solid var(--aeo-line); border-radius: 12px; padding: 14px 18px;
+}
+.aeo-tab .aeo-beta {
+  background: var(--aeo-accent-soft); color: var(--aeo-accent);
+  font-size: 10px; font-weight: 700; letter-spacing: .06em; padding: 3px 9px; border-radius: 99px;
+}
+.aeo-tab .aeo-lastscan { color: var(--aeo-muted); font-size: 12.5px; }
+.aeo-tab .aeo-lastscan b { color: var(--aeo-ink); }
+.aeo-tab .aeo-btn {
+  background: var(--aeo-primary); color: #fff; border: 0; border-radius: 8px;
+  padding: 8px 16px; font-weight: 600; font-size: 13.5px; font-family: inherit;
+}
+.aeo-tab .aeo-btn:hover { filter: brightness(1.08); }
+.aeo-tab .aeo-btn:disabled { opacity: .55; }
+.aeo-tab .aeo-select {
+  font: inherit; font-size: 13px; border: 1px solid var(--aeo-line); border-radius: 8px;
+  padding: 6px 10px; background: var(--aeo-card); color: var(--aeo-ink);
+}
+
+.aeo-tab .aeo-subtabs {
+  display: flex; gap: 2px; border-bottom: 1px solid var(--aeo-line); overflow-x: auto;
+}
+.aeo-tab .aeo-subtabs button {
+  background: none; border: 0; padding: 10px 16px; color: var(--aeo-muted); font-weight: 600;
+  font-size: 13.5px; font-family: inherit; border-bottom: 2px solid transparent; white-space: nowrap;
+}
+.aeo-tab .aeo-subtabs button.on { color: var(--aeo-ink); border-bottom-color: var(--aeo-accent); }
+
+.aeo-tab .aeo-section {
+  background: var(--aeo-card); border: 1px solid var(--aeo-line); border-radius: 12px; padding: 20px;
+}
+.aeo-tab .aeo-section h2 {
+  font-size: 15px; margin: 0 0 2px; display: flex; align-items: center; gap: 8px; font-weight: 700;
+}
+.aeo-tab .aeo-section .aeo-sub { color: var(--aeo-muted); font-size: 12.5px; margin: 0 0 14px; }
+
+.aeo-tab .aeo-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.aeo-tab .aeo-grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+@media (max-width: 900px) { .aeo-tab .aeo-grid2, .aeo-tab .aeo-grid3 { grid-template-columns: 1fr; } }
+
+.aeo-tab .aeo-tile { border: 1px solid var(--aeo-line); border-radius: 10px; padding: 16px; }
+.aeo-tab .aeo-tile .aeo-k {
+  font-size: 12px; color: var(--aeo-muted); font-weight: 600; text-transform: uppercase; letter-spacing: .05em;
+}
+.aeo-tab .aeo-tile .aeo-v {
+  font-size: 30px; font-weight: 750; font-variant-numeric: tabular-nums; letter-spacing: -.02em;
+}
+.aeo-tab .aeo-scorebar { height: 6px; background: var(--aeo-line); border-radius: 99px; margin-top: 10px; overflow: hidden; }
+.aeo-tab .aeo-scorebar i { display: block; height: 100%; border-radius: 99px; }
+
+.aeo-tab .aeo-datechip {
+  display: inline-block; font-size: 10px; letter-spacing: .05em; background: var(--aeo-chip);
+  padding: 2px 8px; border-radius: 4px; color: var(--aeo-muted); font-weight: 700;
+}
+
+.aeo-tab .aeo-tscroll { overflow-x: auto; }
+.aeo-tab table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 13.5px; }
+.aeo-tab th {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--aeo-muted);
+  text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--aeo-line);
+}
+.aeo-tab td { padding: 9px 10px; border-bottom: 1px solid var(--aeo-line); vertical-align: top; }
+.aeo-tab tr:last-child td { border-bottom: 0; }
+.aeo-tab a { color: var(--aeo-accent); text-decoration: none; font-weight: 600; }
+
+.aeo-tab .aeo-pill {
+  display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 6px;
+  background: var(--aeo-chip); white-space: nowrap;
+}
+.aeo-tab .aeo-pill.good { background: var(--aeo-good-bg); color: var(--aeo-good); }
+.aeo-tab .aeo-pill.warn { background: var(--aeo-warn-bg); color: var(--aeo-warn); }
+.aeo-tab .aeo-pill.bad { background: var(--aeo-bad-bg); color: var(--aeo-bad); }
+.aeo-tab .aeo-pill.neutral { background: var(--aeo-chip); color: var(--aeo-muted); }
+.aeo-tab .aeo-pill.acc { background: var(--aeo-accent-soft); color: var(--aeo-accent); }
+
+.aeo-tab .aeo-legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--aeo-muted); margin-bottom: 8px; }
+.aeo-tab .aeo-legend i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; margin-right: 5px; }
+
+.aeo-tab .aeo-trend-up { color: var(--aeo-good); font-weight: 700; font-size: 12px; }
+.aeo-tab .aeo-trend-down { color: var(--aeo-bad); font-weight: 700; font-size: 12px; }
+.aeo-tab .aeo-trend-flat { color: var(--aeo-muted); font-size: 12px; }
+
+.aeo-tab .aeo-searchbox {
+  width: 100%; font: inherit; font-size: 13px; border: 1px solid var(--aeo-line); border-radius: 8px;
+  padding: 8px 12px; background: var(--aeo-card); color: var(--aeo-ink);
+}
+
+.aeo-tab .aeo-recwrap { display: grid; grid-template-columns: 200px 1fr; gap: 20px; }
+@media (max-width: 900px) { .aeo-tab .aeo-recwrap { grid-template-columns: 1fr; } }
+.aeo-tab .aeo-rail { border-right: 1px solid var(--aeo-line); padding-right: 14px; display: flex; flex-direction: column; gap: 2px; }
+.aeo-tab .aeo-rail button {
+  display: block; width: 100%; text-align: left; background: none; border: 0; padding: 8px 10px;
+  border-radius: 7px; color: var(--aeo-muted); font-weight: 600; font-size: 13px; font-family: inherit;
+}
+.aeo-tab .aeo-rail button.on { background: var(--aeo-accent-soft); color: var(--aeo-accent); }
+.aeo-tab .aeo-rail .aeo-cnt { float: right; font-weight: 500; }
+
+.aeo-tab .aeo-reccard { border: 1px solid var(--aeo-line); border-radius: 10px; padding: 14px; font-size: 12.5px; }
+.aeo-tab .aeo-reccard .aeo-cat {
+  font-size: 11px; font-weight: 700; color: var(--aeo-accent); border: 1px solid var(--aeo-accent);
+  border-radius: 5px; padding: 1px 7px; display: inline-block; margin-bottom: 8px;
+}
+.aeo-tab .aeo-reccard b { display: block; margin-bottom: 4px; }
+
+.aeo-tab .aeo-banner {
+  background: var(--aeo-warn-bg); border: 1px solid var(--aeo-line); border-radius: 10px;
+  padding: 14px 18px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
+}
+.aeo-tab .aeo-banner .aeo-meter { height: 6px; flex: 0 0 160px; background: var(--aeo-line); border-radius: 99px; overflow: hidden; }
+.aeo-tab .aeo-banner .aeo-meter i { display: block; height: 100%; background: linear-gradient(90deg, var(--aeo-warn), var(--aeo-accent)); }
+
+.aeo-tab select.aeo-status {
+  font: inherit; font-size: 12.5px; border: 1px solid var(--aeo-line); background: var(--aeo-card);
+  color: var(--aeo-ink); border-radius: 6px; padding: 3px 6px;
+}
+
+.aeo-tab .aeo-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  min-height: 160px; border: 1px dashed var(--aeo-line); border-radius: 10px; text-align: center; padding: 16px;
+}
+.aeo-tab .aeo-empty .aeo-empty-title { font-size: 13px; font-weight: 600; color: var(--aeo-muted); }
+.aeo-tab .aeo-empty .aeo-empty-reason { font-size: 11.5px; color: var(--aeo-muted); opacity: .75; max-width: 320px; }
+
+.aeo-tab .aeo-modal { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; z-index: 200; }
+.aeo-tab .aeo-modal .aeo-box { background: var(--aeo-card); border-radius: 14px; padding: 24px; width: 440px; max-width: 92vw; }
+.aeo-tab .aeo-modal textarea, .aeo-tab .aeo-modal input, .aeo-tab .aeo-modal select {
+  width: 100%; font: inherit; border: 1px solid var(--aeo-line); border-radius: 8px; padding: 9px;
+  background: var(--aeo-card); color: var(--aeo-ink); margin: 8px 0;
+}
+
+.aeo-tab .aeo-gauge-wrap { display: flex; flex-direction: column; align-items: center; padding: 10px 0; }
