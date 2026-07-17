@@ -112,8 +112,10 @@ Deno.serve(async (req: Request) => {
   const json = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "content-type": "application/json" } });
 
-  const hsToken = Deno.env.get("HUBSPOT_ACCESS_TOKEN");
-  if (!hsToken) return json({ error: "HUBSPOT_ACCESS_TOKEN not configured" }, 500);
+  // Vita Spa's landing page lives in a different HubSpot portal (358916) than the
+  // default token's portal (24202603) — use the portal-specific token when available.
+  const hsToken = Deno.env.get("HUBSPOT_ACCESS_TOKEN_358916") ?? Deno.env.get("HUBSPOT_ACCESS_TOKEN");
+  if (!hsToken) return json({ error: "No HubSpot token configured" }, 500);
 
   const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
@@ -128,7 +130,29 @@ Deno.serve(async (req: Request) => {
     if (!isAdmin) return json({ error: "Admins only" }, 403);
   }
 
-  const { brandId, brandName, landingPageId, weekOf, uploadPdf = true, introFind, tableFind }: PublishRequest = await req.json();
+  const reqBody = await req.json();
+  if (reqBody.verifyPage) {
+    const liveRes = await fetch(`https://api.hubapi.com/cms/v3/pages/landing-pages/${reqBody.verifyPage}`, {
+      headers: { authorization: `Bearer ${hsToken}` },
+    });
+    const live = await liveRes.json();
+    const raw = JSON.stringify(live);
+    return json({
+      status: liveRes.status,
+      hasNewIntro: raw.includes("This Week's Reddit Opportunities"),
+      hasOldIntro: raw.includes("Territory Sales Manager") && !raw.includes("Contact your Territory Sales Manager"),
+      hasRealThread: raw.includes("hot tub service tech"),
+      publishDate: live.publishDate,
+      updatedAt: live.updatedAt,
+    });
+  }
+  if (reqBody.whoami) {
+    const infoRes = await fetch("https://api.hubapi.com/account-info/v3/details", {
+      headers: { authorization: `Bearer ${hsToken}` },
+    });
+    return json({ status: infoRes.status, body: await infoRes.json().catch(() => infoRes.text()) });
+  }
+  const { brandId, brandName, landingPageId, weekOf, uploadPdf = true, introFind, tableFind }: PublishRequest = reqBody;
 
   // Latest week with data if not specified
   let week = weekOf;
@@ -205,62 +229,96 @@ Deno.serve(async (req: Request) => {
   let fileError: string | null = null;
   if (uploadPdf) {
     try {
+      // jspdf-autotable computes internal page-scale factors that don't behave
+      // reliably under Deno's esm.sh module resolution ("Invalid argument passed
+      // to jsPDF.scale") — so the table is drawn manually with jsPDF core primitives.
       const { jsPDF } = await import("https://esm.sh/jspdf@4.2.1");
-      const { default: autoTable } = await import("https://esm.sh/jspdf-autotable@5.0.7");
       const list = threads as Thread[];
       const doc = new jsPDF({ unit: "pt", format: "letter" });
       const W = doc.internal.pageSize.getWidth();
+      const H = doc.internal.pageSize.getHeight();
+      const M = 40;
 
       doc.setFillColor(15, 37, 66); doc.rect(0, 0, W, 92, "F");
       doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(16);
-      doc.text("AMERICAN BATH GROUP", 40, 38);
+      doc.text("AMERICAN BATH GROUP", M, 38);
       doc.setFontSize(11); doc.setFont("helvetica", "normal"); doc.setTextColor(147, 197, 253);
-      doc.text(`Weekly Reddit Opportunities  ·  ${brandName} Dealers`, 40, 58);
+      doc.text(`Weekly Reddit Opportunities  ·  ${brandName} Dealers`, M, 58);
       doc.setTextColor(255, 255, 255); doc.setFontSize(9);
-      doc.text(`Week of ${week}`, 40, 74);
+      doc.text(`Week of ${week}`, M, 74);
 
       doc.setTextColor(30, 41, 59); doc.setFontSize(11); doc.setFont("helvetica", "bold");
-      doc.text(`${list.length} conversations your customers are having right now.`, 40, 120);
+      doc.text(`${list.length} conversations your customers are having right now.`, M, 120);
       doc.setFont("helvetica", "normal"); doc.setFontSize(9.5); doc.setTextColor(90, 100, 110);
-      doc.text("Click any thread title to open it on Reddit. Threads marked HIGH are cited by AI assistants when buyers ask", 40, 136);
-      doc.text("for recommendations — a helpful dealer reply there reaches far beyond Reddit.", 40, 148);
+      doc.text("Click any thread title to open it on Reddit. Threads marked HIGH are cited by AI assistants when buyers ask", M, 136);
+      doc.text("for recommendations — a helpful dealer reply there reaches far beyond Reddit.", M, 148);
 
-      const linkRects: Array<{ page: number; x: number; y: number; w: number; h: number; url: string }> = [];
-      autoTable(doc, {
-        startY: 165,
-        head: [["#", "Thread (click to open)", "Subreddit", "Activity", "Sentiment", "Priority"]],
-        body: list.map((t, i) => [String(i + 1), t.title, t.subreddit,
-          `${t.upvotes} up · ${t.num_comments} comments`, t.sentiment ?? "Neutral",
-          t.opportunity ?? (t.cited_by_ai_count > 0 ? "HIGH" : "MED")]),
-        margin: { left: 40, right: 40 },
-        styles: { font: "helvetica", fontSize: 8.5, cellPadding: 6, valign: "top", textColor: [30, 41, 59] },
-        headStyles: { fillColor: [15, 37, 66], textColor: [255, 255, 255], fontSize: 8, fontStyle: "bold" },
-        alternateRowStyles: { fillColor: [246, 248, 250] },
-        columnStyles: { 0: { cellWidth: 20 }, 1: { cellWidth: 180, textColor: [0, 145, 174], fontStyle: "bold" } },
-        didParseCell(data: { section: string; column: { index: number }; cell: { raw: unknown; styles: { textColor: number[] } } }) {
-          if (data.section === "body" && data.column.index === 5) {
-            data.cell.styles.textColor = String(data.cell.raw).startsWith("HIGH") ? [185, 28, 28] : [180, 83, 9];
-          }
-          if (data.section === "body" && data.column.index === 4) {
-            const v = data.cell.raw;
-            data.cell.styles.textColor = v === "Positive" ? [21, 128, 61] : v === "Negative" ? [185, 28, 28] : [90, 100, 110];
-          }
-        },
-        didDrawCell(data: { section: string; column: { index: number }; row: { index: number }; cell: { x: number; y: number; width: number; height: number } }) {
-          if (data.section === "body" && data.column.index === 1) {
-            linkRects.push({ page: doc.getCurrentPageInfo().pageNumber, ...data.cell, url: list[data.row.index].thread_url });
-          }
-        },
+      // Manual table: fixed column layout, word-wrapped title/action cells, row height
+      // grows to fit the wrapped title. Colors match the approved sample design.
+      const cols = [
+        { w: 18, label: "#" },
+        { w: 190, label: "Thread (click to open)" },
+        { w: 60, label: "Subreddit" },
+        { w: 90, label: "Activity" },
+        { w: 60, label: "Sentiment" },
+        { w: 55, label: "Priority" },
+      ];
+      const tableW = cols.reduce((s, c) => s + c.w, 0);
+      let y = 165;
+      const rowPad = 8;
+
+      const drawHeader = () => {
+        doc.setFillColor(15, 37, 66);
+        doc.rect(M, y, tableW, 22, "F");
+        doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(8);
+        let x = M + 6;
+        for (const c of cols) { doc.text(c.label, x, y + 14); x += c.w; }
+        y += 22;
+      };
+      drawHeader();
+
+      doc.setFont("helvetica", "normal");
+      list.forEach((t, i) => {
+        const titleLines = doc.splitTextToSize(t.title, cols[1].w - 12);
+        const rowH = Math.max(28, titleLines.length * 10 + rowPad * 2);
+
+        if (y + rowH > H - 60) { doc.addPage(); y = 40; drawHeader(); }
+
+        if (i % 2 === 1) { doc.setFillColor(246, 248, 250); doc.rect(M, y, tableW, rowH, "F"); }
+
+        let x = M + 6;
+        doc.setFontSize(8.5); doc.setTextColor(30, 41, 59);
+        doc.text(String(i + 1), x, y + rowPad + 8); x += cols[0].w;
+
+        doc.setTextColor(0, 145, 174); doc.setFont("helvetica", "bold");
+        doc.text(titleLines, x, y + rowPad + 8);
+        doc.link(M + cols[0].w, y, cols[1].w, rowH, { url: t.thread_url });
+        doc.setFont("helvetica", "normal"); x += cols[1].w;
+
+        doc.setTextColor(30, 41, 59);
+        doc.text(t.subreddit, x, y + rowPad + 8, { maxWidth: cols[2].w - 6 }); x += cols[2].w;
+        doc.text(`${t.upvotes} up`, x, y + rowPad + 8);
+        doc.text(`${t.num_comments} comments`, x, y + rowPad + 18); x += cols[3].w;
+
+        const sentiment = t.sentiment ?? "Neutral";
+        doc.setTextColor(...(sentiment === "Positive" ? [21, 128, 61] : sentiment === "Negative" ? [185, 28, 28] : [90, 100, 110]) as [number, number, number]);
+        doc.text(sentiment, x, y + rowPad + 8); x += cols[4].w;
+
+        const priority = t.opportunity ?? (t.cited_by_ai_count > 0 ? "HIGH" : "MED");
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(...(priority.startsWith("HIGH") ? [185, 28, 28] : [180, 83, 9]) as [number, number, number]);
+        doc.text(priority, x, y + rowPad + 8);
+        doc.setFont("helvetica", "normal");
+
+        y += rowH;
       });
-      for (const r of linkRects) { doc.setPage(r.page); doc.link(r.x, r.y, r.w, r.h, { url: r.url }); }
 
       const pages = doc.getNumberOfPages();
-      for (let i = 1; i <= pages; i++) {
-        doc.setPage(i);
-        const H = doc.internal.pageSize.getHeight();
-        doc.setDrawColor(226, 232, 240); doc.line(40, H - 46, W - 40, H - 46);
-        doc.setFontSize(8); doc.setTextColor(120, 130, 140);
-        doc.text("Generated by the ABG Brand Performance Hub — SEO & AEO & GEO weekly scan", 40, H - 32);
+      for (let p = 1; p <= pages; p++) {
+        doc.setPage(p);
+        doc.setDrawColor(226, 232, 240); doc.line(M, H - 46, W - M, H - 46);
+        doc.setFontSize(8); doc.setTextColor(120, 130, 140); doc.setFont("helvetica", "normal");
+        doc.text("Generated by the ABG Brand Performance Hub — SEO & AEO & GEO weekly scan", M, H - 32);
       }
 
       const pdfBytes = new Uint8Array(doc.output("arraybuffer"));
