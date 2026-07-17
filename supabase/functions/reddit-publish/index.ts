@@ -22,6 +22,10 @@ interface PublishRequest {
   landingPageId: string;   // HubSpot page content id, e.g. "370024804043"
   weekOf?: string;         // defaults to latest week with data
   uploadPdf?: boolean;     // also upload PDF to Files (default false until scope confirmed)
+  // Optional targeting for pages without the MARKER: any content field whose text
+  // contains `introFind` gets replaced with the intro block; `tableFind` → the table.
+  introFind?: string;
+  tableFind?: string;
 }
 
 interface Thread {
@@ -32,6 +36,14 @@ interface Thread {
 
 function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function renderIntro(brandName: string, weekOf: string, count: number): string {
+  return `<div style="font-family:'Lexend Deca',Helvetica,Arial,sans-serif;text-align:center;max-width:760px;margin:0 auto">
+  <h2 style="color:#0f2542;margin:0 0 8px">This Week's Reddit Opportunities</h2>
+  <p style="color:#33475b;font-size:15px;margin:0 0 6px">${count} conversations your ${brandName} customers are having right now — updated for the week of ${esc(weekOf)}.</p>
+  <p style="color:#5a646e;font-size:13px;margin:0">Click any thread below to open it on Reddit and join the conversation. Threads marked <b style="color:#b91c1c">HIGH</b> are cited by AI assistants when buyers ask for recommendations — a helpful reply there reaches far beyond Reddit. Questions? Contact your Territory Sales Manager.</p>
+</div>`;
 }
 
 function renderTable(brandName: string, weekOf: string, threads: Thread[]): string {
@@ -70,15 +82,15 @@ function renderTable(brandName: string, weekOf: string, threads: Thread[]): stri
 </div>`;
 }
 
-// Recursively replace ANY string field containing MARKER, anywhere in the page JSON.
+// Recursively replace ANY string field containing `find`, anywhere in the page JSON.
 // Covers drag-and-drop pages (layoutSections → params.html) and coded templates
 // (widgets / widgetContainers → body.html).
-function replaceMarkerDeep(node: unknown, html: string): boolean {
+function replaceContainingDeep(node: unknown, find: string, html: string): boolean {
   if (Array.isArray(node)) {
     let found = false;
     node.forEach((v, i) => {
-      if (typeof v === "string" && v.includes(MARKER)) { node[i] = html; found = true; }
-      else if (replaceMarkerDeep(v, html)) found = true;
+      if (typeof v === "string" && v.includes(find)) { node[i] = html; found = true; }
+      else if (replaceContainingDeep(v, find, html)) found = true;
     });
     return found;
   }
@@ -87,8 +99,8 @@ function replaceMarkerDeep(node: unknown, html: string): boolean {
     const obj = node as Record<string, unknown>;
     for (const k of Object.keys(obj)) {
       const v = obj[k];
-      if (typeof v === "string" && v.includes(MARKER)) { obj[k] = html; found = true; }
-      else if (replaceMarkerDeep(v, html)) found = true;
+      if (typeof v === "string" && v.includes(find)) { obj[k] = html; found = true; }
+      else if (replaceContainingDeep(v, find, html)) found = true;
     }
     return found;
   }
@@ -116,7 +128,7 @@ Deno.serve(async (req: Request) => {
     if (!isAdmin) return json({ error: "Admins only" }, 403);
   }
 
-  const { brandId, brandName, landingPageId, weekOf, uploadPdf = false }: PublishRequest = await req.json();
+  const { brandId, brandName, landingPageId, weekOf, uploadPdf = false, introFind, tableFind }: PublishRequest = await req.json();
 
   // Latest week with data if not specified
   let week = weekOf;
@@ -125,7 +137,12 @@ Deno.serve(async (req: Request) => {
       .eq("brand_id", brandId).order("week_of", { ascending: false }).limit(1);
     week = data?.[0]?.week_of;
   }
-  if (!week) return json({ error: `No Reddit data for ${brandId} — run a scan first.` }, 404);
+  if (!week) {
+    const { data: lastScans } = await supabase.from("aeo_scan_log")
+      .select("status, error, api_calls_used, started_at, finished_at")
+      .eq("brand_id", brandId).order("started_at", { ascending: false }).limit(3);
+    return json({ error: `No Reddit data for ${brandId} — run a scan first.`, lastScans }, 404);
+  }
 
   const { data: threads, error: thErr } = await supabase.from("reddit_threads").select("*")
     .eq("brand_id", brandId).eq("week_of", week)
@@ -145,18 +162,27 @@ Deno.serve(async (req: Request) => {
   if (!pageRes.ok) return json({ error: `HubSpot page read failed (${pageRes.status}): ${await pageRes.text()}` }, 502);
   const page = await pageRes.json();
 
-  // Find which top-level page fields contain the marker, replace in place.
-  const changedKeys: string[] = [];
+  // Replacement plan: MARKER always wins; otherwise use introFind/tableFind text anchors.
+  const intro = renderIntro(brandName, week, threads.length);
+  const plans: Array<{ find: string; html: string }> = [
+    { find: MARKER, html },
+    ...(tableFind ? [{ find: tableFind, html }] : []),
+    ...(introFind ? [{ find: introFind, html: intro }] : []),
+  ];
+
+  const changedKeys = new Set<string>();
   for (const key of ["layoutSections", "widgets", "widgetContainers", "flexAreas"]) {
-    if (page[key] && JSON.stringify(page[key]).includes(MARKER)) {
-      replaceMarkerDeep(page[key], html);
-      changedKeys.push(key);
+    if (!page[key]) continue;
+    for (const plan of plans) {
+      if (JSON.stringify(page[key]).includes(plan.find.slice(0, 60))) {
+        replaceContainingDeep(page[key], plan.find, plan.html);
+        changedKeys.add(key);
+      }
     }
   }
-  if (!changedKeys.length) {
+  if (!changedKeys.size) {
     return json({
-      error: `No content containing the marker ${MARKER} found on page ${landingPageId}. ` +
-        `Edit a text block on the page, switch to source code view, paste ${MARKER}, save, then retry.`,
+      error: `No content matching the marker or the provided find-texts on page ${landingPageId}.`,
       hint: { topLevelKeys: Object.keys(page) },
     }, 422);
   }

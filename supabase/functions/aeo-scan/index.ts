@@ -220,27 +220,38 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // 4. Reddit visibility — official public JSON search (no auth needed for read).
-    const query = encodeURIComponent(`${brandName} OR "hot tub" site:reddit.com`);
-    const redditRes = await fetch(
-      `https://www.reddit.com/search.json?q=${encodeURIComponent(brandName)}&sort=relevance&t=month&limit=15`,
-      { headers: { "User-Agent": "abg-brand-hub/1.0" } },
-    );
-    if (redditRes.ok) {
-      const rd = await redditRes.json();
-      for (const child of rd?.data?.children ?? []) {
-        const post = child.data;
+    // 4. Reddit visibility — via Claude web search (reddit.com blocks datacenter IPs,
+    // so the public JSON API is unusable from Edge Functions). Claude also classifies
+    // sentiment and opportunity in the same pass.
+    try {
+      const redditText = await claude(
+        anthropicKey,
+        `Search reddit.com for recent threads (last 60 days) about "${brandName}" AND about its product category where buyers ask for brand recommendations. Find 8-12 real threads with their actual URLs. Reply ONLY JSON array: [{"thread_url":"https://www.reddit.com/r/.../comments/...","subreddit":"r/...","title":"...","upvotes":n,"num_comments":n,"brand_mentioned":bool,"competitors_mentioned":["..."],"sentiment":"Positive|Neutral|Negative","opportunity":"HIGH|MED — amplify|MED — support|LOW"}]. Only include URLs you actually found via search — never invent URLs.`,
+        `Brand: ${brandName}. Website: ${siteUrl}.`,
+        true,
+      );
+      apiCalls++;
+      const redditThreads = extractJson<Array<{
+        thread_url: string; subreddit: string; title: string; upvotes?: number; num_comments?: number;
+        brand_mentioned?: boolean; competitors_mentioned?: string[]; sentiment?: string; opportunity?: string;
+      }>>(redditText);
+      for (const t of redditThreads) {
+        if (!t.thread_url?.includes("reddit.com")) continue;
         await supabase.from("reddit_threads").upsert({
           brand_id: brandId, week_of: weekOf,
-          thread_url: `https://www.reddit.com${post.permalink}`,
-          subreddit: `r/${post.subreddit}`,
-          title: post.title?.slice(0, 500) ?? "",
-          upvotes: post.ups ?? 0,
-          num_comments: post.num_comments ?? 0,
-          posted_at: post.created_utc ? new Date(post.created_utc * 1000).toISOString() : null,
-          brand_mentioned: (post.title + " " + (post.selftext ?? "")).toLowerCase().includes(brandName.toLowerCase()),
+          thread_url: t.thread_url,
+          subreddit: t.subreddit ?? "r/unknown",
+          title: (t.title ?? "").slice(0, 500),
+          upvotes: t.upvotes ?? 0,
+          num_comments: t.num_comments ?? 0,
+          brand_mentioned: t.brand_mentioned ?? false,
+          competitors_mentioned: t.competitors_mentioned ?? [],
+          sentiment: ["Positive", "Neutral", "Negative"].includes(t.sentiment ?? "") ? t.sentiment : "Neutral",
+          opportunity: ["HIGH", "MED — amplify", "MED — support", "LOW"].includes(t.opportunity ?? "") ? t.opportunity : null,
         }, { onConflict: "brand_id,week_of,thread_url" });
       }
+    } catch (e) {
+      console.error("Reddit step failed:", e);
     }
 
     // 5. Recommendations from this week's citations.
