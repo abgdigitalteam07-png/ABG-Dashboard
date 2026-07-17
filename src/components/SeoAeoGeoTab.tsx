@@ -77,9 +77,23 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
         },
       });
       if (error || res?.error) throw new Error(res?.error ?? error?.message);
-      toast.success(`Scan complete — ${res.prompts} prompts, ${res.apiCalls} API calls`);
-      qc.invalidateQueries({ queryKey: ["aeo-weeks", brand.id] });
-      qc.invalidateQueries({ queryKey: ["aeo-data", brand.id] });
+
+      // The scan runs in the background — poll the scan log until it finishes (max 8 min).
+      toast.info("Scan started — site audit, prompts and Reddit run in the background (1–3 min).");
+      const deadline = Date.now() + 8 * 60 * 1000;
+      while (Date.now() < deadline) {
+        await new Promise(r => setTimeout(r, 5000));
+        const { data: log } = await sb.from("aeo_scan_log")
+          .select("status, api_calls_used, error").eq("id", res.scanId).single();
+        if (log?.status === "completed") {
+          toast.success(`Scan complete — ${log.api_calls_used} API calls used`);
+          qc.invalidateQueries({ queryKey: ["aeo-weeks", brand.id] });
+          qc.invalidateQueries({ queryKey: ["aeo-data", brand.id] });
+          return;
+        }
+        if (log?.status === "failed") throw new Error(log.error ?? "scan failed");
+      }
+      throw new Error("Scan timed out after 8 minutes — check aeo_scan_log.");
     } catch (e) {
       toast.error(`Scan failed: ${e instanceof Error ? e.message : e}`);
     } finally {

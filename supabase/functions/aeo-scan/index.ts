@@ -100,6 +100,12 @@ Deno.serve(async (req: Request) => {
   const weekOf = mondayOfWeek();
   let apiCalls = 0;
 
+  // 0. Mark stale runs (killed workers) as failed so they don't block the weekly limit.
+  await supabase.from("aeo_scan_log")
+    .update({ status: "failed", error: "stale — worker terminated", finished_at: new Date().toISOString() })
+    .eq("brand_id", brandId).eq("status", "running")
+    .lt("started_at", new Date(Date.now() - 10 * 60 * 1000).toISOString());
+
   // 1. Rate-limit guard — never blow through API limits silently.
   const { count: scansThisWeek } = await supabase
     .from("aeo_scan_log")
@@ -120,6 +126,7 @@ Deno.serve(async (req: Request) => {
     .select("id").single();
   const scanId = scanRow!.id;
 
+  const runScan = async () => {
   try {
     // 2. Site audit — SEO/GEO/AEO rubric scores.
     const auditText = await claude(
@@ -169,7 +176,8 @@ Deno.serve(async (req: Request) => {
 
     let mentions = 0;
     const domainFreq = new Map<string, { freq: number; brandMentioned: boolean }>();
-    for (const p of prompts ?? []) {
+    // All prompts run concurrently — the scan runs in the background, but faster is better.
+    const results = await Promise.all((prompts ?? []).map(async (p) => {
       const answerRaw = await claude(
         anthropicKey,
         `Answer the user's question using web search, as a consumer AI assistant would. Then append a JSON block: {"brand_mentioned": bool (is "${brandName}" in your answer), "competitors_mentioned": string[], "cited_urls": [{"url": "...", "domain": "..."}]}`,
@@ -179,13 +187,6 @@ Deno.serve(async (req: Request) => {
       apiCalls++;
       let meta = { brand_mentioned: false, competitors_mentioned: [] as string[], cited_urls: [] as { url: string; domain: string }[] };
       try { meta = { ...meta, ...extractJson(answerRaw) }; } catch { /* keep defaults */ }
-      if (meta.brand_mentioned) mentions++;
-      for (const c of meta.cited_urls) {
-        const e = domainFreq.get(c.domain) ?? { freq: 0, brandMentioned: false };
-        e.freq++;
-        e.brandMentioned ||= meta.brand_mentioned;
-        domainFreq.set(c.domain, e);
-      }
       await supabase.from("aeo_prompt_results").upsert({
         prompt_id: p.id, brand_id: brandId, week_of: weekOf, engine: "claude",
         answer_text: answerRaw.slice(0, 8000),
@@ -193,6 +194,16 @@ Deno.serve(async (req: Request) => {
         competitors_mentioned: meta.competitors_mentioned,
         cited_urls: meta.cited_urls,
       }, { onConflict: "prompt_id,week_of,engine" });
+      return meta;
+    }));
+    for (const meta of results) {
+      if (meta.brand_mentioned) mentions++;
+      for (const c of meta.cited_urls) {
+        const e = domainFreq.get(c.domain) ?? { freq: 0, brandMentioned: false };
+        e.freq++;
+        e.brandMentioned ||= meta.brand_mentioned;
+        domainFreq.set(c.domain, e);
+      }
     }
 
     const promptCount = prompts?.length ?? 0;
@@ -254,16 +265,19 @@ Deno.serve(async (req: Request) => {
     await supabase.from("aeo_scan_log").update({
       status: "completed", api_calls_used: apiCalls, finished_at: new Date().toISOString(),
     }).eq("id", scanId);
-
-    return new Response(JSON.stringify({ ok: true, weekOf, apiCalls, prompts: promptCount }), {
-      headers: { ...corsHeaders, "content-type": "application/json" },
-    });
   } catch (err) {
     await supabase.from("aeo_scan_log").update({
       status: "failed", api_calls_used: apiCalls, error: String(err), finished_at: new Date().toISOString(),
     }).eq("id", scanId);
-    return new Response(JSON.stringify({ error: String(err) }), {
-      status: 500, headers: { ...corsHeaders, "content-type": "application/json" },
-    });
   }
+  };
+
+  // The platform kills request-tied work at ~150s; the scan takes longer.
+  // Respond immediately and finish in the background — the UI polls aeo_scan_log.
+  // @ts-ignore EdgeRuntime is provided by the Supabase Edge runtime
+  EdgeRuntime.waitUntil(runScan());
+
+  return new Response(JSON.stringify({ ok: true, started: true, scanId, weekOf }), {
+    headers: { ...corsHeaders, "content-type": "application/json" },
+  });
 });
