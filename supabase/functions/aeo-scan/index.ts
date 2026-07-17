@@ -32,15 +32,15 @@ function mondayOfWeek(d = new Date()): string {
   return m.toISOString().slice(0, 10);
 }
 
-async function claude(apiKey: string, system: string, user: string, useWebSearch = false): Promise<string> {
+async function claude(apiKey: string, system: string, user: string, useWebSearch = false, maxSearches = 3): Promise<string> {
   const body: Record<string, unknown> = {
     model: "claude-sonnet-4-6",
-    max_tokens: 2048,
+    max_tokens: 4096,
     system,
     messages: [{ role: "user", content: user }],
   };
   if (useWebSearch) {
-    body.tools = [{ type: "web_search_20250305", name: "web_search", max_uses: 3 }];
+    body.tools = [{ type: "web_search_20250305", name: "web_search", max_uses: maxSearches }];
   }
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -57,6 +57,117 @@ async function claude(apiKey: string, system: string, user: string, useWebSearch
     .filter((b: { type: string }) => b.type === "text")
     .map((b: { text: string }) => b.text)
     .join("\n");
+}
+
+// Same as claude(), but also returns the REAL urls/titles from web_search_tool_result
+// blocks — these come directly from the search engine, not the model's memory, so
+// they can never be hallucinated. Use this whenever a fabricated URL would be harmful
+// (e.g. a link a dealer will click).
+async function claudeWithCitations(
+  apiKey: string, system: string, user: string, maxSearches = 8,
+): Promise<{ text: string; citations: Array<{ url: string; title: string }> }> {
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-6",
+      max_tokens: 4096,
+      system,
+      messages: [{ role: "user", content: user }],
+      tools: [{ type: "web_search_20250305", name: "web_search", max_uses: maxSearches }],
+    }),
+  });
+  if (!res.ok) throw new Error(`Claude API ${res.status}: ${await res.text()}`);
+  const data = await res.json();
+  const content = data.content ?? [];
+  const text = content.filter((b: { type: string }) => b.type === "text").map((b: { text: string }) => b.text).join("\n");
+  const citations: Array<{ url: string; title: string }> = [];
+  for (const block of content) {
+    if (block.type === "web_search_tool_result" && Array.isArray(block.content)) {
+      for (const r of block.content) {
+        if (r.url) citations.push({ url: r.url, title: r.title ?? "" });
+      }
+    }
+  }
+  return { text, citations };
+}
+
+interface RedditPost {
+  thread_url: string;
+  subreddit: string;
+  title: string;
+  upvotes: number;
+  num_comments: number;
+  posted_at: string | null;
+}
+
+function parseApifyItems(items: Array<Record<string, unknown>>): RedditPost[] {
+  const seen = new Set<string>();
+  const posts: RedditPost[] = [];
+  for (const it of items) {
+    const url = (it.url ?? it.postUrl ?? it.link) as string | undefined;
+    if (!url || !url.includes("reddit.com") || seen.has(url)) continue;
+    seen.add(url);
+    posts.push({
+      thread_url: url,
+      subreddit: (it.communityName ?? it.subreddit ?? `r/${it.parsedCommunityName ?? "unknown"}`) as string,
+      title: String(it.title ?? "").slice(0, 500),
+      // This actor doesn't expose vote/comment counts — store 0 rather than fabricate a number.
+      upvotes: Number(it.upVotes ?? it.upvoteCount ?? it.score ?? 0) || 0,
+      num_comments: Number(it.numberOfComments ?? it.numComments ?? it.commentCount ?? 0) || 0,
+      posted_at: typeof it.createdAt === "string" ? it.createdAt : null,
+    });
+  }
+  return posts;
+}
+
+// Real Reddit data via Apify's reddit-scraper-lite actor (residential proxies — bypasses
+// the datacenter-IP block that makes direct Reddit access impossible from Edge Functions).
+// The actor is slow (can exceed 150s), so this starts the run and polls the run status —
+// safe to call from background (waitUntil) code since it isn't bound by the request lifecycle.
+async function searchRedditViaApify(brandName: string, category?: string, maxWaitMs = 240_000): Promise<RedditPost[]> {
+  const token = Deno.env.get("APIFY_API_TOKEN");
+  if (!token) throw new Error("APIFY_API_TOKEN not configured");
+
+  // Brand name alone surfaces generic noise (unrelated subs matching the words);
+  // pairing it with the product category anchors results to real, relevant threads.
+  const searches = category ? [`${brandName} ${category}`] : [brandName];
+
+  const startRes = await fetch(
+    `https://api.apify.com/v2/acts/trudax~reddit-scraper-lite/runs?token=${token}`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        searches,
+        type: "posts",
+        sort: "relevance",
+        maxItems: 12,
+        maxPostCount: 12,
+        maxComments: 0,
+      }),
+    },
+  );
+  if (!startRes.ok) throw new Error(`Apify start ${startRes.status}: ${(await startRes.text()).slice(0, 500)}`);
+  const { data: run } = await startRes.json();
+  const runId = run.id;
+
+  const deadline = Date.now() + maxWaitMs;
+  while (Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, 5000));
+    const statusRes = await fetch(`https://api.apify.com/v2/actor-runs/${runId}?token=${token}`);
+    const { data: statusData } = await statusRes.json();
+    if (statusData.status === "SUCCEEDED") {
+      const itemsRes = await fetch(
+        `https://api.apify.com/v2/datasets/${statusData.defaultDatasetId}/items?token=${token}`,
+      );
+      return parseApifyItems(await itemsRes.json());
+    }
+    if (["FAILED", "TIMED-OUT", "ABORTED"].includes(statusData.status)) {
+      throw new Error(`Apify run ${statusData.status}`);
+    }
+  }
+  throw new Error("Apify run did not finish within the wait window");
 }
 
 function extractJson<T>(text: string): T {
@@ -96,8 +207,43 @@ Deno.serve(async (req: Request) => {
     }
   } // no JWT = internal cron invocation with service key
 
-  const { brandId, brandName, siteUrl, competitors = [] }: ScanRequest = await req.json();
+  const body = await req.json();
+  const { brandId, brandName, siteUrl }: ScanRequest = body;
   const weekOf = mondayOfWeek();
+
+  // Debug mode: run ONLY the Apify Reddit search and return raw results.
+  if (body.redditOnly) {
+    try {
+      if (body.rawFields) {
+        // Inspect actual field names/shape returned by the actor.
+        const token = Deno.env.get("APIFY_API_TOKEN");
+        const startRes = await fetch(`https://api.apify.com/v2/acts/trudax~reddit-scraper-lite/runs?token=${token}`, {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ searches: [brandName], type: "posts", sort: "relevance", maxItems: 3, maxPostCount: 3, maxComments: 0 }),
+        });
+        const { data: run } = await startRes.json();
+        const deadline = Date.now() + 130_000;
+        while (Date.now() < deadline) {
+          await new Promise(r => setTimeout(r, 5000));
+          const st = await (await fetch(`https://api.apify.com/v2/actor-runs/${run.id}?token=${token}`)).json();
+          if (st.data.status === "SUCCEEDED") {
+            const items = await (await fetch(`https://api.apify.com/v2/datasets/${st.data.defaultDatasetId}/items?token=${token}`)).json();
+            return new Response(JSON.stringify({ rawItems: items }), { headers: { ...corsHeaders, "content-type": "application/json" } });
+          }
+          if (["FAILED", "TIMED-OUT", "ABORTED"].includes(st.data.status)) throw new Error(st.data.status);
+        }
+        throw new Error("timed out waiting for raw fields");
+      }
+      const apifyThreads = await searchRedditViaApify(brandName, body.category, 130_000);
+      return new Response(JSON.stringify({ count: apifyThreads.length, apifyThreads }), {
+        headers: { ...corsHeaders, "content-type": "application/json" },
+      });
+    } catch (e) {
+      return new Response(JSON.stringify({ error: String(e) }), {
+        status: 500, headers: { ...corsHeaders, "content-type": "application/json" },
+      });
+    }
+  }
   let apiCalls = 0;
 
   // 0. Mark stale runs (killed workers) as failed so they don't block the weekly limit.
@@ -146,7 +292,7 @@ Deno.serve(async (req: Request) => {
     // 3. Tracked prompts → visibility + citations (Claude as the first engine).
     let { data: prompts } = await supabase
       .from("aeo_prompts")
-      .select("id, prompt")
+      .select("id, prompt, product_service")
       .eq("brand_id", brandId)
       .eq("is_active", true)
       .limit(MAX_PROMPTS);
@@ -170,7 +316,7 @@ Deno.serve(async (req: Request) => {
       const { data: inserted } = await supabase
         .from("aeo_prompts")
         .upsert(rows, { onConflict: "brand_id,prompt", ignoreDuplicates: true })
-        .select("id, prompt");
+        .select("id, prompt, product_service");
       prompts = inserted ?? [];
     }
 
@@ -220,35 +366,39 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // 4. Reddit visibility — via Claude web search (reddit.com blocks datacenter IPs,
-    // so the public JSON API is unusable from Edge Functions). Claude also classifies
-    // sentiment and opportunity in the same pass.
+    // 4. Reddit visibility — real threads via Apify (residential proxies, real URLs,
+    // real upvote/comment counts), then Claude classifies sentiment/opportunity only
+    // (classification can't invent new URLs — it just labels the real ones).
     try {
-      const redditText = await claude(
-        anthropicKey,
-        `Search reddit.com for recent threads (last 60 days) about "${brandName}" AND about its product category where buyers ask for brand recommendations. Find 8-12 real threads with their actual URLs. Reply ONLY JSON array: [{"thread_url":"https://www.reddit.com/r/.../comments/...","subreddit":"r/...","title":"...","upvotes":n,"num_comments":n,"brand_mentioned":bool,"competitors_mentioned":["..."],"sentiment":"Positive|Neutral|Negative","opportunity":"HIGH|MED — amplify|MED — support|LOW"}]. Only include URLs you actually found via search — never invent URLs.`,
-        `Brand: ${brandName}. Website: ${siteUrl}.`,
-        true,
-      );
-      apiCalls++;
-      const redditThreads = extractJson<Array<{
-        thread_url: string; subreddit: string; title: string; upvotes?: number; num_comments?: number;
-        brand_mentioned?: boolean; competitors_mentioned?: string[]; sentiment?: string; opportunity?: string;
-      }>>(redditText);
-      for (const t of redditThreads) {
-        if (!t.thread_url?.includes("reddit.com")) continue;
-        await supabase.from("reddit_threads").upsert({
-          brand_id: brandId, week_of: weekOf,
-          thread_url: t.thread_url,
-          subreddit: t.subreddit ?? "r/unknown",
-          title: (t.title ?? "").slice(0, 500),
-          upvotes: t.upvotes ?? 0,
-          num_comments: t.num_comments ?? 0,
-          brand_mentioned: t.brand_mentioned ?? false,
-          competitors_mentioned: t.competitors_mentioned ?? [],
-          sentiment: ["Positive", "Neutral", "Negative"].includes(t.sentiment ?? "") ? t.sentiment : "Neutral",
-          opportunity: ["HIGH", "MED — amplify", "MED — support", "LOW"].includes(t.opportunity ?? "") ? t.opportunity : null,
-        }, { onConflict: "brand_id,week_of,thread_url" });
+      const category = prompts?.[0]?.product_service ?? undefined;
+      const redditPosts = await searchRedditViaApify(brandName, category);
+      if (redditPosts.length) {
+        const classifyText = await claude(
+          anthropicKey,
+          `For each real Reddit thread below (title + URL, already verified — do not alter URLs), classify it for a brand's marketing team. Reply ONLY JSON array, SAME ORDER as input: [{"brand_mentioned":bool,"competitors_mentioned":["..."],"sentiment":"Positive|Neutral|Negative","opportunity":"HIGH|MED — amplify|MED — support|LOW"}]. brand_mentioned = does the title/context suggest "${brandName}" is discussed. opportunity = HIGH if it's a buying-advice thread where the brand should be recommended but isn't mentioned; MED — amplify if a positive brand mention; MED — support if a complaint/issue about the brand; LOW otherwise.`,
+          `Brand: ${brandName}. Threads:\n${redditPosts.map((p, i) => `${i + 1}. [r/${p.subreddit}] "${p.title}"`).join("\n")}`,
+        );
+        apiCalls++;
+        let classifications: Array<{ brand_mentioned?: boolean; competitors_mentioned?: string[]; sentiment?: string; opportunity?: string }> = [];
+        try { classifications = extractJson(classifyText); } catch { /* defaults below */ }
+
+        for (let i = 0; i < redditPosts.length; i++) {
+          const p = redditPosts[i];
+          const cl = classifications[i] ?? {};
+          await supabase.from("reddit_threads").upsert({
+            brand_id: brandId, week_of: weekOf,
+            thread_url: p.thread_url,
+            subreddit: p.subreddit.startsWith("r/") ? p.subreddit : `r/${p.subreddit}`,
+            title: p.title,
+            upvotes: p.upvotes,
+            num_comments: p.num_comments,
+            posted_at: p.posted_at,
+            brand_mentioned: cl.brand_mentioned ?? false,
+            competitors_mentioned: cl.competitors_mentioned ?? [],
+            sentiment: ["Positive", "Neutral", "Negative"].includes(cl.sentiment ?? "") ? cl.sentiment : "Neutral",
+            opportunity: ["HIGH", "MED — amplify", "MED — support", "LOW"].includes(cl.opportunity ?? "") ? cl.opportunity : null,
+          }, { onConflict: "brand_id,week_of,thread_url" });
+        }
       }
     } catch (e) {
       console.error("Reddit step failed:", e);
