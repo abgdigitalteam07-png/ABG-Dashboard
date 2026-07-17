@@ -33,6 +33,14 @@ function mondayOfWeek(d = new Date()): string {
   return m.toISOString().slice(0, 10);
 }
 
+// Every external fetch in this file must be bounded — an unguarded call hanging
+// silently is exactly what stalled a scan at "running" forever (see git history).
+function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = 90_000): Promise<Response> {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), timeoutMs);
+  return fetch(url, { ...init, signal: ac.signal }).finally(() => clearTimeout(timer));
+}
+
 async function claude(apiKey: string, system: string, user: string, useWebSearch = false, maxSearches = 3): Promise<string> {
   const body: Record<string, unknown> = {
     model: "claude-sonnet-4-6",
@@ -43,7 +51,7 @@ async function claude(apiKey: string, system: string, user: string, useWebSearch
   if (useWebSearch) {
     body.tools = [{ type: "web_search_20250305", name: "web_search", max_uses: maxSearches }];
   }
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+  const res = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
       "x-api-key": apiKey,
@@ -51,7 +59,7 @@ async function claude(apiKey: string, system: string, user: string, useWebSearch
       "content-type": "application/json",
     },
     body: JSON.stringify(body),
-  });
+  }, 110_000);
   if (!res.ok) throw new Error(`Claude API ${res.status}: ${await res.text()}`);
   const data = await res.json();
   return (data.content ?? [])
@@ -67,7 +75,7 @@ async function claude(apiKey: string, system: string, user: string, useWebSearch
 async function claudeWithCitations(
   apiKey: string, system: string, user: string, maxSearches = 8,
 ): Promise<{ text: string; citations: Array<{ url: string; title: string }> }> {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+  const res = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
     body: JSON.stringify({
@@ -77,7 +85,7 @@ async function claudeWithCitations(
       messages: [{ role: "user", content: user }],
       tools: [{ type: "web_search_20250305", name: "web_search", max_uses: maxSearches }],
     }),
-  });
+  }, 110_000);
   if (!res.ok) throw new Error(`Claude API ${res.status}: ${await res.text()}`);
   const data = await res.json();
   const content = data.content ?? [];
@@ -134,7 +142,7 @@ async function searchRedditViaApify(brandName: string, category?: string, maxWai
   // pairing it with the product category anchors results to real, relevant threads.
   const searches = category ? [`${brandName} ${category}`] : [brandName];
 
-  const startRes = await fetch(
+  const startRes = await fetchWithTimeout(
     `https://api.apify.com/v2/acts/trudax~reddit-scraper-lite/runs?token=${token}`,
     {
       method: "POST",
@@ -148,6 +156,7 @@ async function searchRedditViaApify(brandName: string, category?: string, maxWai
         maxComments: 0,
       }),
     },
+    30_000,
   );
   if (!startRes.ok) throw new Error(`Apify start ${startRes.status}: ${(await startRes.text()).slice(0, 500)}`);
   const { data: run } = await startRes.json();
@@ -156,11 +165,11 @@ async function searchRedditViaApify(brandName: string, category?: string, maxWai
   const deadline = Date.now() + maxWaitMs;
   while (Date.now() < deadline) {
     await new Promise(r => setTimeout(r, 5000));
-    const statusRes = await fetch(`https://api.apify.com/v2/actor-runs/${runId}?token=${token}`);
+    const statusRes = await fetchWithTimeout(`https://api.apify.com/v2/actor-runs/${runId}?token=${token}`, {}, 20_000);
     const { data: statusData } = await statusRes.json();
     if (statusData.status === "SUCCEEDED") {
-      const itemsRes = await fetch(
-        `https://api.apify.com/v2/datasets/${statusData.defaultDatasetId}/items?token=${token}`,
+      const itemsRes = await fetchWithTimeout(
+        `https://api.apify.com/v2/datasets/${statusData.defaultDatasetId}/items?token=${token}`, {}, 30_000,
       );
       return parseApifyItems(await itemsRes.json());
     }
