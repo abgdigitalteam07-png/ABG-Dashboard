@@ -43,6 +43,16 @@ function Pill({ tone, children }: { tone: "good" | "warn" | "bad" | "neutral" | 
   return <span className={`aeo-pill ${tone}`}>{children}</span>;
 }
 
+// Admin-facing working-status sign: green = live with real data, red = not
+// producing data yet (hover shows exactly what's needed to turn it green).
+function Sign({ ok, why }: { ok: boolean; why: string }) {
+  return (
+    <span className={`aeo-sign ${ok ? "ok" : "off"}`} title={why}>
+      <i /> {ok ? "WORKING" : "NOT ACTIVE"}
+    </span>
+  );
+}
+
 function Gauge({ pct }: { pct: number }) {
   const clamped = Math.max(0, Math.min(100, pct));
   const angle = (clamped / 100) * 180;
@@ -89,6 +99,21 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
 
   const week = selectedWeek ?? weeks?.[0]?.week_of ?? null;
   const lastScan = weeks?.[0]?.started_at;
+
+  // Latest scan attempt of ANY status — drives the scan-pipeline health sign.
+  const { data: lastAttempt } = useQuery({
+    queryKey: ["aeo-last-attempt", brand.id],
+    queryFn: async () => {
+      const { data, error } = await sb
+        .from("aeo_scan_log")
+        .select("status, error, started_at")
+        .eq("brand_id", brand.id)
+        .order("started_at", { ascending: false })
+        .limit(1);
+      if (error) throw error;
+      return (data?.[0] ?? null) as { status: string; error: string | null; started_at: string } | null;
+    },
+  });
 
   const { data, isLoading } = useQuery({
     queryKey: ["aeo-data", brand.id, week],
@@ -250,6 +275,62 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
     return (rank[a.priority] ?? 3) - (rank[b.priority] ?? 3);
   }).slice(0, 3);
 
+  // One place that decides every report's green/red sign. Green = real data is
+  // present and flowing; red = pipeline gap, with the exact fix in the tooltip.
+  const scanFailing = lastAttempt?.status === "failed";
+  const signs = {
+    scan: {
+      ok: !scanFailing,
+      why: scanFailing
+        ? `Last scan failed: ${(lastAttempt?.error ?? "unknown error").slice(0, 140)}`
+        : "Scan pipeline healthy — last run completed.",
+    },
+    coverage: {
+      ok: activePrompts > 0,
+      why: activePrompts > 0 ? "Computed live from tracked prompts." : "Run a first scan — it auto-generates 10 prompts for this brand.",
+    },
+    audit: {
+      ok: latestScore != null,
+      why: latestScore != null ? "Real audit scores from the site crawl." : "Needs one successful scan (currently blocked: Anthropic API credits).",
+    },
+    brandMetrics: {
+      ok: ownVisibility.length > 0,
+      why: ownVisibility.length > 0 ? "Real visibility snapshots from prompt runs." : "Needs one successful scan to write the first visibility snapshot.",
+    },
+    shareOfVoice: {
+      ok: shareOfVoice.some(r => r.mentions > 0),
+      why: shareOfVoice.some(r => r.mentions > 0) ? "Real competitor mentions captured from this week's prompt answers." : "Needs prompt results with competitor mentions — run a scan.",
+    },
+    competitorTrend: {
+      ok: competitorSeries.length > 1,
+      why: competitorSeries.length > 1 ? "Tracking multiple companies over time." : "Scan doesn't write competitor visibility snapshots yet — needs a scan-code addition (store per-competitor visibility rows each week).",
+    },
+    topDomains: {
+      ok: (data?.citations?.length ?? 0) > 0,
+      why: (data?.citations?.length ?? 0) > 0 ? "Real cited domains captured from prompt answers." : "Needs one successful scan to capture citations.",
+    },
+    composition: {
+      ok: byContentType.length > 0 || byChannelType.length > 0,
+      why: byContentType.length > 0 ? "Citations classified by type/channel." : "Scan doesn't classify citations by content type or channel yet — needs one extra classification step in the scan.",
+    },
+    prompts: {
+      ok: activePrompts > 0,
+      why: activePrompts > 0 ? "Prompts stored and editable; used by every scan." : "Run a first scan to auto-generate prompts, or add one manually.",
+    },
+    recs: {
+      ok: (data?.recs?.length ?? 0) > 0,
+      why: (data?.recs?.length ?? 0) > 0 ? "Real recommendations generated from scan findings; statuses editable." : "Needs one successful scan to generate recommendations.",
+    },
+    topUrls: {
+      ok: topUrls.length > 0,
+      why: topUrls.length > 0 ? "Per-URL citations captured." : "Scan stores citations at domain level only — needs a small scan-code addition to persist per-URL rows.",
+    },
+    reddit: {
+      ok: (data?.reddit?.length ?? 0) > 0,
+      why: (data?.reddit?.length ?? 0) > 0 ? "Real Reddit threads (via Apify, scan-time only) — also feeds the HubSpot page + PDF." : "Needs one successful scan to fetch Reddit threads via Apify.",
+    },
+  };
+
   const trend = (curr?: number, prev?: number) => {
     if (curr == null || prev == null) return null;
     const d = Math.round((curr - prev) * 10) / 10;
@@ -262,6 +343,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
       {/* Header */}
       <div className="aeo-header">
         <span className="aeo-beta">BETA · ADMIN ONLY</span>
+        <Sign ok={signs.scan.ok} why={signs.scan.why} />
         <span className="aeo-lastscan">
           Last scanned: <b>{lastScan ? new Date(lastScan).toLocaleString() : "never"}</b>
         </span>
@@ -312,10 +394,11 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
                 </div>
                 <div style={{ flex: 1 }} />
                 <div className="aeo-meter"><i style={{ width: `${(activePrompts / MAX_PROMPTS) * 100}%` }} /></div>
+                <Sign ok={signs.coverage.ok} why={signs.coverage.why} />
               </div>
 
               <div className="aeo-section">
-                <h2>Weekly Audit Scores <Pill tone="acc">from site crawl</Pill></h2>
+                <h2>Weekly Audit Scores <Pill tone="acc">from site crawl</Pill> <Sign ok={signs.audit.ok} why={signs.audit.why} /></h2>
                 <p className="aeo-sub">SEO / GEO / AEO rubric scores for {brand.name} — re-scored on every scan.</p>
                 <div className="aeo-grid3">
                   {([
@@ -336,7 +419,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
               </div>
 
               <div className="aeo-section">
-                <h2>Brand Metrics</h2>
+                <h2>Brand Metrics <Sign ok={signs.brandMetrics.ok} why={signs.brandMetrics.why} /></h2>
                 <p className="aeo-sub">How often {brand.name} appears in AI-generated answers. Weekly snapshots — not tied to the dashboard date filter.</p>
                 <div className="aeo-grid2">
                   <div className="aeo-tile aeo-gauge-wrap">
@@ -364,7 +447,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
               </div>
 
               <div className="aeo-section">
-                <h2>Competitor Landscape</h2>
+                <h2>Competitor Landscape <Sign ok={signs.shareOfVoice.ok} why={signs.shareOfVoice.why} /></h2>
                 <p className="aeo-sub">Share of voice this week, and visibility trend over time.</p>
                 <div className="aeo-grid2">
                   <div className="aeo-tscroll">
@@ -385,7 +468,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
                     </table>
                   </div>
                   <div>
-                    <div className="aeo-k" style={{ marginBottom: 8 }}>Visibility over time</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}><span className="aeo-k">Visibility over time</span> <Sign ok={signs.competitorTrend.ok} why={signs.competitorTrend.why} /></div>
                     {competitorSeries.length > 1 ? (
                       <>
                         <div className="aeo-legend">
@@ -411,7 +494,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
               </div>
 
               <div className="aeo-section">
-                <h2>Citation Analysis — Top domains</h2>
+                <h2>Citation Analysis — Top domains <Sign ok={signs.topDomains.ok} why={signs.topDomains.why} /></h2>
                 <p className="aeo-sub">The sites AI engines cite when answering the tracked prompts.</p>
                 <div className="aeo-tscroll">
                   <table>
@@ -431,7 +514,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
               </div>
 
               <div className="aeo-section">
-                <h2>Citation Composition</h2>
+                <h2>Citation Composition <Sign ok={signs.composition.ok} why={signs.composition.why} /></h2>
                 <p className="aeo-sub">Which content formats and channels shape the answers AI engines give.</p>
                 <div className="aeo-grid2">
                   <div>
@@ -470,7 +553,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
           {subtab === "Prompts" && (
             <div className="aeo-section">
               <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 4 }}>
-                <h2>Tracked Prompts <span className="aeo-pill neutral">{data.prompts?.length ?? 0} / {MAX_PROMPTS} used</span></h2>
+                <h2>Tracked Prompts <span className="aeo-pill neutral">{data.prompts?.length ?? 0} / {MAX_PROMPTS} used</span> <Sign ok={signs.prompts.ok} why={signs.prompts.why} /></h2>
                 <button
                   onClick={() => setShowAddPrompt(true)}
                   disabled={(data.prompts?.length ?? 0) >= MAX_PROMPTS}
@@ -554,7 +637,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
           {subtab === "Citations" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               <div className="aeo-section">
-                <h2>Top recommendations this week</h2>
+                <h2>Top recommendations this week <Sign ok={signs.recs.ok} why={signs.recs.why} /></h2>
                 <div className="aeo-grid3">
                   {topRecs.map((r: any) => (
                     <div key={r.id} className="aeo-reccard">
@@ -568,7 +651,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
               </div>
 
               <div className="aeo-section">
-                <h2>Citations — week of {week}</h2>
+                <h2>Citations — week of {week} <Sign ok={signs.topDomains.ok} why={signs.topDomains.why} /></h2>
                 <p className="aeo-sub">Which domains AI engines cited most often when answering the tracked prompts this week.</p>
                 <ResponsiveContainer width="100%" height={210}>
                   <BarChart data={(data.citations ?? []).slice(0, 12)}>
@@ -582,7 +665,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
               </div>
 
               <div className="aeo-section">
-                <h2>Top URLs</h2>
+                <h2>Top URLs <Sign ok={signs.topUrls.ok} why={signs.topUrls.why} /></h2>
                 <p className="aeo-sub">The exact pages AI engines cited, not just the domain.</p>
                 {topUrls.length ? (
                   <div className="aeo-tscroll">
@@ -608,7 +691,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
 
           {subtab === "Recommendations" && (
             <div className="aeo-section">
-              <h2>Recommendations <Pill tone="acc">auto-generated weekly</Pill></h2>
+              <h2>Recommendations <Pill tone="acc">auto-generated weekly</Pill> <Sign ok={signs.recs.ok} why={signs.recs.why} /></h2>
               <div className="aeo-recwrap" style={{ marginTop: 12 }}>
                 <div className="aeo-rail">
                   <button onClick={() => setRecFilter(null)} className={!recFilter ? "on" : ""}>
@@ -670,7 +753,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
 
           {subtab === "Reddit Visibility" && (
             <div className="aeo-section">
-              <h2>Reddit Visibility <Pill tone="acc">feeds weekly dealer email</Pill></h2>
+              <h2>Reddit Visibility <Pill tone="acc">feeds weekly dealer email</Pill> <Sign ok={signs.reddit.ok} why={signs.reddit.why} /></h2>
               <p className="aeo-sub">Threads AI engines cite or that rank for category questions. Stored weekly — the same data is pushed to the HubSpot landing page and archived as a PDF.</p>
               <div className="aeo-grid3" style={{ gridTemplateColumns: "repeat(4,1fr)", marginBottom: 16 }}>
                 {([
