@@ -426,8 +426,12 @@ Deno.serve(async (req: Request) => {
 
     // 6. If this brand has a HubSpot landing page configured, publish the Reddit
     // table + weekly PDF archive automatically — no separate manual step needed.
+    // Hard-timeout so a slow/hung publish call can never block the scan from
+    // reaching "completed" (this is what caused an earlier stuck run).
     if (landingPageId) {
       try {
+        const ac = new AbortController();
+        const timer = setTimeout(() => ac.abort(), 60_000);
         await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/reddit-publish`, {
           method: "POST",
           headers: { "content-type": "application/json", authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}` },
@@ -435,9 +439,11 @@ Deno.serve(async (req: Request) => {
             brandId, brandName, landingPageId, weekOf,
             introFind: "Territory Sales Manager", tableFind: "Gary Bruch",
           }),
+          signal: ac.signal,
         });
+        clearTimeout(timer);
       } catch (e) {
-        console.error("Auto-publish to HubSpot failed:", e);
+        console.error("Auto-publish to HubSpot failed (scan still completes):", e);
       }
     }
 
