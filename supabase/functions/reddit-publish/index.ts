@@ -16,6 +16,12 @@ const corsHeaders = {
 
 const MARKER = "<!--REDDIT_TABLE-->";
 
+function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = 90_000): Promise<Response> {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), timeoutMs);
+  return fetch(url, { ...init, signal: ac.signal }).finally(() => clearTimeout(timer));
+}
+
 interface PublishRequest {
   brandId: string;
   brandName: string;
@@ -26,6 +32,8 @@ interface PublishRequest {
   // contains `introFind` gets replaced with the intro block; `tableFind` → the table.
   introFind?: string;
   tableFind?: string;
+  feedbackContact?: string; // e.g. "Email brandhub@americanbathgroup.com" — shown as the dealer feedback CTA
+  brandLogoUrl?: string;    // brand-specific logo (not the parent group) for the PDF header
 }
 
 interface Thread {
@@ -38,11 +46,13 @@ function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-function renderIntro(brandName: string, weekOf: string, count: number): string {
+function renderIntro(brandName: string, weekOf: string, count: number, feedbackContact: string): string {
+  const dateLabel = new Date(weekOf + "T00:00:00Z").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
   return `<div style="font-family:'Lexend Deca',Helvetica,Arial,sans-serif;text-align:center;max-width:760px;margin:0 auto">
-  <h2 style="color:#0f2542;margin:0 0 8px">This Week's Reddit Opportunities</h2>
-  <p style="color:#33475b;font-size:15px;margin:0 0 6px">${count} conversations your ${brandName} customers are having right now — updated for the week of ${esc(weekOf)}.</p>
-  <p style="color:#5a646e;font-size:13px;margin:0">Click any thread below to open it on Reddit and join the conversation. Threads marked <b style="color:#b91c1c">HIGH</b> are cited by AI assistants when buyers ask for recommendations — a helpful reply there reaches far beyond Reddit. Questions? Contact your Territory Sales Manager.</p>
+  <div style="display:inline-block;background:#eff6ff;color:#0091ae;font-size:11px;font-weight:700;letter-spacing:.06em;padding:4px 12px;border-radius:99px;margin-bottom:10px">REDDIT PULSE · UPDATED ${esc(dateLabel).toUpperCase()}</div>
+  <h2 style="color:#0f2542;margin:0 0 6px;font-size:24px;font-weight:700">${count} conversation${count === 1 ? "" : "s"} worth your time this week</h2>
+  <p style="color:#5a646e;font-size:14px;margin:0 0 4px;line-height:1.5">Real buyers, real threads. Tap in below — a quick, helpful reply here reaches far past Reddit, since <b style="color:#0f2542">HIGH</b> threads are exactly what shows up when someone searches for a recommendation.</p>
+  <p style="color:#8794a3;font-size:12px;margin:10px 0 0">See a thread we missed, or have a lead worth sharing? ${esc(feedbackContact)}</p>
 </div>`;
 }
 
@@ -64,9 +74,6 @@ function renderTable(brandName: string, weekOf: string, threads: Thread[]): stri
 
   return `${MARKER}
 <div style="font-family:'Lexend Deca',Helvetica,Arial,sans-serif;max-width:900px;margin:0 auto">
-  <h2 style="color:#0f2542;margin:0 0 4px">Weekly Reddit Opportunities — ${esc(brandName)}</h2>
-  <p style="color:#5a646e;margin:0 0 4px;font-size:14px">Week of ${esc(weekOf)} · ${threads.length} conversations your customers are having right now.</p>
-  <p style="color:#5a646e;margin:0 0 16px;font-size:13px">Click a thread to open it on Reddit. <b>HIGH</b> threads are cited by AI assistants when buyers ask for recommendations — a helpful reply there reaches far beyond Reddit.</p>
   <table style="border-collapse:collapse;width:100%;border:1px solid #e2e8f0">
     <thead><tr style="background:#0f2542">
       <th style="padding:10px 12px;color:#fff;font-size:12px;text-align:left">#</th>
@@ -152,7 +159,7 @@ Deno.serve(async (req: Request) => {
     });
     return json({ status: infoRes.status, body: await infoRes.json().catch(() => infoRes.text()) });
   }
-  const { brandId, brandName, landingPageId, weekOf, uploadPdf = true, introFind, tableFind }: PublishRequest = reqBody;
+  const { brandId, brandName, landingPageId, weekOf, uploadPdf = true, introFind, tableFind, feedbackContact, brandLogoUrl }: PublishRequest = reqBody;
 
   // Latest week with data if not specified
   let week = weekOf;
@@ -187,7 +194,7 @@ Deno.serve(async (req: Request) => {
   const page = await pageRes.json();
 
   // Replacement plan: MARKER always wins; otherwise use introFind/tableFind text anchors.
-  const intro = renderIntro(brandName, week, threads.length);
+  const intro = renderIntro(brandName, week, threads.length, feedbackContact ?? "Reply to your Territory Sales Manager.");
   const plans: Array<{ find: string; html: string }> = [
     { find: MARKER, html },
     ...(tableFind ? [{ find: tableFind, html }] : []),
@@ -240,18 +247,23 @@ Deno.serve(async (req: Request) => {
       const M = 40;
 
       doc.setFillColor(15, 37, 66); doc.rect(0, 0, W, 92, "F");
-      doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(16);
-      doc.text("AMERICAN BATH GROUP", M, 38);
-      doc.setFontSize(11); doc.setFont("helvetica", "normal"); doc.setTextColor(147, 197, 253);
-      doc.text(`Weekly Reddit Opportunities  ·  ${brandName} Dealers`, M, 58);
+      // Brand logo (not the parent group) — sized to its real aspect ratio (360x102).
+      try {
+        const logoRes = await fetchWithTimeout(brandLogoUrl ?? "https://358916.fs1.hubspotusercontent-na2.net/hubfs/358916/MAAX-Spas-2C-Logo-1.png", {}, 20_000);
+        const logoBytes = new Uint8Array(await logoRes.arrayBuffer());
+        const logoH = 34, logoW = logoH * (360 / 102);
+        doc.addImage(logoBytes, "PNG", M, 20, logoW, logoH);
+      } catch { /* logo is decorative — skip silently if it fails to load */ }
+      doc.setFontSize(11); doc.setTextColor(147, 197, 253); doc.setFont("helvetica", "normal");
+      doc.text(`Weekly Reddit Opportunities  ·  ${brandName} Dealers`, M, 66);
       doc.setTextColor(255, 255, 255); doc.setFontSize(9);
-      doc.text(`Week of ${week}`, M, 74);
+      doc.text(`Week of ${week}`, M, 82);
 
       doc.setTextColor(30, 41, 59); doc.setFontSize(11); doc.setFont("helvetica", "bold");
-      doc.text(`${list.length} conversations your customers are having right now.`, M, 120);
+      doc.text(`${list.length} conversations worth your time this week.`, M, 120);
       doc.setFont("helvetica", "normal"); doc.setFontSize(9.5); doc.setTextColor(90, 100, 110);
-      doc.text("Click any thread title to open it on Reddit. Threads marked HIGH are cited by AI assistants when buyers ask", M, 136);
-      doc.text("for recommendations — a helpful dealer reply there reaches far beyond Reddit.", M, 148);
+      doc.text("Click any thread title to open it on Reddit. Threads marked HIGH show up when buyers search for a", M, 136);
+      doc.text("recommendation — a helpful dealer reply there reaches far beyond Reddit.", M, 148);
 
       // Manual table: fixed column layout, word-wrapped title/action cells, row height
       // grows to fit the wrapped title. Colors match the approved sample design.
