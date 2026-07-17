@@ -9,6 +9,7 @@ import { HubSpotCRMTab } from "@/components/HubSpotCRMTab";
 import { SocialMediaTab } from "@/components/SocialMediaTab";
 import { ReadMeTab } from "@/components/ReadMeTab";
 import { SummaryTab } from "@/components/SummaryTab";
+import { SeoAeoGeoTab } from "@/components/SeoAeoGeoTab";
 import { toast } from "sonner";
 
 interface TabPerm { can_view: boolean; show_insights: boolean; }
@@ -17,6 +18,7 @@ const Index = () => {
   const [selectedBrand, setSelectedBrand] = useState(brands.find(b => b.name === "Bootz") ?? brands[0]);
   const [userEmail, setUserEmail] = useState("");
   const [tabPerms, setTabPerms] = useState<Record<string, TabPerm>>({});
+  const [isAdmin, setIsAdmin] = useState(false);
   const welcomeShown = useRef(false);
 
   useEffect(() => {
@@ -28,10 +30,11 @@ const Index = () => {
       setUserEmail(session.user.email ?? "");
 
       const [{ data: profile }, { data: perms }] = await Promise.all([
-        supabase.from("user_profiles").select("full_name").eq("id", session.user.id).single(),
+        supabase.from("user_profiles").select("full_name, role").eq("id", session.user.id).single(),
         supabase.from("user_tab_permissions").select("tab_id, can_view, show_insights").eq("user_id", session.user.id),
       ]);
 
+      setIsAdmin(profile?.role === "admin");
       const firstName = profile?.full_name?.split(" ")[0];
       toast.success(firstName ? `Welcome back, ${firstName}!` : "Welcome back!");
 
@@ -79,6 +82,8 @@ const Index = () => {
     { id: "hubspot",      label: "Emails",         disabled: !selectedBrand.hasHubSpot, tooltip: "No HubSpot data for this brand." },
     { id: "hubspot-crm",  label: "HubSpot CRM",    disabled: !selectedBrand.hasHubSpot, tooltip: "No HubSpot data for this brand." },
     { id: "summary",      label: "Summary Report", disabled: !selectedBrand.hasGA4 && !selectedBrand.hasGSC && !selectedBrand.hasHubSpot, tooltip: "No data sources linked for this brand." },
+    // Admin-only: hidden entirely (not just disabled) for non-admins.
+    ...(isAdmin ? [{ id: "seo-aeo", label: "SEO & AEO & GEO" }] : []),
   ];
 
   const tabs = allTabs.filter(t => canView(t.id));
@@ -122,7 +127,7 @@ const Index = () => {
 
       <main className="mx-auto max-w-[1400px]">
         <div className="px-2 pt-2">
-          <h1 className="px-3 md:px-4 pt-3 md:pt-4 text-sm md:text-lg font-semibold text-foreground">{selectedBrand.name} {effectiveTab === "hubspot" ? "Emails" : effectiveTab === "hubspot-crm" ? "HubSpot CRM" : effectiveTab === "summary" ? "Summary" : ""} Performance Overview</h1>
+          <h1 className="px-3 md:px-4 pt-3 md:pt-4 text-sm md:text-lg font-semibold text-foreground">{selectedBrand.name} {effectiveTab === "hubspot" ? "Emails" : effectiveTab === "hubspot-crm" ? "HubSpot CRM" : effectiveTab === "summary" ? "Summary" : effectiveTab === "seo-aeo" ? "SEO & AEO & GEO" : ""} Performance Overview</h1>
         </div>
 
         {effectiveTab === "performance" && <PerformanceTab key={selectedBrand.id} brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />}
@@ -131,6 +136,7 @@ const Index = () => {
         {effectiveTab === "hubspot-crm" && <HubSpotCRMTab key={selectedBrand.id} brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} userEmail={userEmail} />}
         {effectiveTab === "readme" && <ReadMeTab key={selectedBrand.id} brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />}
         {effectiveTab === "summary" && <SummaryTab key={selectedBrand.id} brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} showInsights={showInsights} />}
+        {effectiveTab === "seo-aeo" && isAdmin && <SeoAeoGeoTab key={selectedBrand.id} brand={selectedBrand} />}
       </main>
     </div>
   );
