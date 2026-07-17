@@ -48,6 +48,8 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
   const [showAddPrompt, setShowAddPrompt] = useState(false);
   const [newPrompt, setNewPrompt] = useState({ prompt: "", product_service: "", icp: "", journey_phase: "Consideration" });
   const [recFilter, setRecFilter] = useState<string | null>(null);
+  const [recSearch, setRecSearch] = useState("");
+  const [promptSearch, setPromptSearch] = useState("");
   const qc = useQueryClient();
 
   const { data: weeks } = useQuery({
@@ -159,7 +161,37 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
   const prevVis = ownVisibility.at(-2)?.visibility_pct;
 
   const recTypes = [...new Set((data?.recs ?? []).map((r: any) => r.rec_type))] as string[];
-  const filteredRecs = recFilter ? (data?.recs ?? []).filter((r: any) => r.rec_type === recFilter) : (data?.recs ?? []);
+  const filteredRecs = (data?.recs ?? [])
+    .filter((r: any) => !recFilter || r.rec_type === recFilter)
+    .filter((r: any) => !recSearch || r.title.toLowerCase().includes(recSearch.toLowerCase()));
+
+  const filteredPrompts = (data?.prompts ?? []).filter((p: any) =>
+    !promptSearch || p.prompt.toLowerCase().includes(promptSearch.toLowerCase()));
+
+  // Share of voice: how often each competitor is mentioned vs. the brand itself, derived
+  // from what was already captured during the scan (aeo_prompt_results.competitors_mentioned)
+  // — no new API calls needed, this is a real aggregation of stored data.
+  const shareOfVoice = (() => {
+    const counts = new Map<string, number>();
+    let brandMentions = 0;
+    for (const r of data?.promptResults ?? []) {
+      if (r.brand_mentioned) brandMentions++;
+      for (const c of r.competitors_mentioned ?? []) counts.set(c, (counts.get(c) ?? 0) + 1);
+    }
+    const rows = [...counts.entries()].map(([company, mentions]) => ({ company, mentions }));
+    rows.push({ company: brand.name, mentions: brandMentions });
+    const total = rows.reduce((s, r) => s + r.mentions, 0) || 1;
+    return rows
+      .map(r => ({ ...r, pct: Math.round((r.mentions / total) * 1000) / 10 }))
+      .sort((a, b) => b.mentions - a.mentions);
+  })();
+
+  const redditStats = {
+    tracked: data?.reddit?.length ?? 0,
+    mentioned: (data?.reddit ?? []).filter((t: any) => t.brand_mentioned).length,
+    cited: (data?.reddit ?? []).filter((t: any) => (t.cited_by_ai_count ?? 0) > 0).length,
+    highOpportunity: (data?.reddit ?? []).filter((t: any) => (t.opportunity ?? "").startsWith("HIGH")).length,
+  };
 
   const trend = (curr?: number, prev?: number) => {
     if (curr == null || prev == null) return null;
@@ -280,6 +312,30 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
               </div>
 
               <div className="rounded-lg border bg-card p-4">
+                <h2 className="mb-1 font-semibold">Competitor Landscape — Share of voice</h2>
+                <p className="mb-3 text-sm text-muted-foreground">How often each brand was mentioned across this week's tracked prompts.</p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm tabular-nums">
+                    <thead><tr className="border-b text-left text-xs uppercase text-muted-foreground">
+                      <th className="py-2">Company</th><th className="text-right">Mentions</th><th className="text-right">Share of voice</th>
+                    </tr></thead>
+                    <tbody>
+                      {shareOfVoice.map(row => (
+                        <tr key={row.company} className={`border-b last:border-0 ${row.company === brand.name ? "font-bold" : ""}`}>
+                          <td className="py-2">{row.company}{row.company === brand.name && <span className="ml-1 text-xs font-normal text-muted-foreground">(you)</span>}</td>
+                          <td className="text-right">{row.mentions}</td>
+                          <td className="text-right">{row.pct}%</td>
+                        </tr>
+                      ))}
+                      {!shareOfVoice.some(r => r.mentions > 0) && (
+                        <tr><td colSpan={3} className="py-4 text-center text-muted-foreground">No mentions captured this week.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="rounded-lg border bg-card p-4">
                 <h2 className="mb-1 font-semibold">Citation Analysis — Top domains</h2>
                 <p className="mb-3 text-sm text-muted-foreground">The sites AI engines cite when answering the tracked prompts.</p>
                 <div className="overflow-x-auto">
@@ -318,13 +374,19 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
                 </button>
               </div>
               <p className="mb-3 text-sm text-muted-foreground">Questions we ask each AI engine weekly. Capped at {MAX_PROMPTS} per brand to stay inside API free limits.</p>
+              <input
+                className="mb-3 w-full max-w-xs rounded-md border bg-background px-3 py-1.5 text-sm"
+                placeholder="Search prompts"
+                value={promptSearch}
+                onChange={e => setPromptSearch(e.target.value)}
+              />
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead><tr className="border-b text-left text-xs uppercase text-muted-foreground">
                     <th className="py-2">Prompt</th><th>Visibility</th><th>Product</th><th>ICP</th><th>Journey phase</th><th></th>
                   </tr></thead>
                   <tbody>
-                    {(data.prompts ?? []).map((p: any) => {
+                    {filteredPrompts.map((p: any) => {
                       const r = data.promptResults?.find((x: any) => x.prompt_id === p.id);
                       return (
                         <tr key={p.id} className="border-b last:border-0">
@@ -337,7 +399,11 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
                         </tr>
                       );
                     })}
-                    {!data.prompts?.length && <tr><td colSpan={6} className="py-4 text-center text-muted-foreground">No prompts yet — click "Add prompt" or run a scan (auto-generates 10 on first run).</td></tr>}
+                    {!filteredPrompts.length && (
+                      <tr><td colSpan={6} className="py-4 text-center text-muted-foreground">
+                        {data.prompts?.length ? "No prompts match your search." : 'No prompts yet — click "Add prompt" or run a scan (auto-generates 10 on first run).'}
+                      </td></tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -420,36 +486,50 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
                     </button>
                   ))}
                 </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead><tr className="border-b text-left text-xs uppercase text-muted-foreground">
-                      <th className="py-2">Title</th><th>Type</th><th>Channel</th><th>Priority</th><th>Status</th>
-                    </tr></thead>
-                    <tbody>
-                      {filteredRecs.map((r: any) => (
-                        <tr key={r.id} className="border-b last:border-0">
-                          <td className="py-2 font-medium">{r.title}</td>
-                          <td>{r.rec_type}</td>
-                          <td>{r.channel ?? "—"}</td>
-                          <td><Pill tone={r.priority === "HIGH" ? "bad" : r.priority === "MED" ? "warn" : "neutral"}>{r.priority}</Pill></td>
-                          <td>
-                            <select
-                              className="rounded border bg-background px-1 py-0.5 text-xs"
-                              value={r.status}
-                              onChange={async e => {
-                                const { error } = await sb.from("aeo_recommendations").update({ status: e.target.value, updated_at: new Date().toISOString() }).eq("id", r.id);
-                                if (error) toast.error(error.message);
-                                else qc.invalidateQueries({ queryKey: ["aeo-data", brand.id] });
-                              }}
-                            >
-                              {["New", "Not started", "In progress", "Completed"].map(s => <option key={s}>{s}</option>)}
-                            </select>
-                          </td>
-                        </tr>
-                      ))}
-                      {!filteredRecs.length && <tr><td colSpan={5} className="py-4 text-center text-muted-foreground">No recommendations yet — run a scan.</td></tr>}
-                    </tbody>
-                  </table>
+                <div>
+                  <input
+                    className="mb-3 w-full max-w-xs rounded-md border bg-background px-3 py-1.5 text-sm"
+                    placeholder="Search recommendations"
+                    value={recSearch}
+                    onChange={e => setRecSearch(e.target.value)}
+                  />
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead><tr className="border-b text-left text-xs uppercase text-muted-foreground">
+                        <th className="py-2">Title</th><th>Type</th><th>Channel</th><th>Priority</th><th>Status</th><th>Assignee</th><th>Created</th>
+                      </tr></thead>
+                      <tbody>
+                        {filteredRecs.map((r: any) => (
+                          <tr key={r.id} className="border-b last:border-0">
+                            <td className="py-2 font-medium">{r.title}</td>
+                            <td>{r.rec_type}</td>
+                            <td>{r.channel ?? "—"}</td>
+                            <td><Pill tone={r.priority === "HIGH" ? "bad" : r.priority === "MED" ? "warn" : "neutral"}>{r.priority}</Pill></td>
+                            <td>
+                              <select
+                                className="rounded border bg-background px-1 py-0.5 text-xs"
+                                value={r.status}
+                                onChange={async e => {
+                                  const { error } = await sb.from("aeo_recommendations").update({ status: e.target.value, updated_at: new Date().toISOString() }).eq("id", r.id);
+                                  if (error) toast.error(error.message);
+                                  else qc.invalidateQueries({ queryKey: ["aeo-data", brand.id] });
+                                }}
+                              >
+                                {["New", "Not started", "In progress", "Completed"].map(s => <option key={s}>{s}</option>)}
+                              </select>
+                            </td>
+                            <td className="text-muted-foreground">{r.assignee ?? "Unassigned"}</td>
+                            <td className="text-muted-foreground whitespace-nowrap">{new Date(r.created_at).toLocaleDateString()}</td>
+                          </tr>
+                        ))}
+                        {!filteredRecs.length && (
+                          <tr><td colSpan={7} className="py-4 text-center text-muted-foreground">
+                            {data.recs?.length ? "No recommendations match your search." : "No recommendations yet — run a scan."}
+                          </td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
             </div>
@@ -461,6 +541,19 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
                 Reddit Visibility <span className="rounded bg-accent/10 px-2 py-0.5 text-[11px] font-bold text-accent">feeds weekly dealer email</span>
               </h2>
               <p className="mb-3 text-sm text-muted-foreground">Threads AI engines cite or that rank for category questions. Stored weekly — the same data is pushed to the HubSpot landing page and archived as a PDF.</p>
+              <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+                {([
+                  ["Threads tracked", redditStats.tracked],
+                  ["Brand mentioned", redditStats.mentioned],
+                  ["Cited by AI", redditStats.cited],
+                  ["High opportunity", redditStats.highOpportunity],
+                ] as const).map(([label, val]) => (
+                  <div key={label} className="rounded-lg border p-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</div>
+                    <div className="text-2xl font-bold tabular-nums">{val}</div>
+                  </div>
+                ))}
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm tabular-nums">
                   <thead><tr className="border-b text-left text-xs uppercase text-muted-foreground">
