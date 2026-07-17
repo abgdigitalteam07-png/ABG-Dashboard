@@ -137,12 +137,35 @@ Deno.serve(async (req: Request) => {
     }, { onConflict: "brand_id,week_of" });
 
     // 3. Tracked prompts → visibility + citations (Claude as the first engine).
-    const { data: prompts } = await supabase
+    let { data: prompts } = await supabase
       .from("aeo_prompts")
       .select("id, prompt")
       .eq("brand_id", brandId)
       .eq("is_active", true)
       .limit(MAX_PROMPTS);
+
+    // First scan for a brand: auto-generate 10 prompts tailored to its product category.
+    if (!prompts?.length) {
+      const genText = await claude(
+        anthropicKey,
+        `You generate AI-visibility tracking prompts. Given a brand and its website, infer its product category (e.g. steel bathtubs, shower doors, hot tubs, walk-in tubs) and write 10 questions a real buyer would ask an AI assistant. Mix: ~6 unbranded category questions ("best X brands", "which X for Y"), ~2 branded ("is ${brandName} good quality", "${brandName} vs <top competitor>"), ~2 dealer/purchase questions. Reply ONLY JSON: [{"prompt","product_service","icp","journey_phase":"Awareness|Consideration|Decision"}]`,
+        `Brand: ${brandName}. Website: ${siteUrl}. Audit findings for context: ${JSON.stringify(audit.findings).slice(0, 800)}`,
+      );
+      apiCalls++;
+      const generated = extractJson<Array<{ prompt: string; product_service?: string; icp?: string; journey_phase?: string }>>(genText);
+      const rows = generated.slice(0, MAX_PROMPTS).map(g => ({
+        brand_id: brandId,
+        prompt: g.prompt,
+        product_service: g.product_service ?? null,
+        icp: g.icp ?? null,
+        journey_phase: ["Awareness", "Consideration", "Decision"].includes(g.journey_phase ?? "") ? g.journey_phase : null,
+      }));
+      const { data: inserted } = await supabase
+        .from("aeo_prompts")
+        .upsert(rows, { onConflict: "brand_id,prompt", ignoreDuplicates: true })
+        .select("id, prompt");
+      prompts = inserted ?? [];
+    }
 
     let mentions = 0;
     const domainFreq = new Map<string, { freq: number; brandMentioned: boolean }>();
