@@ -29,6 +29,15 @@ function DateChip({ children }: { children: React.ReactNode }) {
   return <span className="inline-block rounded bg-muted px-2 py-0.5 text-[10px] font-bold tracking-wide text-muted-foreground">{children}</span>;
 }
 
+function EmptyChart({ reason }: { reason: string }) {
+  return (
+    <div className="flex h-full min-h-[160px] flex-col items-center justify-center gap-1 rounded-md border border-dashed text-center">
+      <span className="text-sm font-medium text-muted-foreground">No data yet</span>
+      <span className="max-w-xs text-xs text-muted-foreground/70">{reason}</span>
+    </div>
+  );
+}
+
 function Pill({ tone, children }: { tone: "good" | "warn" | "bad" | "neutral"; children: React.ReactNode }) {
   const map = {
     good: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
@@ -193,6 +202,41 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
     highOpportunity: (data?.reddit ?? []).filter((t: any) => (t.opportunity ?? "").startsWith("HIGH")).length,
   };
 
+  // Real prompt-coverage numbers (replaces the prototype's fabricated "blind spots"
+  // banner, which depended on an ICP/product-tracking concept that was never real).
+  const activePrompts = data?.prompts?.length ?? 0;
+  const distinctICPs = new Set((data?.prompts ?? []).map((p: any) => p.icp).filter(Boolean)).size;
+  const distinctProducts = new Set((data?.prompts ?? []).map((p: any) => p.product_service).filter(Boolean)).size;
+  const distinctPhases = new Set((data?.prompts ?? []).map((p: any) => p.journey_phase).filter(Boolean)).size;
+
+  // Citation composition by content type / channel — schema supports this
+  // (aeo_citations.content_type / .channel_type) but the scan doesn't classify
+  // citations yet, so these will render empty until that's added.
+  const byContentType = (() => {
+    const counts = new Map<string, number>();
+    for (const c of data?.citations ?? []) if (c.content_type) counts.set(c.content_type, (counts.get(c.content_type) ?? 0) + c.frequency);
+    return [...counts.entries()].map(([name, value]) => ({ name, value }));
+  })();
+  const byChannelType = (() => {
+    const counts = new Map<string, number>();
+    for (const c of data?.citations ?? []) if (c.channel_type) counts.set(c.channel_type, (counts.get(c.channel_type) ?? 0) + c.frequency);
+    return [...counts.entries()].map(([name, value]) => ({ name, value }));
+  })();
+
+  // Top URLs — schema-ready (aeo_citations.url), but the scan currently only
+  // persists domain-level aggregate rows, never per-URL rows.
+  const topUrls = (data?.citations ?? []).filter((c: any) => c.url);
+
+  // Competitor visibility over time — schema-ready (aeo_visibility_snapshots has a
+  // company + week_of column for any brand), but the scan only ever writes a row
+  // for the brand itself, never competitors, so only one line will ever plot today.
+  const competitorSeries = [...new Set((data?.visibility ?? []).map((v: any) => v.company))];
+
+  const topRecs = [...(data?.recs ?? [])].sort((a: any, b: any) => {
+    const rank = { HIGH: 0, MED: 1, LOW: 2 } as Record<string, number>;
+    return (rank[a.priority] ?? 3) - (rank[b.priority] ?? 3);
+  }).slice(0, 3);
+
   const trend = (curr?: number, prev?: number) => {
     if (curr == null || prev == null) return null;
     const d = Math.round((curr - prev) * 10) / 10;
@@ -254,6 +298,19 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
         <>
           {subtab === "Dashboard" && (
             <div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-4 rounded-lg border bg-card p-4">
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Prompt coverage</div>
+                  <div className="text-sm">
+                    Tracking <b>{activePrompts}/{MAX_PROMPTS}</b> prompts across <b>{distinctProducts || 1}</b> product line(s), <b>{distinctICPs || 1}</b> ICP(s), <b>{distinctPhases || 1}</b> journey phase(s).
+                  </div>
+                </div>
+                <div className="flex-1" />
+                <div className="h-1.5 w-40 rounded-full bg-muted">
+                  <div className="h-full rounded-full bg-accent" style={{ width: `${(activePrompts / MAX_PROMPTS) * 100}%` }} />
+                </div>
+              </div>
+
               <div className="rounded-lg border bg-card p-4">
                 <h2 className="mb-1 flex items-center gap-2 font-semibold">
                   Weekly Audit Scores <span className="rounded bg-accent/10 px-2 py-0.5 text-[11px] font-bold text-accent">from site crawl</span>
@@ -312,26 +369,46 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
               </div>
 
               <div className="rounded-lg border bg-card p-4">
-                <h2 className="mb-1 font-semibold">Competitor Landscape — Share of voice</h2>
-                <p className="mb-3 text-sm text-muted-foreground">How often each brand was mentioned across this week's tracked prompts.</p>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm tabular-nums">
-                    <thead><tr className="border-b text-left text-xs uppercase text-muted-foreground">
-                      <th className="py-2">Company</th><th className="text-right">Mentions</th><th className="text-right">Share of voice</th>
-                    </tr></thead>
-                    <tbody>
-                      {shareOfVoice.map(row => (
-                        <tr key={row.company} className={`border-b last:border-0 ${row.company === brand.name ? "font-bold" : ""}`}>
-                          <td className="py-2">{row.company}{row.company === brand.name && <span className="ml-1 text-xs font-normal text-muted-foreground">(you)</span>}</td>
-                          <td className="text-right">{row.mentions}</td>
-                          <td className="text-right">{row.pct}%</td>
-                        </tr>
-                      ))}
-                      {!shareOfVoice.some(r => r.mentions > 0) && (
-                        <tr><td colSpan={3} className="py-4 text-center text-muted-foreground">No mentions captured this week.</td></tr>
-                      )}
-                    </tbody>
-                  </table>
+                <h2 className="mb-1 font-semibold">Competitor Landscape</h2>
+                <p className="mb-3 text-sm text-muted-foreground">Share of voice this week, and visibility trend over time.</p>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm tabular-nums">
+                      <thead><tr className="border-b text-left text-xs uppercase text-muted-foreground">
+                        <th className="py-2">Company</th><th className="text-right">Mentions</th><th className="text-right">Share of voice</th>
+                      </tr></thead>
+                      <tbody>
+                        {shareOfVoice.map(row => (
+                          <tr key={row.company} className={`border-b last:border-0 ${row.company === brand.name ? "font-bold" : ""}`}>
+                            <td className="py-2">{row.company}{row.company === brand.name && <span className="ml-1 text-xs font-normal text-muted-foreground">(you)</span>}</td>
+                            <td className="text-right">{row.mentions}</td>
+                            <td className="text-right">{row.pct}%</td>
+                          </tr>
+                        ))}
+                        {!shareOfVoice.some(r => r.mentions > 0) && (
+                          <tr><td colSpan={3} className="py-4 text-center text-muted-foreground">No mentions captured this week.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div>
+                    <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Visibility over time</div>
+                    {competitorSeries.length > 1 ? (
+                      <ResponsiveContainer width="100%" height={180}>
+                        <LineChart data={data?.visibility ?? []}>
+                          <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.3} />
+                          <XAxis dataKey="week_of" fontSize={11} />
+                          <YAxis fontSize={11} unit="%" />
+                          <Tooltip />
+                          {competitorSeries.map((c, i) => (
+                            <Line key={c} type="monotone" dataKey="visibility_pct" data={(data?.visibility ?? []).filter((v: any) => v.company === c)} name={c} stroke={[HS.teal, HS.orange, HS.purple, HS.mint][i % 4]} strokeWidth={2} />
+                          ))}
+                        </LineChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <EmptyChart reason="The scan only tracks your own brand's visibility today — competitor visibility snapshots aren't captured yet." />
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -354,6 +431,41 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
                       {!data.citations?.length && <tr><td colSpan={3} className="py-4 text-center text-muted-foreground">No citations captured this week.</td></tr>}
                     </tbody>
                   </table>
+                </div>
+              </div>
+
+              <div className="rounded-lg border bg-card p-4">
+                <h2 className="mb-1 font-semibold">Citation Composition</h2>
+                <p className="mb-3 text-sm text-muted-foreground">Which content formats and channels shape the answers AI engines give.</p>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">By content type</div>
+                    {byContentType.length ? (
+                      <ResponsiveContainer width="100%" height={180}>
+                        <BarChart data={byContentType}>
+                          <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.3} />
+                          <XAxis dataKey="name" fontSize={10} />
+                          <YAxis fontSize={11} />
+                          <Tooltip />
+                          <Bar dataKey="value" fill={HS.pink} radius={[3, 3, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    ) : <EmptyChart reason="The scan doesn't classify citations by content type yet — this needs an extra classification step added to the scan." />}
+                  </div>
+                  <div>
+                    <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">By channel</div>
+                    {byChannelType.length ? (
+                      <ResponsiveContainer width="100%" height={180}>
+                        <BarChart data={byChannelType}>
+                          <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.3} />
+                          <XAxis dataKey="name" fontSize={10} />
+                          <YAxis fontSize={11} />
+                          <Tooltip />
+                          <Bar dataKey="value" fill={HS.sand} radius={[3, 3, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    ) : <EmptyChart reason="The scan doesn't classify citations by channel (Owned/Earned/UGC/Competitor) yet — same fix as content type." />}
+                  </div>
                 </div>
               </div>
             </div>
@@ -450,18 +562,61 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
           )}
 
           {subtab === "Citations" && (
-            <div className="rounded-lg border bg-card p-4">
-              <h2 className="mb-1 font-semibold">Citations — week of {week}</h2>
-              <p className="mb-3 text-sm text-muted-foreground">Which domains AI engines cited most often when answering the tracked prompts this week.</p>
-              <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={(data.citations ?? []).slice(0, 12)}>
-                  <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.3} />
-                  <XAxis dataKey="domain" fontSize={10} interval={0} angle={-25} textAnchor="end" height={70} />
-                  <YAxis fontSize={11} />
-                  <Tooltip />
-                  <Bar dataKey="frequency" name="Citations" fill={HS.orange} radius={[3, 3, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+            <div className="space-y-4">
+              <div className="rounded-lg border bg-card p-4">
+                <h2 className="mb-3 font-semibold">Top recommendations this week</h2>
+                <div className="grid gap-3 md:grid-cols-3">
+                  {topRecs.map((r: any) => (
+                    <div key={r.id} className="rounded-lg border p-3">
+                      <div className="mb-2 flex items-center justify-between">
+                        <span className="rounded border px-2 py-0.5 text-[11px] font-bold text-accent">{r.rec_type}</span>
+                        <Pill tone={r.priority === "HIGH" ? "bad" : r.priority === "MED" ? "warn" : "neutral"}>{r.priority}</Pill>
+                      </div>
+                      <div className="text-sm font-semibold">{r.title}</div>
+                    </div>
+                  ))}
+                  {!topRecs.length && <div className="col-span-3 py-4 text-center text-muted-foreground">No recommendations yet — run a scan.</div>}
+                </div>
+              </div>
+
+              <div className="rounded-lg border bg-card p-4">
+                <h2 className="mb-1 font-semibold">Citations — week of {week}</h2>
+                <p className="mb-3 text-sm text-muted-foreground">Which domains AI engines cited most often when answering the tracked prompts this week.</p>
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={(data.citations ?? []).slice(0, 12)}>
+                    <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.3} />
+                    <XAxis dataKey="domain" fontSize={10} interval={0} angle={-25} textAnchor="end" height={70} />
+                    <YAxis fontSize={11} />
+                    <Tooltip />
+                    <Bar dataKey="frequency" name="Citations" fill={HS.orange} radius={[3, 3, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className="rounded-lg border bg-card p-4">
+                <h2 className="mb-1 font-semibold">Top URLs</h2>
+                <p className="mb-3 text-sm text-muted-foreground">The exact pages AI engines cited, not just the domain.</p>
+                {topUrls.length ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm tabular-nums">
+                      <thead><tr className="border-b text-left text-xs uppercase text-muted-foreground">
+                        <th className="py-2">URL</th><th className="text-right">Frequency</th><th>Brand mentioned</th>
+                      </tr></thead>
+                      <tbody>
+                        {topUrls.map((c: any) => (
+                          <tr key={c.id} className="border-b last:border-0">
+                            <td className="py-2"><a href={c.url} target="_blank" rel="noreferrer" className="font-medium text-accent hover:underline">{c.url}</a></td>
+                            <td className="text-right">{c.frequency}</td>
+                            <td>{c.brand_mentioned ? <Pill tone="good">Yes</Pill> : "No"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <EmptyChart reason="The scan currently stores citations at the domain level only — per-URL rows need a small addition to the scan's citation-writing step." />
+                )}
+              </div>
             </div>
           )}
 
