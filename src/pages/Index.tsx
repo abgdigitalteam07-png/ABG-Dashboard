@@ -15,7 +15,14 @@ import { toast } from "sonner";
 interface TabPerm { can_view: boolean; show_insights: boolean; }
 
 const Index = () => {
-  const [selectedBrand, setSelectedBrand] = useState(brands.find(b => b.name === "Bootz") ?? brands[0]);
+  const [selectedBrand, setSelectedBrandState] = useState(() => {
+    const savedName = localStorage.getItem("abg_last_brand");
+    return (savedName && brands.find(b => b.name === savedName)) || brands.find(b => b.name === "Bootz") || brands[0];
+  });
+  const setSelectedBrand = (brand: typeof selectedBrand) => {
+    setSelectedBrandState(brand);
+    localStorage.setItem("abg_last_brand", brand.name);
+  };
   const [userEmail, setUserEmail] = useState("");
   const [tabPerms, setTabPerms] = useState<Record<string, TabPerm>>({});
   const [isAdmin, setIsAdmin] = useState(false);

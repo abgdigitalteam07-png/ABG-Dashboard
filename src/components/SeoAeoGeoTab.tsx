@@ -21,6 +21,22 @@ const HS = {
 const SUBTABS = ["Dashboard", "Prompts", "Citations", "Recommendations", "Reddit Visibility"] as const;
 const MAX_PROMPTS = 10;
 
+// Last N Mondays (real calendar dates, not fabricated data) — used only so an
+// empty chart still shows a proper weekly x-axis frame instead of collapsing
+// to a blank box, matching how HubSpot's own charts look before any data exists.
+function recentMondays(n: number): string[] {
+  const out: string[] = [];
+  const d = new Date();
+  const day = d.getDay();
+  d.setDate(d.getDate() - ((day === 0 ? 7 : day) - 1)); // this week's Monday
+  for (let i = n - 1; i >= 0; i--) {
+    const m = new Date(d);
+    m.setDate(d.getDate() - i * 7);
+    out.push(m.toISOString().slice(0, 10));
+  }
+  return out;
+}
+
 function scoreColor(score: number | undefined) {
   const n = Number(score) || 0;
   return n >= 7 ? HS.mint : n >= 5 ? HS.sand : HS.coral;
@@ -258,6 +274,10 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
   const latestScore = data?.scores?.at(-1);
   const prevScore = data?.scores?.at(-2);
   const ownVisibility = data?.visibility?.filter((v: any) => v.is_own_brand) ?? [];
+  // Frame-preserving fallback: same weekly x-axis, flat baseline, no fabricated values —
+  // matches how HubSpot's own charts render before any data exists, rather than hiding
+  // the chart behind a text box.
+  const visibilityChartData = ownVisibility.length ? ownVisibility : recentMondays(5).map(week_of => ({ week_of, visibility_pct: 0 }));
   const currentVis = ownVisibility.find((v: any) => v.week_of === week)?.visibility_pct ?? 0;
   const prevVis = ownVisibility.at(-2)?.visibility_pct;
 
@@ -535,7 +555,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
                     <div className="aeo-tile">
                       <TileHead label="Visibility over time" chip="BY ENGINE" sign={signs.brandMetrics} />
                       <ResponsiveContainer width="100%" height={170}>
-                        <LineChart data={ownVisibility}>
+                        <LineChart data={visibilityChartData}>
                           <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.3} />
                           <XAxis dataKey="week_of" fontSize={11} />
                           <YAxis fontSize={11} unit="%" />
@@ -579,26 +599,23 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
                   </div>
                   <div>
                     <TileHead label="Visibility over time" sign={signs.competitorTrend} />
-                    {competitorSeries.length > 1 ? (
-                      <>
-                        <div className="aeo-legend">
-                          {competitorSeries.map((c, i) => <span key={c}><i style={{ background: competitorColors[i % 4] }} />{c}</span>)}
-                        </div>
-                        <ResponsiveContainer width="100%" height={160}>
-                          <LineChart data={data?.visibility ?? []}>
-                            <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.3} />
-                            <XAxis dataKey="week_of" fontSize={11} />
-                            <YAxis fontSize={11} unit="%" />
-                            <Tooltip />
-                            {competitorSeries.map((c, i) => (
-                              <Line key={c} type="monotone" dataKey="visibility_pct" data={(data?.visibility ?? []).filter((v: any) => v.company === c)} name={c} stroke={competitorColors[i % 4]} strokeWidth={2} />
-                            ))}
-                          </LineChart>
-                        </ResponsiveContainer>
-                      </>
-                    ) : (
-                      <EmptyChart reason="The scan only tracks your own brand's visibility today — competitor visibility snapshots aren't captured yet." />
-                    )}
+                    <div className="aeo-legend">
+                      {(competitorSeries.length ? competitorSeries : [brand.name]).map((c, i) => (
+                        <span key={c}><i style={{ background: competitorColors[i % 4] }} />{c}</span>
+                      ))}
+                    </div>
+                    <ResponsiveContainer width="100%" height={160}>
+                      <LineChart data={visibilityChartData}>
+                        <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.3} />
+                        <XAxis dataKey="week_of" fontSize={11} />
+                        <YAxis fontSize={11} unit="%" />
+                        <Tooltip />
+                        {(competitorSeries.length ? competitorSeries : [brand.name]).map((c, i) => (
+                          <Line key={c} type="monotone" dataKey="visibility_pct" data={competitorSeries.length ? (data?.visibility ?? []).filter((v: any) => v.company === c) : visibilityChartData} name={c} stroke={competitorColors[i % 4]} strokeWidth={2} />
+                        ))}
+                      </LineChart>
+                    </ResponsiveContainer>
+                    {!signs.competitorTrend.ok && <p className="aeo-sub" style={{ margin: "8px 0 0" }}>{signs.competitorTrend.why}</p>}
                   </div>
                 </div>
               </div>
@@ -623,24 +640,21 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
                   </table>
                 </div>
                 <TileHead label="Top URLs" chip={`WEEK OF ${week}`} sign={signs.topUrls} />
-                {topUrls.length ? (
-                  <div className="aeo-tscroll">
-                    <table>
-                      <thead><tr><th>URL</th><th style={{ textAlign: "right" }}>Frequency</th><th>Brand mentioned</th></tr></thead>
-                      <tbody>
-                        {topUrls.map((c: any) => (
-                          <tr key={c.id}>
-                            <td><a href={c.url} target="_blank" rel="noreferrer">{c.url}</a></td>
-                            <td style={{ textAlign: "right" }}>{c.frequency}</td>
-                            <td>{c.brand_mentioned ? <Pill tone="good">Yes</Pill> : "No"}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <EmptyChart reason={signs.topUrls.why} />
-                )}
+                <div className="aeo-tscroll">
+                  <table>
+                    <thead><tr><th>URL</th><th style={{ textAlign: "right" }}>Frequency</th><th>Brand mentioned</th></tr></thead>
+                    <tbody>
+                      {topUrls.map((c: any) => (
+                        <tr key={c.id}>
+                          <td><a href={c.url} target="_blank" rel="noreferrer">{c.url}</a></td>
+                          <td style={{ textAlign: "right" }}>{c.frequency}</td>
+                          <td>{c.brand_mentioned ? <Pill tone="good">Yes</Pill> : "No"}</td>
+                        </tr>
+                      ))}
+                      {!topUrls.length && <tr><td colSpan={3} style={{ textAlign: "center", color: "var(--aeo-muted)", padding: "16px 0" }}>{signs.topUrls.why}</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           )}
@@ -763,31 +777,29 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
                 <div className="aeo-grid2">
                   <div>
                     <TileHead label="Owned domain citation rate" chip="ALL WEEKS SCANNED" sign={signs.citationRate} />
-                    {citationRateSeries.length ? (
-                      <ResponsiveContainer width="100%" height={170}>
-                        <LineChart data={citationRateSeries}>
-                          <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.3} />
-                          <XAxis dataKey="week_of" fontSize={11} />
-                          <YAxis fontSize={11} unit="%" />
-                          <Tooltip />
-                          <Line type="monotone" dataKey="owned_pct" name={ownDomain ?? brand.name} stroke={HS.teal} strokeWidth={2} dot={{ r: 3 }} />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    ) : <EmptyChart reason={signs.citationRate.why} />}
+                    <ResponsiveContainer width="100%" height={170}>
+                      <LineChart data={citationRateSeries.length ? citationRateSeries : recentMondays(5).map(week_of => ({ week_of, owned_pct: 0 }))}>
+                        <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.3} />
+                        <XAxis dataKey="week_of" fontSize={11} />
+                        <YAxis fontSize={11} unit="%" />
+                        <Tooltip />
+                        <Line type="monotone" dataKey="owned_pct" name={ownDomain ?? brand.name} stroke={HS.teal} strokeWidth={2} dot={{ r: 3 }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                    {!signs.citationRate.ok && <p className="aeo-sub" style={{ margin: "8px 0 0" }}>{signs.citationRate.why}</p>}
                   </div>
                   <div>
                     <TileHead label="Citations with brand mention rate" chip="ALL WEEKS SCANNED" sign={signs.citationRate} />
-                    {citationRateSeries.length ? (
-                      <ResponsiveContainer width="100%" height={170}>
-                        <LineChart data={citationRateSeries}>
-                          <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.3} />
-                          <XAxis dataKey="week_of" fontSize={11} />
-                          <YAxis fontSize={11} unit="%" />
-                          <Tooltip />
-                          <Line type="monotone" dataKey="mention_pct" name={brand.name} stroke={HS.orange} strokeWidth={2} dot={{ r: 3 }} />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    ) : <EmptyChart reason={signs.citationRate.why} />}
+                    <ResponsiveContainer width="100%" height={170}>
+                      <LineChart data={citationRateSeries.length ? citationRateSeries : recentMondays(5).map(week_of => ({ week_of, mention_pct: 0 }))}>
+                        <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.3} />
+                        <XAxis dataKey="week_of" fontSize={11} />
+                        <YAxis fontSize={11} unit="%" />
+                        <Tooltip />
+                        <Line type="monotone" dataKey="mention_pct" name={brand.name} stroke={HS.orange} strokeWidth={2} dot={{ r: 3 }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                    {!signs.citationRate.ok && <p className="aeo-sub" style={{ margin: "8px 0 0" }}>{signs.citationRate.why}</p>}
                   </div>
                 </div>
               </div>
@@ -798,31 +810,29 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
                 <div className="aeo-grid2">
                   <div>
                     <TileHead label="By content type" sign={signs.composition} />
-                    {byContentType.length ? (
-                      <ResponsiveContainer width="100%" height={170}>
-                        <BarChart data={byContentType}>
-                          <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.3} />
-                          <XAxis dataKey="name" fontSize={10} />
-                          <YAxis fontSize={11} />
-                          <Tooltip />
-                          <Bar dataKey="value" fill={HS.pink} radius={[3, 3, 0, 0]} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    ) : <EmptyChart reason="The scan doesn't classify citations by content type yet — this needs an extra classification step added to the scan." />}
+                    <ResponsiveContainer width="100%" height={170}>
+                      <BarChart data={byContentType.length ? byContentType : ["Guide", "Comparison", "Blog", "How-to", "Listicle", "Other"].map(name => ({ name, value: 0 }))}>
+                        <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.3} />
+                        <XAxis dataKey="name" fontSize={10} />
+                        <YAxis fontSize={11} />
+                        <Tooltip />
+                        <Bar dataKey="value" fill={HS.pink} radius={[3, 3, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                    {!signs.composition.ok && <p className="aeo-sub" style={{ margin: "8px 0 0" }}>{signs.composition.why}</p>}
                   </div>
                   <div>
                     <TileHead label="By channel" sign={signs.composition} />
-                    {byChannelType.length ? (
-                      <ResponsiveContainer width="100%" height={170}>
-                        <BarChart data={byChannelType}>
-                          <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.3} />
-                          <XAxis dataKey="name" fontSize={10} />
-                          <YAxis fontSize={11} />
-                          <Tooltip />
-                          <Bar dataKey="value" fill={HS.sand} radius={[3, 3, 0, 0]} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    ) : <EmptyChart reason="The scan doesn't classify citations by channel (Owned/Earned/UGC/Competitor) yet — same fix as content type." />}
+                    <ResponsiveContainer width="100%" height={170}>
+                      <BarChart data={byChannelType.length ? byChannelType : ["Owned", "Earned", "UGC", "Competitor", "Affiliate", "Peer"].map(name => ({ name, value: 0 }))}>
+                        <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.3} />
+                        <XAxis dataKey="name" fontSize={10} />
+                        <YAxis fontSize={11} />
+                        <Tooltip />
+                        <Bar dataKey="value" fill={HS.sand} radius={[3, 3, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                    {!signs.composition.ok && <p className="aeo-sub" style={{ margin: "8px 0 0" }}>{signs.composition.why}</p>}
                   </div>
                 </div>
               </div>
@@ -842,24 +852,21 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
                 </ResponsiveContainer>
                 <div style={{ marginTop: 20 }}>
                   <TileHead label="Top URLs" chip={`WEEK OF ${week}`} sign={signs.topUrls} />
-                  {topUrls.length ? (
-                    <div className="aeo-tscroll">
-                      <table>
-                        <thead><tr><th>URL</th><th style={{ textAlign: "right" }}>Frequency</th><th>Brand mentioned</th></tr></thead>
-                        <tbody>
-                          {topUrls.map((c: any) => (
-                            <tr key={c.id}>
-                              <td><a href={c.url} target="_blank" rel="noreferrer">{c.url}</a></td>
-                              <td style={{ textAlign: "right" }}>{c.frequency}</td>
-                              <td>{c.brand_mentioned ? <Pill tone="good">Yes</Pill> : "No"}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    <EmptyChart reason={signs.topUrls.why} />
-                  )}
+                  <div className="aeo-tscroll">
+                    <table>
+                      <thead><tr><th>URL</th><th style={{ textAlign: "right" }}>Frequency</th><th>Brand mentioned</th></tr></thead>
+                      <tbody>
+                        {topUrls.map((c: any) => (
+                          <tr key={c.id}>
+                            <td><a href={c.url} target="_blank" rel="noreferrer">{c.url}</a></td>
+                            <td style={{ textAlign: "right" }}>{c.frequency}</td>
+                            <td>{c.brand_mentioned ? <Pill tone="good">Yes</Pill> : "No"}</td>
+                          </tr>
+                        ))}
+                        {!topUrls.length && <tr><td colSpan={3} style={{ textAlign: "center", color: "var(--aeo-muted)", padding: "16px 0" }}>{signs.topUrls.why}</td></tr>}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
             </div>
