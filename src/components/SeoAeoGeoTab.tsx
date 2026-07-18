@@ -18,7 +18,7 @@ const HS = {
   pink: "#EA90B1", sky: "#81C1FD", coral: "#E66E50", cyan: "#51D3D9",
 };
 
-const SUBTABS = ["Dashboard", "Prompts", "Citations", "Recommendations", "Reddit Visibility"] as const;
+const SUBTABS = ["Audit Report", "Dashboard", "Prompts", "Citations", "Recommendations", "Reddit Visibility"] as const;
 const MAX_PROMPTS = 10;
 
 // Last N Mondays (real calendar dates, not fabricated data) — used only so an
@@ -57,6 +57,40 @@ function EmptyChart({ reason }: { reason: string }) {
 
 function Pill({ tone, children }: { tone: "good" | "warn" | "bad" | "neutral" | "acc"; children: React.ReactNode }) {
   return <span className={`aeo-pill ${tone}`}>{children}</span>;
+}
+
+function statusTone(status: string): "good" | "warn" | "bad" {
+  if (status === "Good") return "good";
+  if (status === "Missing") return "bad";
+  return "warn";
+}
+function priorityTone(priority: string): "good" | "warn" | "bad" {
+  if (priority === "Critical") return "bad";
+  if (priority === "High") return "warn";
+  if (priority === "Quick Win") return "good";
+  return "warn";
+}
+
+// One Signal | Finding | Status table — reused across every SEO/GEO/AEO sub-section.
+// Header always renders; body shows an explanatory empty row until a scan populates it.
+function SignalTable({ rows, emptyReason }: { rows: Array<{ signal: string; finding: string; status: string }>; emptyReason: string }) {
+  return (
+    <div className="aeo-tscroll" style={{ marginBottom: 16 }}>
+      <table>
+        <thead><tr><th>Signal</th><th>Finding</th><th>Status</th></tr></thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={i}>
+              <td style={{ fontWeight: 600 }}>{r.signal}</td>
+              <td>{r.finding}</td>
+              <td><Pill tone={statusTone(r.status)}>{r.status}</Pill></td>
+            </tr>
+          ))}
+          {!rows.length && <tr><td colSpan={3} style={{ textAlign: "center", color: "var(--aeo-muted)", padding: "14px 0" }}>{emptyReason}</td></tr>}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 // Admin-facing working-status sign: green = live with real data, red = not
@@ -101,7 +135,7 @@ function Gauge({ pct }: { pct: number }) {
 interface Props { brand: Brand; }
 
 export const SeoAeoGeoTab = ({ brand }: Props) => {
-  const [subtab, setSubtab] = useState<(typeof SUBTABS)[number]>("Dashboard");
+  const [subtab, setSubtab] = useState<(typeof SUBTABS)[number]>("Audit Report");
   const [scanning, setScanning] = useState(false);
   const [selectedWeek, setSelectedWeek] = useState<string | null>(null);
   const [showAddPrompt, setShowAddPrompt] = useState(false);
@@ -272,6 +306,18 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
   };
 
   const latestScore = data?.scores?.at(-1);
+  // Skill-shaped audit findings. Defensive defaults — an older scan (before this
+  // structure existed) stored findings as flat string arrays; those render as
+  // empty here until the brand's next scan produces the richer shape.
+  const auditFindings = (latestScore?.findings ?? {}) as {
+    executive_summary?: string;
+    pages_audited?: Array<{ url: string; page_type: string; notes: string }>;
+    seo?: { technical_on_page?: any[]; content_quality?: any[]; structured_data?: any[] };
+    geo?: { eeat?: any[]; content_ai_synthesis?: any[]; technical_geo?: any[] };
+    aeo?: { featured_snippet?: any[]; structured_answer_formats?: any[]; voice_search?: any[] };
+    priority_recommendations?: Array<{ priority: string; issue: string; dimension: string; effort: string; impact: string }>;
+    whats_working?: Array<{ item: string; evidence: string }>;
+  };
   const prevScore = data?.scores?.at(-2);
   const ownVisibility = data?.visibility?.filter((v: any) => v.is_own_brand) ?? [];
   // Frame-preserving fallback: same weekly x-axis, flat baseline, no fabricated values —
@@ -497,6 +543,157 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
 
       {!isLoading && week && data && (
         <>
+          {subtab === "Audit Report" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <div className="aeo-section">
+                <h2>Executive Summary <Sign ok={signs.audit.ok} why={signs.audit.why} /></h2>
+                <div style={{ background: "var(--aeo-accent-soft)", borderRadius: 10, padding: 14, marginBottom: 14 }}>
+                  <p style={{ margin: 0, fontSize: 13.5 }}>
+                    {auditFindings.executive_summary ?? "No audit run yet — click Scan now to generate the executive summary for this site."}
+                  </p>
+                </div>
+                <div className="aeo-tscroll">
+                  <table>
+                    <thead><tr><th>Dimension</th><th>Score</th><th>Status</th><th>Key takeaway</th></tr></thead>
+                    <tbody>
+                      {([
+                        ["SEO", latestScore?.seo_score],
+                        ["GEO", latestScore?.geo_score],
+                        ["AEO", latestScore?.aeo_score],
+                      ] as const).map(([label, score]) => {
+                        const n = Number(score) || 0;
+                        const status = score == null ? "—" : n >= 8 ? "Strong" : n >= 6 ? "On Track" : "Needs Work";
+                        return (
+                          <tr key={label}>
+                            <td style={{ fontWeight: 700 }}>{label}</td>
+                            <td className="aeo-v" style={{ fontSize: 18 }}>{score ?? "—"}<span style={{ fontSize: 12, color: "var(--aeo-muted)", fontWeight: 400 }}>/10</span></td>
+                            <td>{score != null && <Pill tone={n >= 8 ? "good" : n >= 6 ? "warn" : "bad"}>{status}</Pill>}</td>
+                            <td style={{ color: "var(--aeo-muted)" }}>
+                              {(auditFindings as any)[label.toLowerCase()]?.technical_on_page?.[0]?.finding
+                                ?? (auditFindings as any)[label.toLowerCase()]?.eeat?.[0]?.finding
+                                ?? (auditFindings as any)[label.toLowerCase()]?.featured_snippet?.[0]?.finding
+                                ?? "—"}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      <tr style={{ fontWeight: 700 }}>
+                        <td>Combined</td>
+                        <td className="aeo-v" style={{ fontSize: 18 }}>
+                          {latestScore ? Math.round(((latestScore.seo_score ?? 0) + (latestScore.geo_score ?? 0) + (latestScore.aeo_score ?? 0)) * 10) / 10 : "—"}
+                          <span style={{ fontSize: 12, color: "var(--aeo-muted)", fontWeight: 400 }}>/30</span>
+                        </td>
+                        <td></td><td></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="aeo-section">
+                <h2>Pages Audited</h2>
+                <div className="aeo-tscroll">
+                  <table>
+                    <thead><tr><th>URL</th><th>Page type</th><th>Notes</th></tr></thead>
+                    <tbody>
+                      {(auditFindings.pages_audited ?? []).map((p, i) => (
+                        <tr key={i}>
+                          <td><a href={p.url} target="_blank" rel="noreferrer">{p.url}</a></td>
+                          <td>{p.page_type}</td>
+                          <td>{p.notes}</td>
+                        </tr>
+                      ))}
+                      {!auditFindings.pages_audited?.length && <tr><td colSpan={3} style={{ textAlign: "center", color: "var(--aeo-muted)", padding: "14px 0" }}>No pages audited yet — populated after the next scan.</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="aeo-section">
+                <h2>SEO Analysis <span className="aeo-v" style={{ fontSize: 16 }}>{latestScore?.seo_score ?? "—"}<span style={{ fontSize: 12, color: "var(--aeo-muted)", fontWeight: 400 }}>/10</span></span></h2>
+                <p className="aeo-sub">Technical On-Page</p>
+                <SignalTable rows={auditFindings.seo?.technical_on_page ?? []} emptyReason="No technical on-page findings yet — populated after the next scan." />
+                <p className="aeo-sub">Content Quality</p>
+                <SignalTable rows={auditFindings.seo?.content_quality ?? []} emptyReason="No content quality findings yet — populated after the next scan." />
+                <p className="aeo-sub">Structured Data</p>
+                <SignalTable rows={auditFindings.seo?.structured_data ?? []} emptyReason="No structured data findings yet — populated after the next scan." />
+              </div>
+
+              <div className="aeo-section">
+                <h2>GEO Analysis <span className="aeo-v" style={{ fontSize: 16 }}>{latestScore?.geo_score ?? "—"}<span style={{ fontSize: 12, color: "var(--aeo-muted)", fontWeight: 400 }}>/10</span></span></h2>
+                <p className="aeo-sub">E-E-A-T Assessment</p>
+                <SignalTable rows={auditFindings.geo?.eeat ?? []} emptyReason="No E-E-A-T findings yet — populated after the next scan." />
+                <p className="aeo-sub">Content for AI Synthesis</p>
+                <SignalTable rows={auditFindings.geo?.content_ai_synthesis ?? []} emptyReason="No AI-synthesis findings yet — populated after the next scan." />
+                <p className="aeo-sub">Technical GEO</p>
+                <SignalTable rows={auditFindings.geo?.technical_geo ?? []} emptyReason="No technical GEO findings yet — populated after the next scan." />
+              </div>
+
+              <div className="aeo-section">
+                <h2>AEO Analysis <span className="aeo-v" style={{ fontSize: 16 }}>{latestScore?.aeo_score ?? "—"}<span style={{ fontSize: 12, color: "var(--aeo-muted)", fontWeight: 400 }}>/10</span></span></h2>
+                <p className="aeo-sub">Featured Snippet Eligibility</p>
+                <SignalTable rows={auditFindings.aeo?.featured_snippet ?? []} emptyReason="No featured-snippet findings yet — populated after the next scan." />
+                <p className="aeo-sub">Structured Answer Formats</p>
+                <SignalTable rows={auditFindings.aeo?.structured_answer_formats ?? []} emptyReason="No structured-answer findings yet — populated after the next scan." />
+                <p className="aeo-sub">Voice Search Readiness</p>
+                <SignalTable rows={auditFindings.aeo?.voice_search ?? []} emptyReason="No voice-search findings yet — populated after the next scan." />
+              </div>
+
+              <div className="aeo-section">
+                <h2>Priority Recommendations</h2>
+                <div className="aeo-tscroll">
+                  <table>
+                    <thead><tr><th>Priority</th><th>Issue</th><th>Dimension</th><th>Effort</th><th>Impact</th></tr></thead>
+                    <tbody>
+                      {(auditFindings.priority_recommendations ?? []).map((r, i) => (
+                        <tr key={i}>
+                          <td><Pill tone={priorityTone(r.priority)}>{r.priority}</Pill></td>
+                          <td style={{ fontWeight: 600 }}>{r.issue}</td>
+                          <td>{r.dimension}</td>
+                          <td>{r.effort}</td>
+                          <td>{r.impact}</td>
+                        </tr>
+                      ))}
+                      {!auditFindings.priority_recommendations?.length && <tr><td colSpan={5} style={{ textAlign: "center", color: "var(--aeo-muted)", padding: "14px 0" }}>No priority recommendations yet — populated after the next scan.</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="aeo-section">
+                <h2>What's Working Well</h2>
+                <div className="aeo-tscroll">
+                  <table>
+                    <thead><tr><th>Strength</th><th>Evidence</th></tr></thead>
+                    <tbody>
+                      {(auditFindings.whats_working ?? []).map((w, i) => (
+                        <tr key={i}>
+                          <td style={{ fontWeight: 600 }}>{w.item}</td>
+                          <td>{w.evidence}</td>
+                        </tr>
+                      ))}
+                      {!auditFindings.whats_working?.length && <tr><td colSpan={2} style={{ textAlign: "center", color: "var(--aeo-muted)", padding: "14px 0" }}>No confirmed strengths yet — populated after the next scan.</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="aeo-section">
+                <h2>Glossary</h2>
+                <div className="aeo-tscroll">
+                  <table>
+                    <thead><tr><th>Term</th><th>Definition</th></tr></thead>
+                    <tbody>
+                      <tr><td style={{ fontWeight: 700 }}>SEO</td><td>Search Engine Optimization — improving a site's technical structure and content so traditional search engines (Google, Bing) rank it well.</td></tr>
+                      <tr><td style={{ fontWeight: 700 }}>GEO</td><td>Generative Engine Optimization — optimizing for AI-powered search engines (ChatGPT Search, Perplexity, Google AI Overviews) that synthesize answers from multiple sources and cite pages.</td></tr>
+                      <tr><td style={{ fontWeight: 700 }}>AEO</td><td>Answer Engine Optimization — optimizing for featured snippets, People Also Ask boxes, and voice search, where engines extract one direct, concise answer.</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
           {subtab === "Dashboard" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               <div className="aeo-banner" style={{ background: "var(--aeo-card)" }}>

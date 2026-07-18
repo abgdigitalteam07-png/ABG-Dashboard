@@ -325,7 +325,24 @@ Deno.serve(async (req: Request) => {
     // 2. Site audit — SEO/GEO/AEO rubric scores.
     const auditText = await claude(
       anthropicKey,
-      "You are an SEO/GEO/AEO auditor. Fetch and assess the site via web search. Score each dimension 1-10 per the standard rubric (technical on-page, content quality, structured data / E-E-A-T, AI-synthesis readiness / featured-snippet eligibility, answer formats). Reply ONLY with JSON: {\"seo\":n,\"geo\":n,\"aeo\":n,\"findings\":{\"seo\":[...],\"geo\":[...],\"aeo\":[...]},\"pages_crawled\":n}",
+      `You are an expert SEO/GEO/AEO auditor following a standard audit methodology. Fetch the homepage plus up to 6 high-signal pages (About/Team, Services, Case Studies, Blog, Contact, FAQ) via web search — never flag something "missing" unless you actually checked for it across the pages you fetched.
+
+Score each dimension 1-10 (1-3 critical issues, 4-5 below average, 6-7 decent foundation, 8-9 strong, 10 exemplary):
+- SEO: Technical On-Page (title tags, meta descriptions, heading hierarchy, URL structure, canonical, robots meta, alt text, internal links, Open Graph), Content Quality (word count, keyword signals, freshness, readability), Structured Data (schema markup types, validity)
+- GEO: E-E-A-T Assessment (author info, About page depth, contact info, trust signals, Organization schema), Content for AI Synthesis (factual density, clear claims, source citations, comprehensiveness, entity clarity, originality), Technical GEO (structured data depth, HTTPS, crawlability, social/brand-entity links)
+- AEO: Featured Snippet Eligibility (direct-answer paragraphs, definition patterns, list/table content), Structured Answer Formats (FAQ schema, HowTo schema, question-phrased headings, Speakable schema), Voice Search Readiness (conversational language, long-tail question coverage, local/NAP signals)
+
+Reply ONLY with this exact JSON shape (every signal array item is one row — Signal/Finding/Status, Status is exactly "Good", "Needs Attention", or "Missing"):
+{"seo":n,"geo":n,"aeo":n,"pages_crawled":n,
+"findings":{
+ "executive_summary":"3-5 sentence summary — what's strong, most urgent issue, one key opportunity, specific to this site",
+ "pages_audited":[{"url":"...","page_type":"Homepage|About|Services|Blog|...","notes":"..."}],
+ "seo":{"technical_on_page":[{"signal":"...","finding":"...","status":"Good|Needs Attention|Missing"}],"content_quality":[...],"structured_data":[...]},
+ "geo":{"eeat":[...],"content_ai_synthesis":[...],"technical_geo":[...]},
+ "aeo":{"featured_snippet":[...],"structured_answer_formats":[...],"voice_search":[...]},
+ "priority_recommendations":[{"priority":"Critical|High|Medium|Quick Win","issue":"...","dimension":"SEO|GEO|AEO","effort":"Low|Medium|High","impact":"Low|Medium|High"}],
+ "whats_working":[{"item":"...","evidence":"..."}]
+}}`,
       `Audit ${siteUrl} (brand: ${brandName}).`,
       true,
     );
