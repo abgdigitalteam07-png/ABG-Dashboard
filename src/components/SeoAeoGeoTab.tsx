@@ -91,8 +91,13 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
   const [showAddPrompt, setShowAddPrompt] = useState(false);
   const [newPrompt, setNewPrompt] = useState({ prompt: "", product_service: "", icp: "", journey_phase: "Consideration" });
   const [recFilter, setRecFilter] = useState<string | null>(null);
+  const [recStatusFilter, setRecStatusFilter] = useState<string | null>(null);
   const [recSearch, setRecSearch] = useState("");
+  const [selectedRecIds, setSelectedRecIds] = useState<Set<string>>(new Set());
+  const [bulkStatus, setBulkStatus] = useState("In progress");
   const [promptSearch, setPromptSearch] = useState("");
+  const [metricsSubtab, setMetricsSubtab] = useState<"visibility" | "sentiment">("visibility");
+  const [generatingPrompts, setGeneratingPrompts] = useState(false);
   const qc = useQueryClient();
 
   const { data: weeks } = useQuery({
@@ -131,19 +136,21 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
     queryKey: ["aeo-data", brand.id, week],
     enabled: !!week,
     queryFn: async () => {
-      const [scores, visibility, citations, recs, reddit, prompts, promptResults] = await Promise.all([
+      const [scores, visibility, citations, allCitations, recs, reddit, prompts, promptResults] = await Promise.all([
         sb.from("seo_audit_scores").select("*").eq("brand_id", brand.id).order("week_of"),
         sb.from("aeo_visibility_snapshots").select("*").eq("brand_id", brand.id).order("week_of"),
         sb.from("aeo_citations").select("*").eq("brand_id", brand.id).eq("week_of", week).order("frequency", { ascending: false }),
+        // All weeks (not just the selected one) — needed for the citation-rate-over-time trend charts.
+        sb.from("aeo_citations").select("week_of, domain, frequency, brand_mentioned").eq("brand_id", brand.id).order("week_of"),
         sb.from("aeo_recommendations").select("*").eq("brand_id", brand.id).order("created_at", { ascending: false }),
         sb.from("reddit_threads").select("*").eq("brand_id", brand.id).eq("week_of", week).order("upvotes", { ascending: false }),
         sb.from("aeo_prompts").select("*").eq("brand_id", brand.id).eq("is_active", true).order("created_at"),
         sb.from("aeo_prompt_results").select("*").eq("brand_id", brand.id).eq("week_of", week),
       ]);
-      const firstError = [scores, visibility, citations, recs, reddit, prompts, promptResults].find(r => r.error);
+      const firstError = [scores, visibility, citations, allCitations, recs, reddit, prompts, promptResults].find(r => r.error);
       if (firstError?.error) throw firstError.error;
       return {
-        scores: scores.data, visibility: visibility.data, citations: citations.data,
+        scores: scores.data, visibility: visibility.data, citations: citations.data, allCitations: allCitations.data,
         recs: recs.data, reddit: reddit.data, prompts: prompts.data, promptResults: promptResults.data,
       };
     },
@@ -212,6 +219,42 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
     qc.invalidateQueries({ queryKey: ["aeo-data", brand.id] });
   };
 
+  // Fills remaining prompt slots via Claude without running the full scan.
+  const generateWithAI = async () => {
+    setGeneratingPrompts(true);
+    try {
+      const { data: res, error } = await supabase.functions.invoke("aeo-scan", {
+        body: { brandId: brand.id, brandName: brand.name, siteUrl: brand.gscSiteUrl ?? `https://${brand.id.replace(/-/g, "")}.com/`, promptsOnly: true },
+      });
+      if (error || res?.error) throw new Error(res?.error ?? error?.message);
+      toast.success(`Generated ${res.added} new prompt(s).`);
+      qc.invalidateQueries({ queryKey: ["aeo-data", brand.id] });
+    } catch (e) {
+      toast.error(`Generate failed: ${e instanceof Error ? e.message : e}`);
+    } finally {
+      setGeneratingPrompts(false);
+    }
+  };
+
+  const toggleRecSelected = (id: string) => {
+    setSelectedRecIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const applyBulkStatus = async () => {
+    if (!selectedRecIds.size) return;
+    const { error } = await sb.from("aeo_recommendations")
+      .update({ status: bulkStatus, updated_at: new Date().toISOString() })
+      .in("id", [...selectedRecIds]);
+    if (error) { toast.error(error.message); return; }
+    toast.success(`Updated ${selectedRecIds.size} recommendation(s) to "${bulkStatus}".`);
+    setSelectedRecIds(new Set());
+    qc.invalidateQueries({ queryKey: ["aeo-data", brand.id] });
+  };
+
   const latestScore = data?.scores?.at(-1);
   const prevScore = data?.scores?.at(-2);
   const ownVisibility = data?.visibility?.filter((v: any) => v.is_own_brand) ?? [];
@@ -221,7 +264,14 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
   const recTypes = [...new Set((data?.recs ?? []).map((r: any) => r.rec_type))] as string[];
   const filteredRecs = (data?.recs ?? [])
     .filter((r: any) => !recFilter || r.rec_type === recFilter)
+    .filter((r: any) => !recStatusFilter || r.status === recStatusFilter)
     .filter((r: any) => !recSearch || r.title.toLowerCase().includes(recSearch.toLowerCase()));
+
+  const recStatusCounts = {
+    New: (data?.recs ?? []).filter((r: any) => r.status === "New").length,
+    "In progress": (data?.recs ?? []).filter((r: any) => r.status === "In progress").length,
+    Completed: (data?.recs ?? []).filter((r: any) => r.status === "Completed").length,
+  };
 
   const filteredPrompts = (data?.prompts ?? []).filter((p: any) =>
     !promptSearch || p.prompt.toLowerCase().includes(promptSearch.toLowerCase()));
@@ -275,6 +325,30 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
   // Top URLs — schema-ready (aeo_citations.url), but the scan currently only
   // persists domain-level aggregate rows, never per-URL rows.
   const topUrls = (data?.citations ?? []).filter((c: any) => c.url);
+
+  // Citation performance vs. competitors — real, computed per week from allCitations:
+  // owned-domain rate = % of that week's citation frequency pointing at the brand's own
+  // domain; brand-mention rate = % of citation frequency flagged brand_mentioned.
+  // (We don't have competitor-domain identity, so this tracks the brand only —
+  // no fabricated competitor lines.)
+  const ownDomain = (() => {
+    try { return new URL(brand.gscSiteUrl ?? "").hostname.replace(/^www\./, ""); } catch { return null; }
+  })();
+  const citationRateSeries = (() => {
+    const byWeek = new Map<string, { total: number; owned: number; mentioned: number }>();
+    for (const c of data?.allCitations ?? []) {
+      const row = byWeek.get(c.week_of) ?? { total: 0, owned: 0, mentioned: 0 };
+      row.total += c.frequency;
+      if (ownDomain && c.domain?.replace(/^www\./, "") === ownDomain) row.owned += c.frequency;
+      if (c.brand_mentioned) row.mentioned += c.frequency;
+      byWeek.set(c.week_of, row);
+    }
+    return [...byWeek.entries()].map(([week_of, r]) => ({
+      week_of,
+      owned_pct: r.total ? Math.round((r.owned / r.total) * 1000) / 10 : 0,
+      mention_pct: r.total ? Math.round((r.mentioned / r.total) * 1000) / 10 : 0,
+    })).sort((a, b) => a.week_of.localeCompare(b.week_of));
+  })();
 
   // Competitor visibility over time — schema-ready (aeo_visibility_snapshots has a
   // company + week_of column for any brand), but the scan only ever writes a row
@@ -340,6 +414,14 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
     reddit: {
       ok: (data?.reddit?.length ?? 0) > 0,
       why: (data?.reddit?.length ?? 0) > 0 ? "Real Reddit threads (via Apify, scan-time only) — also feeds the HubSpot page + PDF." : "Needs one successful scan to fetch Reddit threads via Apify.",
+    },
+    citationRate: {
+      ok: citationRateSeries.length > 0,
+      why: citationRateSeries.length > 0 ? "Computed live from citations captured across scans." : "Needs one successful scan to capture citations.",
+    },
+    sentiment: {
+      ok: false,
+      why: "Not built yet — the scan doesn't rate sentiment of brand mentions in AI answers (only Reddit threads have sentiment today). Needs a classification step added to the prompt-answer scan step.",
     },
   };
 
@@ -414,44 +496,61 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
                 <p className="aeo-sub">SEO / GEO / AEO rubric scores for {brand.name} — re-scored on every scan.</p>
                 <div className="aeo-grid3">
                   {([
-                    ["SEO — Traditional Search", latestScore?.seo_score, prevScore?.seo_score],
-                    ["GEO — Generative Engines", latestScore?.geo_score, prevScore?.geo_score],
-                    ["AEO — Answer Engines", latestScore?.aeo_score, prevScore?.aeo_score],
-                  ] as const).map(([label, score, prev]) => (
-                    <div key={label} className="aeo-tile">
-                      <div className="aeo-k">{label}</div>
-                      <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-                        <span className="aeo-v">{score ?? "—"}<span style={{ fontSize: 15, color: "var(--aeo-muted)", fontWeight: 400 }}>/10</span></span>
-                        {trend(score, prev)}
+                    ["seo", "SEO — Traditional Search", latestScore?.seo_score, prevScore?.seo_score],
+                    ["geo", "GEO — Generative Engines", latestScore?.geo_score, prevScore?.geo_score],
+                    ["aeo", "AEO — Answer Engines", latestScore?.aeo_score, prevScore?.aeo_score],
+                  ] as const).map(([key, label, score, prev]) => {
+                    const findings: string[] = latestScore?.findings?.[key] ?? [];
+                    return (
+                      <div key={label} className="aeo-tile">
+                        <div className="aeo-k">{label}</div>
+                        <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                          <span className="aeo-v">{score ?? "—"}<span style={{ fontSize: 15, color: "var(--aeo-muted)", fontWeight: 400 }}>/10</span></span>
+                          {trend(score, prev)}
+                        </div>
+                        <div className="aeo-scorebar"><i style={{ width: `${(Number(score) || 0) * 10}%`, background: scoreColor(score) }} /></div>
+                        <p className="aeo-sub" style={{ margin: "8px 0 0" }}>
+                          {findings.length ? findings.slice(0, 2).join(" ") : "No findings yet — populated after the next scan."}
+                        </p>
                       </div>
-                      <div className="aeo-scorebar"><i style={{ width: `${(Number(score) || 0) * 10}%`, background: scoreColor(score) }} /></div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 
               <div className="aeo-section">
                 <h2>Brand Metrics</h2>
                 <p className="aeo-sub">How often {brand.name} appears in AI-generated answers. Weekly snapshots — not tied to the dashboard date filter.</p>
-                <div className="aeo-grid2">
-                  <div className="aeo-tile aeo-gauge-wrap">
-                    <TileHead label="Brand visibility" chip={`WEEK OF ${week}`} sign={signs.brandMetrics} />
-                    <Gauge pct={currentVis} />
-                    <div>{trend(currentVis, prevVis)}</div>
-                  </div>
-                  <div className="aeo-tile">
-                    <TileHead label="Visibility over time" chip="BY ENGINE" sign={signs.brandMetrics} />
-                    <ResponsiveContainer width="100%" height={170}>
-                      <LineChart data={ownVisibility}>
-                        <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.3} />
-                        <XAxis dataKey="week_of" fontSize={11} />
-                        <YAxis fontSize={11} unit="%" />
-                        <Tooltip />
-                        <Line type="monotone" dataKey="visibility_pct" name="Claude" stroke={HS.teal} strokeWidth={2} dot={{ r: 3 }} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
+                <div className="aeo-subtabs" style={{ marginBottom: 12 }}>
+                  <button onClick={() => setMetricsSubtab("visibility")} className={metricsSubtab === "visibility" ? "on" : ""}>Brand visibility</button>
+                  <button onClick={() => setMetricsSubtab("sentiment")} className={metricsSubtab === "sentiment" ? "on" : ""}>Sentiment analysis</button>
                 </div>
+                {metricsSubtab === "visibility" ? (
+                  <div className="aeo-grid2">
+                    <div className="aeo-tile aeo-gauge-wrap">
+                      <TileHead label="Brand visibility" chip={`WEEK OF ${week}`} sign={signs.brandMetrics} />
+                      <Gauge pct={currentVis} />
+                      <div>{trend(currentVis, prevVis)}</div>
+                    </div>
+                    <div className="aeo-tile">
+                      <TileHead label="Visibility over time" chip="BY ENGINE" sign={signs.brandMetrics} />
+                      <ResponsiveContainer width="100%" height={170}>
+                        <LineChart data={ownVisibility}>
+                          <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.3} />
+                          <XAxis dataKey="week_of" fontSize={11} />
+                          <YAxis fontSize={11} unit="%" />
+                          <Tooltip />
+                          <Line type="monotone" dataKey="visibility_pct" name="Claude" stroke={HS.teal} strokeWidth={2} dot={{ r: 3 }} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="aeo-tile">
+                    <TileHead label="Sentiment analysis" sign={signs.sentiment} />
+                    <EmptyChart reason={signs.sentiment.why} />
+                  </div>
+                )}
               </div>
 
               <div className="aeo-section">
@@ -525,38 +624,26 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
               </div>
 
               <div className="aeo-section">
-                <h2>Citation Composition</h2>
-                <p className="aeo-sub">Which content formats and channels shape the answers AI engines give.</p>
-                <div className="aeo-grid2">
-                  <div>
-                    <TileHead label="By content type" sign={signs.composition} />
-                    {byContentType.length ? (
-                      <ResponsiveContainer width="100%" height={170}>
-                        <BarChart data={byContentType}>
-                          <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.3} />
-                          <XAxis dataKey="name" fontSize={10} />
-                          <YAxis fontSize={11} />
-                          <Tooltip />
-                          <Bar dataKey="value" fill={HS.pink} radius={[3, 3, 0, 0]} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    ) : <EmptyChart reason="The scan doesn't classify citations by content type yet — this needs an extra classification step added to the scan." />}
+                <h2>Top URLs <Sign ok={signs.topUrls.ok} why={signs.topUrls.why} /></h2>
+                <p className="aeo-sub">URLs most commonly referenced in AI-generated answers for the tracked prompts.</p>
+                {topUrls.length ? (
+                  <div className="aeo-tscroll">
+                    <table>
+                      <thead><tr><th>URL</th><th style={{ textAlign: "right" }}>Frequency</th><th>Brand mentioned</th></tr></thead>
+                      <tbody>
+                        {topUrls.map((c: any) => (
+                          <tr key={c.id}>
+                            <td><a href={c.url} target="_blank" rel="noreferrer">{c.url}</a></td>
+                            <td style={{ textAlign: "right" }}>{c.frequency}</td>
+                            <td>{c.brand_mentioned ? <Pill tone="good">Yes</Pill> : "No"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
-                  <div>
-                    <TileHead label="By channel" sign={signs.composition} />
-                    {byChannelType.length ? (
-                      <ResponsiveContainer width="100%" height={170}>
-                        <BarChart data={byChannelType}>
-                          <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.3} />
-                          <XAxis dataKey="name" fontSize={10} />
-                          <YAxis fontSize={11} />
-                          <Tooltip />
-                          <Bar dataKey="value" fill={HS.sand} radius={[3, 3, 0, 0]} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    ) : <EmptyChart reason="The scan doesn't classify citations by channel (Owned/Earned/UGC/Competitor) yet — same fix as content type." />}
-                  </div>
-                </div>
+                ) : (
+                  <EmptyChart reason={signs.topUrls.why} />
+                )}
               </div>
             </div>
           )}
@@ -565,14 +652,24 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
             <div className="aeo-section">
               <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 4 }}>
                 <h2>Tracked Prompts <span className="aeo-pill neutral">{data.prompts?.length ?? 0} / {MAX_PROMPTS} used</span> <Sign ok={signs.prompts.ok} why={signs.prompts.why} /></h2>
-                <button
-                  onClick={() => setShowAddPrompt(true)}
-                  disabled={(data.prompts?.length ?? 0) >= MAX_PROMPTS}
-                  className="aeo-btn"
-                  style={{ padding: "6px 14px", fontSize: 13 }}
-                >
-                  ＋ Add prompt
-                </button>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    onClick={generateWithAI}
+                    disabled={generatingPrompts || (data.prompts?.length ?? 0) >= MAX_PROMPTS}
+                    className="aeo-btn"
+                    style={{ padding: "6px 14px", fontSize: 13, background: "var(--aeo-card)", color: "var(--aeo-ink)", border: "1px solid var(--aeo-line)" }}
+                  >
+                    {generatingPrompts ? "Generating…" : "✦ Generate with AI"}
+                  </button>
+                  <button
+                    onClick={() => setShowAddPrompt(true)}
+                    disabled={(data.prompts?.length ?? 0) >= MAX_PROMPTS}
+                    className="aeo-btn"
+                    style={{ padding: "6px 14px", fontSize: 13 }}
+                  >
+                    ＋ Add prompt
+                  </button>
+                </div>
               </div>
               <p className="aeo-sub">Questions we ask each AI engine weekly. Capped at {MAX_PROMPTS} per brand to stay inside API free limits.</p>
               <input
@@ -584,7 +681,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
               />
               <div className="aeo-tscroll">
                 <table>
-                  <thead><tr><th>Prompt</th><th>Visibility</th><th>Product</th><th>ICP</th><th>Journey phase</th><th></th></tr></thead>
+                  <thead><tr><th>Prompt</th><th>Visibility</th><th>Group</th><th>Product</th><th>ICP</th><th>Journey phase</th><th>Location</th><th></th></tr></thead>
                   <tbody>
                     {filteredPrompts.map((p: any) => {
                       const r = data.promptResults?.find((x: any) => x.prompt_id === p.id);
@@ -592,16 +689,18 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
                         <tr key={p.id}>
                           <td style={{ fontWeight: 600 }}>{p.prompt}</td>
                           <td>{r ? (r.brand_mentioned ? <Pill tone="good">Mentioned</Pill> : <Pill tone="bad">0%</Pill>) : <span style={{ color: "var(--aeo-muted)" }}>—</span>}</td>
+                          <td>{p.prompt_group ?? "—"}</td>
                           <td>{p.product_service ?? "—"}</td>
                           <td>{p.icp ?? "—"}</td>
                           <td>{p.journey_phase ?? "—"}</td>
+                          <td>{p.location ?? "—"}</td>
                           <td><button onClick={() => deactivatePrompt(p.id)} style={{ fontSize: 12, color: "var(--aeo-muted)", background: "none", border: 0 }}>Remove</button></td>
                         </tr>
                       );
                     })}
                     {!filteredPrompts.length && (
-                      <tr><td colSpan={6} style={{ textAlign: "center", color: "var(--aeo-muted)", padding: "16px 0" }}>
-                        {data.prompts?.length ? "No prompts match your search." : 'No prompts yet — click "Add prompt" or run a scan (auto-generates 10 on first run).'}
+                      <tr><td colSpan={8} style={{ textAlign: "center", color: "var(--aeo-muted)", padding: "16px 0" }}>
+                        {data.prompts?.length ? "No prompts match your search." : 'No prompts yet — click "Add prompt" / "Generate with AI", or run a scan (auto-generates 10 on first run).'}
                       </td></tr>
                     )}
                   </tbody>
@@ -662,6 +761,76 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
               </div>
 
               <div className="aeo-section">
+                <h2>Citation performance vs. competitors</h2>
+                <p className="aeo-sub">How much of the week's citation activity points at your own domain, and how often your brand is mentioned in the citing content. (Named-competitor domain tracking isn't captured yet — this tracks your brand only, no fabricated competitor lines.)</p>
+                <div className="aeo-grid2">
+                  <div>
+                    <TileHead label="Owned domain citation rate" chip="ALL WEEKS SCANNED" sign={signs.citationRate} />
+                    {citationRateSeries.length ? (
+                      <ResponsiveContainer width="100%" height={170}>
+                        <LineChart data={citationRateSeries}>
+                          <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.3} />
+                          <XAxis dataKey="week_of" fontSize={11} />
+                          <YAxis fontSize={11} unit="%" />
+                          <Tooltip />
+                          <Line type="monotone" dataKey="owned_pct" name={ownDomain ?? brand.name} stroke={HS.teal} strokeWidth={2} dot={{ r: 3 }} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    ) : <EmptyChart reason={signs.citationRate.why} />}
+                  </div>
+                  <div>
+                    <TileHead label="Citations with brand mention rate" chip="ALL WEEKS SCANNED" sign={signs.citationRate} />
+                    {citationRateSeries.length ? (
+                      <ResponsiveContainer width="100%" height={170}>
+                        <LineChart data={citationRateSeries}>
+                          <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.3} />
+                          <XAxis dataKey="week_of" fontSize={11} />
+                          <YAxis fontSize={11} unit="%" />
+                          <Tooltip />
+                          <Line type="monotone" dataKey="mention_pct" name={brand.name} stroke={HS.orange} strokeWidth={2} dot={{ r: 3 }} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    ) : <EmptyChart reason={signs.citationRate.why} />}
+                  </div>
+                </div>
+              </div>
+
+              <div className="aeo-section">
+                <h2>Citation Composition</h2>
+                <p className="aeo-sub">Which content formats and channels shape the answers AI engines give.</p>
+                <div className="aeo-grid2">
+                  <div>
+                    <TileHead label="By content type" sign={signs.composition} />
+                    {byContentType.length ? (
+                      <ResponsiveContainer width="100%" height={170}>
+                        <BarChart data={byContentType}>
+                          <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.3} />
+                          <XAxis dataKey="name" fontSize={10} />
+                          <YAxis fontSize={11} />
+                          <Tooltip />
+                          <Bar dataKey="value" fill={HS.pink} radius={[3, 3, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    ) : <EmptyChart reason="The scan doesn't classify citations by content type yet — this needs an extra classification step added to the scan." />}
+                  </div>
+                  <div>
+                    <TileHead label="By channel" sign={signs.composition} />
+                    {byChannelType.length ? (
+                      <ResponsiveContainer width="100%" height={170}>
+                        <BarChart data={byChannelType}>
+                          <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.3} />
+                          <XAxis dataKey="name" fontSize={10} />
+                          <YAxis fontSize={11} />
+                          <Tooltip />
+                          <Bar dataKey="value" fill={HS.sand} radius={[3, 3, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    ) : <EmptyChart reason="The scan doesn't classify citations by channel (Owned/Earned/UGC/Competitor) yet — same fix as content type." />}
+                  </div>
+                </div>
+              </div>
+
+              <div className="aeo-section">
                 <h2>Citations — week of {week} <Sign ok={signs.topDomains.ok} why={signs.topDomains.why} /></h2>
                 <p className="aeo-sub">Which domains AI engines cited most often when answering the tracked prompts this week.</p>
                 <ResponsiveContainer width="100%" height={210}>
@@ -713,23 +882,47 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
                       {t} <span className="aeo-cnt">{(data.recs ?? []).filter((r: any) => r.rec_type === t).length}</span>
                     </button>
                   ))}
+                  <div style={{ borderTop: "1px solid var(--aeo-line)", margin: "8px 0" }} />
+                  <button onClick={() => setRecStatusFilter(null)} className={!recStatusFilter ? "on" : ""}>
+                    Any status
+                  </button>
+                  {(["New", "In progress", "Completed"] as const).map(s => (
+                    <button key={s} onClick={() => setRecStatusFilter(s)} className={recStatusFilter === s ? "on" : ""}>
+                      {s} <span className="aeo-cnt">{recStatusCounts[s]}</span>
+                    </button>
+                  ))}
                 </div>
                 <div>
-                  <input
-                    className="aeo-searchbox"
-                    style={{ maxWidth: 280 }}
-                    placeholder="Search recommendations"
-                    value={recSearch}
-                    onChange={e => setRecSearch(e.target.value)}
-                  />
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 10 }}>
+                    <input
+                      className="aeo-searchbox"
+                      style={{ maxWidth: 280, margin: 0 }}
+                      placeholder="Search recommendations"
+                      value={recSearch}
+                      onChange={e => setRecSearch(e.target.value)}
+                    />
+                    <div style={{ flex: 1 }} />
+                    <span style={{ fontSize: 12.5, color: "var(--aeo-muted)" }}>{selectedRecIds.size} selected</span>
+                    <select className="aeo-status" value={bulkStatus} onChange={e => setBulkStatus(e.target.value)}>
+                      {["New", "In progress", "Completed"].map(s => <option key={s}>{s}</option>)}
+                    </select>
+                    <button onClick={applyBulkStatus} disabled={!selectedRecIds.size} className="aeo-btn" style={{ padding: "6px 12px", fontSize: 12.5 }}>
+                      Change status
+                    </button>
+                  </div>
                   <div className="aeo-tscroll">
                     <table>
-                      <thead><tr><th>Title</th><th>Type</th><th>Channel</th><th>Priority</th><th>Status</th><th>Assignee</th><th>Created</th></tr></thead>
+                      <thead><tr>
+                        <th><input type="checkbox" checked={filteredRecs.length > 0 && filteredRecs.every((r: any) => selectedRecIds.has(r.id))} onChange={e => setSelectedRecIds(e.target.checked ? new Set(filteredRecs.map((r: any) => r.id)) : new Set())} /></th>
+                        <th>Title</th><th>Type</th><th>Content type</th><th>Channel</th><th>Priority</th><th>Status</th><th>Assignee</th><th>Created</th>
+                      </tr></thead>
                       <tbody>
                         {filteredRecs.map((r: any) => (
                           <tr key={r.id}>
+                            <td><input type="checkbox" checked={selectedRecIds.has(r.id)} onChange={() => toggleRecSelected(r.id)} /></td>
                             <td style={{ fontWeight: 600 }}>{r.title}</td>
                             <td>{r.rec_type}</td>
+                            <td>{r.content_type ?? "—"}</td>
                             <td>{r.channel ?? "—"}</td>
                             <td><Pill tone={r.priority === "HIGH" ? "bad" : r.priority === "MED" ? "warn" : "neutral"}>{r.priority}</Pill></td>
                             <td>
@@ -750,8 +943,8 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
                           </tr>
                         ))}
                         {!filteredRecs.length && (
-                          <tr><td colSpan={7} style={{ textAlign: "center", color: "var(--aeo-muted)", padding: "16px 0" }}>
-                            {data.recs?.length ? "No recommendations match your search." : "No recommendations yet — run a scan."}
+                          <tr><td colSpan={9} style={{ textAlign: "center", color: "var(--aeo-muted)", padding: "16px 0" }}>
+                            {data.recs?.length ? "No recommendations match your filters." : "No recommendations yet — run a scan."}
                           </td></tr>
                         )}
                       </tbody>
@@ -781,7 +974,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
               </div>
               <div className="aeo-tscroll">
                 <table>
-                  <thead><tr><th>Thread</th><th>Subreddit</th><th>▲ / 💬</th><th>Brand</th><th>Sentiment</th><th>Opportunity</th><th>Posted</th></tr></thead>
+                  <thead><tr><th>Thread</th><th>Subreddit</th><th>▲ / 💬</th><th>Brand</th><th>Competitors mentioned</th><th>Sentiment</th><th>Cited by AI</th><th>Opportunity</th><th>Posted</th></tr></thead>
                   <tbody>
                     {(data.reddit ?? []).map((t: any) => (
                       <tr key={t.id}>
@@ -789,12 +982,14 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
                         <td>{t.subreddit}</td>
                         <td>{t.upvotes} / {t.num_comments}</td>
                         <td>{t.brand_mentioned ? <Pill tone="good">Yes</Pill> : "No"}</td>
+                        <td>{t.competitors_mentioned?.length ? t.competitors_mentioned.join(", ") : "—"}</td>
                         <td>{t.sentiment ? <Pill tone={t.sentiment === "Positive" ? "good" : t.sentiment === "Negative" ? "bad" : "neutral"}>{t.sentiment}</Pill> : "—"}</td>
+                        <td>{t.cited_by_ai_count > 0 ? <Pill tone="good">Yes ×{t.cited_by_ai_count}</Pill> : <Pill tone="neutral">No</Pill>}</td>
                         <td>{t.opportunity ? <Pill tone={t.opportunity.startsWith("HIGH") ? "bad" : "warn"}>{t.opportunity}</Pill> : "—"}</td>
                         <td>{t.posted_at ? new Date(t.posted_at).toLocaleDateString() : "—"}</td>
                       </tr>
                     ))}
-                    {!data.reddit?.length && <tr><td colSpan={7} style={{ textAlign: "center", color: "var(--aeo-muted)", padding: "16px 0" }}>No Reddit threads captured this week.</td></tr>}
+                    {!data.reddit?.length && <tr><td colSpan={9} style={{ textAlign: "center", color: "var(--aeo-muted)", padding: "16px 0" }}>No Reddit threads captured this week.</td></tr>}
                   </tbody>
                 </table>
               </div>

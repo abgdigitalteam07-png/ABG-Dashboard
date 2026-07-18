@@ -221,6 +221,44 @@ Deno.serve(async (req: Request) => {
   const { brandId, brandName, siteUrl, landingPageId }: ScanRequest = body;
   const weekOf = mondayOfWeek();
 
+  // "Generate with AI" button on the Prompts tab — fills remaining prompt slots
+  // (up to MAX_PROMPTS) without running the full scan (no audit/Reddit/recs calls).
+  if (body.promptsOnly) {
+    try {
+      const { count: activeCount } = await supabase
+        .from("aeo_prompts").select("id", { count: "exact", head: true })
+        .eq("brand_id", brandId).eq("is_active", true);
+      const remaining = MAX_PROMPTS - (activeCount ?? 0);
+      if (remaining <= 0) {
+        return new Response(JSON.stringify({ error: `Already at ${MAX_PROMPTS}/${MAX_PROMPTS} prompts.` }), {
+          status: 400, headers: { ...corsHeaders, "content-type": "application/json" },
+        });
+      }
+      const genText = await claude(
+        anthropicKey,
+        `You generate AI-visibility tracking prompts. Given a brand and its website, infer its product category and write ${remaining} NEW questions a real buyer would ask an AI assistant (mix of unbranded category questions, branded questions, and dealer/purchase questions). Reply ONLY JSON: [{"prompt","product_service","icp","journey_phase":"Awareness|Consideration|Decision"}]`,
+        `Brand: ${brandName}. Website: ${siteUrl}.`,
+      );
+      const generated = extractJson<Array<{ prompt: string; product_service?: string; icp?: string; journey_phase?: string }>>(genText);
+      const rows = generated.slice(0, remaining).map(g => ({
+        brand_id: brandId, prompt: g.prompt, product_service: g.product_service ?? null,
+        icp: g.icp ?? null,
+        journey_phase: ["Awareness", "Consideration", "Decision"].includes(g.journey_phase ?? "") ? g.journey_phase : null,
+      }));
+      const { data: inserted, error } = await supabase.from("aeo_prompts")
+        .upsert(rows, { onConflict: "brand_id,prompt", ignoreDuplicates: true })
+        .select("id");
+      if (error) throw error;
+      return new Response(JSON.stringify({ ok: true, added: inserted?.length ?? 0 }), {
+        headers: { ...corsHeaders, "content-type": "application/json" },
+      });
+    } catch (e) {
+      return new Response(JSON.stringify({ error: String(e) }), {
+        status: 500, headers: { ...corsHeaders, "content-type": "application/json" },
+      });
+    }
+  }
+
   // Debug mode: run ONLY the Apify Reddit search and return raw results.
   if (body.redditOnly) {
     try {
