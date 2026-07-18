@@ -149,6 +149,8 @@
   color: var(--aeo-ink); border-radius: 6px; padding: 3px 6px;
 }
 
+.aeo-tab .aeo-tilehead { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+
 /* Green/red working-status signs shown on every report card (admin-facing). */
 .aeo-tab .aeo-sign {
   display: inline-flex; align-items: center; gap: 5px; margin-left: auto;

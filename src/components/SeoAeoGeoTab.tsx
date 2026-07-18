@@ -53,6 +53,18 @@ function Sign({ ok, why }: { ok: boolean; why: string }) {
   );
 }
 
+// Tile/table header row: label on the left, optional date chip, status sign on the right.
+function TileHead({ label, chip, sign }: { label: string; chip?: string; sign: { ok: boolean; why: string } }) {
+  return (
+    <div className="aeo-tilehead">
+      <span className="aeo-k">{label}</span>
+      {chip && <span className="aeo-datechip">{chip}</span>}
+      <span style={{ flex: 1 }} />
+      <Sign ok={sign.ok} why={sign.why} />
+    </div>
+  );
+}
+
 function Gauge({ pct }: { pct: number }) {
   const clamped = Math.max(0, Math.min(100, pct));
   const angle = (clamped / 100) * 180;
@@ -419,20 +431,16 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
               </div>
 
               <div className="aeo-section">
-                <h2>Brand Metrics <Sign ok={signs.brandMetrics.ok} why={signs.brandMetrics.why} /></h2>
+                <h2>Brand Metrics</h2>
                 <p className="aeo-sub">How often {brand.name} appears in AI-generated answers. Weekly snapshots — not tied to the dashboard date filter.</p>
                 <div className="aeo-grid2">
                   <div className="aeo-tile aeo-gauge-wrap">
-                    <div style={{ alignSelf: "flex-start" }} className="aeo-k">Brand visibility</div>
-                    <DateChip>WEEK OF {week}</DateChip>
+                    <TileHead label="Brand visibility" chip={`WEEK OF ${week}`} sign={signs.brandMetrics} />
                     <Gauge pct={currentVis} />
                     <div>{trend(currentVis, prevVis)}</div>
                   </div>
                   <div className="aeo-tile">
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                      <div className="aeo-k">Visibility over time</div>
-                      <DateChip>BY ENGINE</DateChip>
-                    </div>
+                    <TileHead label="Visibility over time" chip="BY ENGINE" sign={signs.brandMetrics} />
                     <ResponsiveContainer width="100%" height={170}>
                       <LineChart data={ownVisibility}>
                         <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.3} />
@@ -447,10 +455,12 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
               </div>
 
               <div className="aeo-section">
-                <h2>Competitor Landscape <Sign ok={signs.shareOfVoice.ok} why={signs.shareOfVoice.why} /></h2>
+                <h2>Competitor Landscape</h2>
                 <p className="aeo-sub">Share of voice this week, and visibility trend over time.</p>
                 <div className="aeo-grid2">
-                  <div className="aeo-tscroll">
+                  <div>
+                    <TileHead label="Share of voice" chip={`WEEK OF ${week}`} sign={signs.shareOfVoice} />
+                    <div className="aeo-tscroll">
                     <table>
                       <thead><tr><th>Company</th><th style={{ textAlign: "right" }}>Mentions</th><th style={{ textAlign: "right" }}>Share of voice</th></tr></thead>
                       <tbody>
@@ -466,9 +476,10 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
                         )}
                       </tbody>
                     </table>
+                    </div>
                   </div>
                   <div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}><span className="aeo-k">Visibility over time</span> <Sign ok={signs.competitorTrend.ok} why={signs.competitorTrend.why} /></div>
+                    <TileHead label="Visibility over time" sign={signs.competitorTrend} />
                     {competitorSeries.length > 1 ? (
                       <>
                         <div className="aeo-legend">
@@ -514,11 +525,11 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
               </div>
 
               <div className="aeo-section">
-                <h2>Citation Composition <Sign ok={signs.composition.ok} why={signs.composition.why} /></h2>
+                <h2>Citation Composition</h2>
                 <p className="aeo-sub">Which content formats and channels shape the answers AI engines give.</p>
                 <div className="aeo-grid2">
                   <div>
-                    <div className="aeo-k" style={{ marginBottom: 8 }}>By content type</div>
+                    <TileHead label="By content type" sign={signs.composition} />
                     {byContentType.length ? (
                       <ResponsiveContainer width="100%" height={170}>
                         <BarChart data={byContentType}>
@@ -532,7 +543,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
                     ) : <EmptyChart reason="The scan doesn't classify citations by content type yet — this needs an extra classification step added to the scan." />}
                   </div>
                   <div>
-                    <div className="aeo-k" style={{ marginBottom: 8 }}>By channel</div>
+                    <TileHead label="By channel" sign={signs.composition} />
                     {byChannelType.length ? (
                       <ResponsiveContainer width="100%" height={170}>
                         <BarChart data={byChannelType}>
