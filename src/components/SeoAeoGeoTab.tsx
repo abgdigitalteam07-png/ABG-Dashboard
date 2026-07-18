@@ -555,7 +555,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
 
               <div className="aeo-section">
                 <h2>Competitor Landscape</h2>
-                <p className="aeo-sub">Share of voice this week, and visibility trend over time.</p>
+                <p className="aeo-sub">See how you track compared to your top competitors.</p>
                 <div className="aeo-grid2">
                   <div>
                     <TileHead label="Share of voice" chip={`WEEK OF ${week}`} sign={signs.shareOfVoice} />
@@ -604,9 +604,10 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
               </div>
 
               <div className="aeo-section">
-                <h2>Citation Analysis — Top domains <Sign ok={signs.topDomains.ok} why={signs.topDomains.why} /></h2>
-                <p className="aeo-sub">The sites AI engines cite when answering the tracked prompts.</p>
-                <div className="aeo-tscroll">
+                <h2>Citation analysis</h2>
+                <p className="aeo-sub">The websites AI engines reference when generating answers. Tracking which sites get cited most, and whether your brand is mentioned in them, is key to understanding and improving your visibility.</p>
+                <TileHead label="Top domains" chip={`WEEK OF ${week}`} sign={signs.topDomains} />
+                <div className="aeo-tscroll" style={{ marginBottom: 20 }}>
                   <table>
                     <thead><tr><th>Domain</th><th style={{ textAlign: "right" }}>Frequency</th><th>Brand mentioned</th></tr></thead>
                     <tbody>
@@ -621,11 +622,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
                     </tbody>
                   </table>
                 </div>
-              </div>
-
-              <div className="aeo-section">
-                <h2>Top URLs <Sign ok={signs.topUrls.ok} why={signs.topUrls.why} /></h2>
-                <p className="aeo-sub">URLs most commonly referenced in AI-generated answers for the tracked prompts.</p>
+                <TileHead label="Top URLs" chip={`WEEK OF ${week}`} sign={signs.topUrls} />
                 {topUrls.length ? (
                   <div className="aeo-tscroll">
                     <table>
@@ -831,8 +828,9 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
               </div>
 
               <div className="aeo-section">
-                <h2>Citations — week of {week} <Sign ok={signs.topDomains.ok} why={signs.topDomains.why} /></h2>
-                <p className="aeo-sub">Which domains AI engines cited most often when answering the tracked prompts this week.</p>
+                <h2>Overview of top citations</h2>
+                <p className="aeo-sub">Compare the content AI references most from your site versus the broader citation landscape.</p>
+                <TileHead label="Top domains" chip={`WEEK OF ${week}`} sign={signs.topDomains} />
                 <ResponsiveContainer width="100%" height={210}>
                   <BarChart data={(data.citations ?? []).slice(0, 12)}>
                     <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.3} />
@@ -842,29 +840,27 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
                     <Bar dataKey="frequency" name="Citations" fill={HS.orange} radius={[3, 3, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
-              </div>
-
-              <div className="aeo-section">
-                <h2>Top URLs <Sign ok={signs.topUrls.ok} why={signs.topUrls.why} /></h2>
-                <p className="aeo-sub">The exact pages AI engines cited, not just the domain.</p>
-                {topUrls.length ? (
-                  <div className="aeo-tscroll">
-                    <table>
-                      <thead><tr><th>URL</th><th style={{ textAlign: "right" }}>Frequency</th><th>Brand mentioned</th></tr></thead>
-                      <tbody>
-                        {topUrls.map((c: any) => (
-                          <tr key={c.id}>
-                            <td><a href={c.url} target="_blank" rel="noreferrer">{c.url}</a></td>
-                            <td style={{ textAlign: "right" }}>{c.frequency}</td>
-                            <td>{c.brand_mentioned ? <Pill tone="good">Yes</Pill> : "No"}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <EmptyChart reason="The scan currently stores citations at the domain level only — per-URL rows need a small addition to the scan's citation-writing step." />
-                )}
+                <div style={{ marginTop: 20 }}>
+                  <TileHead label="Top URLs" chip={`WEEK OF ${week}`} sign={signs.topUrls} />
+                  {topUrls.length ? (
+                    <div className="aeo-tscroll">
+                      <table>
+                        <thead><tr><th>URL</th><th style={{ textAlign: "right" }}>Frequency</th><th>Brand mentioned</th></tr></thead>
+                        <tbody>
+                          {topUrls.map((c: any) => (
+                            <tr key={c.id}>
+                              <td><a href={c.url} target="_blank" rel="noreferrer">{c.url}</a></td>
+                              <td style={{ textAlign: "right" }}>{c.frequency}</td>
+                              <td>{c.brand_mentioned ? <Pill tone="good">Yes</Pill> : "No"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <EmptyChart reason={signs.topUrls.why} />
+                  )}
+                </div>
               </div>
             </div>
           )}
