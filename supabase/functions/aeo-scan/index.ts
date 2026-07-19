@@ -23,6 +23,8 @@ interface ScanRequest {
   siteUrl: string;          // from brands.ts gscSiteUrl or website
   competitors?: string[];   // optional override; defaults derived per category
   landingPageId?: string;   // HubSpot page id — if set, auto-publishes Reddit results after the scan
+  scanType?: "full" | "quick";   // full = audit + prompts + Reddit + recs; quick = site audit only
+  pageScope?: "homepage" | "multi"; // multi = homepage + up to 6 pages; homepage = homepage only
 }
 
 function mondayOfWeek(d = new Date()): string {
@@ -219,6 +221,8 @@ Deno.serve(async (req: Request) => {
 
   const body = await req.json();
   const { brandId, brandName, siteUrl, landingPageId }: ScanRequest = body;
+  const scanType: "full" | "quick" = body.scanType === "quick" ? "quick" : "full";
+  const pageScope: "homepage" | "multi" = body.pageScope === "homepage" ? "homepage" : "multi";
   const weekOf = mondayOfWeek();
 
   // "Generate with AI" button on the Prompts tab — fills remaining prompt slots
@@ -316,16 +320,19 @@ Deno.serve(async (req: Request) => {
 
   const { data: scanRow } = await supabase
     .from("aeo_scan_log")
-    .insert({ brand_id: brandId, week_of: weekOf, triggered_by: callerId })
+    .insert({ brand_id: brandId, week_of: weekOf, triggered_by: callerId, scan_type: scanType, page_scope: pageScope })
     .select("id").single();
   const scanId = scanRow!.id;
 
   const runScan = async () => {
   try {
     // 2. Site audit — SEO/GEO/AEO rubric scores.
+    const crawlScopeText = pageScope === "homepage"
+      ? "Fetch only the homepage via web search"
+      : "Fetch the homepage plus up to 6 high-signal pages (About/Team, Services, Case Studies, Blog, Contact, FAQ) via web search";
     const auditText = await claude(
       anthropicKey,
-      `You are an expert SEO/GEO/AEO auditor following a standard audit methodology. Fetch the homepage plus up to 6 high-signal pages (About/Team, Services, Case Studies, Blog, Contact, FAQ) via web search — never flag something "missing" unless you actually checked for it across the pages you fetched.
+      `You are an expert SEO/GEO/AEO auditor following a standard audit methodology. ${crawlScopeText} — never flag something "missing" unless you actually checked for it across the pages you fetched.
 
 Score each dimension 1-10 (1-3 critical issues, 4-5 below average, 6-7 decent foundation, 8-9 strong, 10 exemplary):
 - SEO: Technical On-Page (title tags, meta descriptions, heading hierarchy, URL structure, canonical, robots meta, alt text, internal links, Open Graph), Content Quality (word count, keyword signals, freshness, readability), Structured Data (schema markup types, validity)
@@ -354,6 +361,9 @@ Reply ONLY with this exact JSON shape (every signal array item is one row — Si
       findings: audit.findings, pages_crawled: audit.pages_crawled ?? 0,
     }, { onConflict: "brand_id,week_of" });
 
+    // 3-5 (prompts, Reddit, recommendations) are skipped for a "quick" scan —
+    // it's the site audit only, so it finishes in a fraction of the time.
+    if (scanType === "full") {
     // 3. Tracked prompts → visibility + citations (Claude as the first engine).
     let { data: prompts } = await supabase
       .from("aeo_prompts")
@@ -487,12 +497,13 @@ Reply ONLY with this exact JSON shape (every signal array item is one row — Si
         }, { onConflict: "brand_id,title", ignoreDuplicates: true }); // never clobber statuses
       }
     } catch { /* recommendations are best-effort */ }
+    } // end scanType === "full"
 
     // 6. If this brand has a HubSpot landing page configured, publish the Reddit
     // table + weekly PDF archive automatically — no separate manual step needed.
     // Hard-timeout so a slow/hung publish call can never block the scan from
     // reaching "completed" (this is what caused an earlier stuck run).
-    if (landingPageId) {
+    if (landingPageId && scanType === "full") {
       try {
         const ac = new AbortController();
         const timer = setTimeout(() => ac.abort(), 60_000);
