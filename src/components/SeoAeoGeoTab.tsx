@@ -218,13 +218,20 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
 
   const siteUrl = brand.gscSiteUrl ?? `https://${brand.id.replace(/-/g, "")}.com/`;
 
-  // Free alternative to the paid API scan — opens the same audit prompt in the
-  // user's own claude.ai session; they paste the resulting JSON back via Import.
+  // Free alternative to the paid API scan — copies the audit prompt to the
+  // clipboard and opens a blank claude.ai tab (rather than passing the prompt
+  // as a URL query param, which some corporate network filters block as a
+  // long/suspicious URL). The admin pastes it in themselves, then pastes the
+  // JSON reply back via the Import box below.
   const openInClaude = () => {
     setShowDialog(false);
+    // Open synchronously (before any await) — otherwise the browser can lose
+    // the user-gesture context and silently block the popup.
+    window.open("https://claude.ai/new", "_blank", "noopener,noreferrer");
     const prompt = buildAuditPrompt(brand, pageScope, siteUrl);
-    window.open(`https://claude.ai/new?q=${encodeURIComponent(prompt)}`, "_blank", "noopener,noreferrer");
-    toast.info("Opened in Claude — paste the JSON reply into the Import box below once it finishes.");
+    navigator.clipboard.writeText(prompt)
+      .then(() => toast.info("Audit prompt copied to your clipboard — paste it into the new Claude tab, then paste the JSON reply into the Import box below."))
+      .catch(() => toast.error("Couldn't copy to clipboard — copy the prompt manually from the Import section's instructions."));
   };
 
   const importManualResult = async () => {
