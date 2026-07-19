@@ -302,6 +302,20 @@ export default function Admin() {
     fetchData();
   };
 
+  const handleForceLogout = async (user: UserProfile) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const { data, error } = await supabase.functions.invoke("force-logout", {
+      body: { targetUserId: user.id, targetEmail: user.email },
+      headers: { Authorization: `Bearer ${session?.access_token}` },
+    });
+    if (error || data?.error) {
+      toast({ title: "Failed to log out user", description: data?.error ?? error?.message, variant: "destructive" });
+      return;
+    }
+    toast({ title: `${user.full_name || user.email} has been logged out` });
+    fetchData();
+  };
+
   const handleRoleChange = async (user: UserProfile, newRole: string) => {
     const { data: { session } } = await supabase.auth.getSession();
     await supabase.from("user_profiles").update({ role: newRole }).eq("id", user.id);
@@ -808,6 +822,13 @@ export default function Admin() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
+                            {sessionStatusByEmail.get(u.email) === "in" && (
+                              <DropdownMenuItem onClick={() => setConfirmDialog({
+                                open: true, title: "Log Out User",
+                                description: `End ${u.full_name || u.email}'s active session? They'll be signed out and need to log in again.`,
+                                onConfirm: () => handleForceLogout(u),
+                              })}>Log out</DropdownMenuItem>
+                            )}
                             {u.is_active ? (
                               <DropdownMenuItem onClick={() => setConfirmDialog({
                                 open: true, title: "Deactivate User",

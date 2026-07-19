@@ -27,5 +27,8 @@ verify_jwt = false
 [functions.set-admin]
 verify_jwt = false
 
+[functions.force-logout]
+verify_jwt = false
+
 [functions.claude-chat]
 verify_jwt = false
