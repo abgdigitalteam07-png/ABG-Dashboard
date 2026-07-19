@@ -14,16 +14,20 @@ import { toast } from "sonner";
 
 interface TabPerm { can_view: boolean; show_insights: boolean; }
 
+const brandKey = (email: string) => `abg_last_brand:${email || "anon"}`;
+const tabKey = (email: string) => `abg_last_tab:${email || "anon"}`;
+
 const Index = () => {
   const [selectedBrand, setSelectedBrandState] = useState(() => {
     const savedName = localStorage.getItem("abg_last_brand");
     return (savedName && brands.find(b => b.name === savedName)) || brands.find(b => b.name === "Bootz") || brands[0];
   });
+  const [userEmail, setUserEmail] = useState("");
   const setSelectedBrand = (brand: typeof selectedBrand) => {
     setSelectedBrandState(brand);
+    localStorage.setItem(brandKey(userEmail), brand.name);
     localStorage.setItem("abg_last_brand", brand.name);
   };
-  const [userEmail, setUserEmail] = useState("");
   const [tabPerms, setTabPerms] = useState<Record<string, TabPerm>>({});
   const [isAdmin, setIsAdmin] = useState(false);
   const welcomeShown = useRef(false);
@@ -34,7 +38,15 @@ const Index = () => {
 
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (!session) return;
-      setUserEmail(session.user.email ?? "");
+      const email = session.user.email ?? "";
+      setUserEmail(email);
+
+      const savedBrandName = localStorage.getItem(brandKey(email));
+      const savedBrand = savedBrandName && brands.find(b => b.name === savedBrandName);
+      if (savedBrand) setSelectedBrandState(savedBrand);
+
+      const savedTab = localStorage.getItem(tabKey(email));
+      if (savedTab) setActiveTabState(savedTab);
 
       const [{ data: profile }, { data: perms }] = await Promise.all([
         supabase.from("user_profiles").select("full_name, role").eq("id", session.user.id).single(),
@@ -52,7 +64,11 @@ const Index = () => {
       }
     });
   }, []);
-  const [activeTab, setActiveTab] = useState("performance");
+  const [activeTab, setActiveTabState] = useState("performance");
+  const setActiveTab = (tab: string) => {
+    setActiveTabState(tab);
+    localStorage.setItem(tabKey(userEmail), tab);
+  };
 
   const now = new Date();
   const start7 = new Date(now);
