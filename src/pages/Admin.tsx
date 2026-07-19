@@ -125,8 +125,8 @@ export default function Admin() {
     onConfirm: () => void;
   }>({ open: false, title: "", description: "", onConfirm: () => {} });
 
-  // Sort
-  const [sortCol, setSortCol] = useState<string>("created_at");
+  // Sort — newest last login first by default
+  const [sortCol, setSortCol] = useState<string>("last_login_at");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
   const fetchData = useCallback(async () => {
@@ -206,6 +206,18 @@ export default function Admin() {
     if (activityActionFilter !== "all") list = list.filter((a) => a.action === activityActionFilter);
     return list;
   }, [activity, activityUserFilter, activityActionFilter]);
+
+  // Latest login/logout event per email — best-effort proxy for "currently signed in"
+  // (we don't track live session tokens, only login/logout actions in the activity log).
+  const sessionStatusByEmail = useMemo(() => {
+    const map = new Map<string, "in" | "out">();
+    for (const a of activity) {
+      if (a.action !== "login" && a.action !== "logout") continue;
+      if (map.has(a.email)) continue; // activity is already ordered newest-first
+      map.set(a.email, a.action === "login" ? "in" : "out");
+    }
+    return map;
+  }, [activity]);
 
   const activityTotalPages = Math.max(1, Math.ceil(filteredActivity.length / activityPerPage));
   const paginatedActivity = filteredActivity.slice((activityPage - 1) * activityPerPage, activityPage * activityPerPage);
@@ -705,6 +717,7 @@ export default function Admin() {
                         {label} {sortCol === key && (sortDir === "asc" ? "↑" : "↓")}
                       </TableHead>
                     ))}
+                    <TableHead>Session</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -718,6 +731,7 @@ export default function Admin() {
                       <TableCell><Badge variant="outline" className="text-xs">{inv.role}</Badge></TableCell>
                       <TableCell className="text-muted-foreground text-sm">Never</TableCell>
                       <TableCell><Badge className="bg-yellow-100 text-yellow-700 border-yellow-300">Pending</Badge></TableCell>
+                      <TableCell className="text-muted-foreground text-sm">—</TableCell>
                       <TableCell>—</TableCell>
                     </TableRow>
                   ))}
@@ -759,6 +773,15 @@ export default function Admin() {
                           <Badge className="bg-green-100 text-green-700 border-green-300">Active</Badge>
                         ) : (
                           <Badge className="bg-amber-100 text-amber-700 border-amber-300">Inactive</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {sessionStatusByEmail.get(u.email) === "in" ? (
+                          <Badge className="bg-green-100 text-green-700 border-green-300">Signed in</Badge>
+                        ) : sessionStatusByEmail.get(u.email) === "out" ? (
+                          <Badge className="bg-slate-100 text-slate-600 border-slate-300">Signed out</Badge>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">—</span>
                         )}
                       </TableCell>
                       <TableCell>
