@@ -219,6 +219,17 @@ export default function Admin() {
     return map;
   }, [activity]);
 
+  // Most recent brand each user viewed — from the "Page View" activity log entries.
+  const lastBrandByEmail = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const a of activity) {
+      if (a.action !== "page_view" || !a.metadata?.brand) continue;
+      if (map.has(a.email)) continue; // activity is already ordered newest-first
+      map.set(a.email, a.metadata.brand);
+    }
+    return map;
+  }, [activity]);
+
   const activityTotalPages = Math.max(1, Math.ceil(filteredActivity.length / activityPerPage));
   const paginatedActivity = filteredActivity.slice((activityPage - 1) * activityPerPage, activityPage * activityPerPage);
 
@@ -718,6 +729,7 @@ export default function Admin() {
                       </TableHead>
                     ))}
                     <TableHead>Session</TableHead>
+                    <TableHead>Last Brand</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -731,6 +743,7 @@ export default function Admin() {
                       <TableCell><Badge variant="outline" className="text-xs">{inv.role}</Badge></TableCell>
                       <TableCell className="text-muted-foreground text-sm">Never</TableCell>
                       <TableCell><Badge className="bg-yellow-100 text-yellow-700 border-yellow-300">Pending</Badge></TableCell>
+                      <TableCell className="text-muted-foreground text-sm">—</TableCell>
                       <TableCell className="text-muted-foreground text-sm">—</TableCell>
                       <TableCell>—</TableCell>
                     </TableRow>
@@ -783,6 +796,9 @@ export default function Admin() {
                         ) : (
                           <span className="text-muted-foreground text-sm">—</span>
                         )}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {lastBrandByEmail.get(u.email) ?? "—"}
                       </TableCell>
                       <TableCell>
                         <DropdownMenu>
