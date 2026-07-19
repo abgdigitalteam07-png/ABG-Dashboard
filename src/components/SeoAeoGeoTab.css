@@ -1,35 +1,66 @@
-/* Visual language ported directly from the approved prototype — same font,
-   same color tokens, same card/pill/gauge shapes. Scoped under .aeo-tab so it
-   never leaks into the rest of the dashboard's shadcn/Tailwind styling. */
+/* Colors/type match the seo-geo-aeo skill's own DOCX/PDF report design exactly,
+   so the in-app report reads as the same deliverable: navy/accent-blue palette,
+   Arial, and the skill's own status (green/amber/red) + priority (red/orange/
+   amber/green) color bands. Scoped under .aeo-tab so it never leaks into the
+   rest of the dashboard's shadcn/Tailwind styling. */
 
 .aeo-tab {
-  --aeo-accent: #0091AE;
-  --aeo-accent-soft: rgba(0, 145, 174, 0.10);
+  --aeo-navy: #1B2A4A;
+  --aeo-accent: #2563EB;
+  --aeo-accent-soft: #EFF6FF;
   --aeo-primary: #FF5C35;
   --aeo-card: #FFFFFF;
-  --aeo-ink: #1C1917;
-  --aeo-muted: #6B6660;
-  --aeo-line: #E7E4DF;
-  --aeo-good: #15803D; --aeo-good-bg: #EAF6EE;
-  --aeo-warn: #B45309; --aeo-warn-bg: #FCF3E6;
-  --aeo-bad: #B91C1C; --aeo-bad-bg: #FBEAEA;
+  --aeo-row-alt: #F8F9FA;
+  --aeo-ink: #1E293B;
+  --aeo-muted: #6B7280;
+  --aeo-line: #E2E8F0;
+  --aeo-good: #16A34A; --aeo-good-bg: #EAF6EE;
+  --aeo-warn: #D97706; --aeo-warn-bg: #FCF3E6;
+  --aeo-bad: #DC2626; --aeo-bad-bg: #FBEAEA;
+  --aeo-priority-high: #EA580C; --aeo-priority-high-bg: #FDF1E9;
   --aeo-chip: #F1EFEB;
-  font-family: "Lexend Deca", Helvetica, Arial, sans-serif;
+  font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
   color: var(--aeo-ink);
 }
 
 .dark .aeo-tab {
-  --aeo-accent: #22B8D8;
-  --aeo-accent-soft: rgba(34, 184, 216, 0.16);
+  --aeo-navy: #1B2A4A;
+  --aeo-accent: #60A5FA;
+  --aeo-accent-soft: rgba(37, 99, 235, 0.16);
   --aeo-card: #1D1F22;
+  --aeo-row-alt: #232629;
   --aeo-ink: #EDEBE8;
   --aeo-muted: #9A968F;
   --aeo-line: #2E3134;
   --aeo-good: #4ADE80; --aeo-good-bg: #12291A;
   --aeo-warn: #FBBF24; --aeo-warn-bg: #2E2410;
   --aeo-bad: #F87171; --aeo-bad-bg: #2E1616;
+  --aeo-priority-high: #FB923C; --aeo-priority-high-bg: #2E1D10;
   --aeo-chip: #26282B;
 }
+
+/* Cover block — mirrors the skill's DOCX cover page (domain, title, audit-type
+   badge, 3-column SEO/GEO/AEO score summary, date). */
+.aeo-tab .aeo-cover {
+  background: var(--aeo-navy); color: #fff; border-radius: 12px; padding: 28px 24px;
+}
+.aeo-tab .aeo-cover .aeo-cover-domain { font-size: 13px; opacity: .75; letter-spacing: .04em; }
+.aeo-tab .aeo-cover h1 {
+  font-size: 22px; font-weight: 700; margin: 4px 0 14px;
+}
+.aeo-tab .aeo-cover .aeo-cover-badge {
+  display: inline-block; background: rgba(255,255,255,.14); color: #fff;
+  font-size: 11px; font-weight: 700; letter-spacing: .04em; padding: 4px 10px; border-radius: 99px;
+  margin-bottom: 18px;
+}
+.aeo-tab .aeo-cover .aeo-cover-scores { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.aeo-tab .aeo-cover .aeo-cover-score { background: rgba(255,255,255,.08); border-radius: 10px; padding: 12px 14px; text-align: center; }
+.aeo-tab .aeo-cover .aeo-cover-score .aeo-cover-k { font-size: 11px; opacity: .75; text-transform: uppercase; letter-spacing: .05em; }
+.aeo-tab .aeo-cover .aeo-cover-score .aeo-cover-v { font-size: 26px; font-weight: 750; font-variant-numeric: tabular-nums; }
+.aeo-tab .aeo-cover .aeo-cover-date { font-size: 11.5px; opacity: .65; margin-top: 18px; }
+
+/* Alternating table row background, matching the skill's DOCX table styling. */
+.aeo-tab table tbody tr:nth-child(even) { background: var(--aeo-row-alt); }
 
 .aeo-tab .aeo-header {
   display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
@@ -107,6 +138,7 @@
 .aeo-tab .aeo-pill.bad { background: var(--aeo-bad-bg); color: var(--aeo-bad); }
 .aeo-tab .aeo-pill.neutral { background: var(--aeo-chip); color: var(--aeo-muted); }
 .aeo-tab .aeo-pill.acc { background: var(--aeo-accent-soft); color: var(--aeo-accent); }
+.aeo-tab .aeo-pill.high { background: var(--aeo-priority-high-bg); color: var(--aeo-priority-high); }
 
 .aeo-tab .aeo-legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--aeo-muted); margin-bottom: 8px; }
 .aeo-tab .aeo-legend i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; margin-right: 5px; }

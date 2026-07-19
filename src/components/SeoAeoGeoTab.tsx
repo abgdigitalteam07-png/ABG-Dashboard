@@ -28,17 +28,20 @@ function mondayOfWeek(d = new Date()): string {
 
 // Same audit prompt the aeo-scan Edge Function sends to the API — used for the
 // "Open in Claude" handoff so a manual run in the user's own claude.ai account
-// asks for the exact same JSON shape our Import box expects.
+// asks for the exact same JSON shape our Import box expects. Crawl-depth wording
+// mirrors the seo-geo-aeo skill's own Quick Audit / Full Audit definitions.
 function buildAuditPrompt(brand: Brand, pageScope: PageScope, siteUrl: string): string {
   const crawlScopeText = pageScope === "homepage"
-    ? "Fetch only the homepage via web search"
-    : "Fetch the homepage plus up to 6 high-signal pages (About/Team, Services, Case Studies, Blog, Contact, FAQ) via web search";
+    ? "This is a Quick Audit: fetch the homepage plus up to 6 high-signal pages (About/Team, Services, Case Studies, Blog, Contact, FAQ) via web search"
+    : "This is a Full Audit: crawl the entire site via web search, with no page cap — skip only Privacy Policy, Terms of Service, login, thank-you, and deep pagination pages";
   return `You are an expert SEO/GEO/AEO auditor following a standard audit methodology. ${crawlScopeText} for ${siteUrl} (brand: ${brand.name}) — never flag something "missing" unless you actually checked for it across the pages you fetched.
 
 Score each dimension 1-10 (1-3 critical issues, 4-5 below average, 6-7 decent foundation, 8-9 strong, 10 exemplary):
 - SEO: Technical On-Page (title tags, meta descriptions, heading hierarchy, URL structure, canonical, robots meta, alt text, internal links, Open Graph), Content Quality (word count, keyword signals, freshness, readability), Structured Data (schema markup types, validity)
 - GEO: E-E-A-T Assessment (author info, About page depth, contact info, trust signals, Organization schema), Content for AI Synthesis (factual density, clear claims, source citations, comprehensiveness, entity clarity, originality), Technical GEO (structured data depth, HTTPS, crawlability, social/brand-entity links)
 - AEO: Featured Snippet Eligibility (direct-answer paragraphs, definition patterns, list/table content), Structured Answer Formats (FAQ schema, HowTo schema, question-phrased headings, Speakable schema), Voice Search Readiness (conversational language, long-tail question coverage, local/NAP signals)
+
+Do not claim to assess Core Web Vitals, page speed, backlink profiles, or JavaScript-rendered content from a plain HTML/web-search fetch — you cannot measure these reliably this way. If relevant, note that limitation in a finding rather than guessing, and point to a dedicated tool (e.g. Google PageSpeed Insights for speed/CWV, Ahrefs/SEMrush for backlinks).
 
 Reply ONLY with this exact JSON shape (every signal array item is one row — Signal/Finding/Status, Status is exactly "Good", "Needs Attention", or "Missing"):
 {"seo":n,"geo":n,"aeo":n,"pages_crawled":n,
@@ -61,7 +64,7 @@ function extractJson<T>(text: string): T {
   return JSON.parse(match[0]) as T;
 }
 
-function Pill({ tone, children }: { tone: "good" | "warn" | "bad" | "neutral"; children: React.ReactNode }) {
+function Pill({ tone, children }: { tone: "good" | "warn" | "bad" | "neutral" | "high"; children: React.ReactNode }) {
   return <span className={`aeo-pill ${tone}`}>{children}</span>;
 }
 function statusTone(status: string): "good" | "warn" | "bad" {
@@ -69,11 +72,20 @@ function statusTone(status: string): "good" | "warn" | "bad" {
   if (status === "Missing") return "bad";
   return "warn";
 }
-function priorityTone(priority: string): "good" | "warn" | "bad" {
+// Matches the skill's own priority color coding exactly: Critical=red, High=orange, Medium=amber, Quick Win=green.
+function priorityTone(priority: string): "good" | "warn" | "bad" | "high" {
   if (priority === "Critical") return "bad";
-  if (priority === "High") return "warn";
+  if (priority === "High") return "high";
   if (priority === "Quick Win") return "good";
-  return "warn";
+  return "warn"; // Medium
+}
+// Matches the skill's exact score bands: 1-4 red/Needs Work, 5-7 amber/On Track, 8-10 green/Strong.
+function scoreStatus(score: number | null | undefined): { label: string; tone: "good" | "warn" | "bad" } {
+  const n = Number(score);
+  if (score == null || Number.isNaN(n)) return { label: "—", tone: "warn" };
+  if (n >= 8) return { label: "Strong", tone: "good" };
+  if (n >= 5) return { label: "On Track", tone: "warn" };
+  return { label: "Needs Work", tone: "bad" };
 }
 
 function SignalTable({ rows, emptyReason }: { rows: Array<{ signal: string; finding: string; status: string }>; emptyReason: string }) {
@@ -102,7 +114,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
   const [scanning, setScanning] = useState(false);
   const [showDialog, setShowDialog] = useState(false);
   const [scanType, setScanType] = useState<ScanType>("full");
-  const [pageScope, setPageScope] = useState<PageScope>("multi");
+  const [pageScope, setPageScope] = useState<PageScope>("homepage");
   const [selectedWeek, setSelectedWeek] = useState<string | null>(null);
   const [pasteText, setPasteText] = useState("");
   const [importing, setImporting] = useState(false);
@@ -162,15 +174,20 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
     queryKey: ["aeo-report", brand.id, week],
     enabled: !!week,
     queryFn: async () => {
-      const [scoreRes, citationsRes, recsRes] = await Promise.all([
+      const [scoreRes, citationsRes, recsRes, scanRes] = await Promise.all([
         sb.from("seo_audit_scores").select("*").eq("brand_id", brand.id).eq("week_of", week).maybeSingle(),
         sb.from("aeo_citations").select("*").eq("brand_id", brand.id).eq("week_of", week).order("frequency", { ascending: false }),
         sb.from("aeo_recommendations").select("*").eq("brand_id", brand.id).order("created_at", { ascending: false }),
+        sb.from("aeo_scan_log").select("page_scope").eq("brand_id", brand.id).eq("week_of", week).eq("status", "completed")
+          .order("started_at", { ascending: false }).limit(1).maybeSingle(),
       ]);
       if (scoreRes.error) throw scoreRes.error;
       if (citationsRes.error) throw citationsRes.error;
       if (recsRes.error) throw recsRes.error;
-      return { score: scoreRes.data, citations: citationsRes.data ?? [], recs: recsRes.data ?? [] };
+      return {
+        score: scoreRes.data, citations: citationsRes.data ?? [], recs: recsRes.data ?? [],
+        pageScope: (scanRes.data?.page_scope as PageScope | undefined) ?? null,
+      };
     },
   });
 
@@ -336,20 +353,20 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
               </RadioGroup>
             </div>
             <div>
-              <p style={{ fontWeight: 600, marginBottom: 8, fontSize: 14 }}>2. How much of the site should it check?</p>
+              <p style={{ fontWeight: 600, marginBottom: 8, fontSize: 14 }}>2. Quick Audit or Full Audit? (crawl depth)</p>
               <RadioGroup value={pageScope} onValueChange={(v) => setPageScope(v as PageScope)}>
                 <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 8 }}>
-                  <RadioGroupItem value="multi" id="scope-multi" />
-                  <Label htmlFor="scope-multi" style={{ fontWeight: 400 }}>
-                    <div style={{ fontWeight: 600 }}>Homepage + key pages</div>
-                    <div style={{ fontSize: 12.5, color: "var(--aeo-muted)" }}>Homepage plus up to 6 high-signal pages (About, Services, Blog, FAQ, etc.)</div>
+                  <RadioGroupItem value="homepage" id="scope-homepage" />
+                  <Label htmlFor="scope-homepage" style={{ fontWeight: 400 }}>
+                    <div style={{ fontWeight: 600 }}>Quick Audit</div>
+                    <div style={{ fontSize: 12.5, color: "var(--aeo-muted)" }}>Homepage plus up to 6 high-signal pages (About, Services, Blog, FAQ, etc.). No Glossary section.</div>
                   </Label>
                 </div>
                 <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-                  <RadioGroupItem value="homepage" id="scope-homepage" />
-                  <Label htmlFor="scope-homepage" style={{ fontWeight: 400 }}>
-                    <div style={{ fontWeight: 600 }}>Homepage only</div>
-                    <div style={{ fontSize: 12.5, color: "var(--aeo-muted)" }}>Fastest — just the homepage.</div>
+                  <RadioGroupItem value="multi" id="scope-multi" />
+                  <Label htmlFor="scope-multi" style={{ fontWeight: 400 }}>
+                    <div style={{ fontWeight: 600 }}>Full Audit</div>
+                    <div style={{ fontSize: 12.5, color: "var(--aeo-muted)" }}>Crawls the entire site, no page cap (skips only Privacy/Terms/login/thank-you pages). Includes the Glossary section. Takes longer.</div>
                   </Label>
                 </div>
               </RadioGroup>
@@ -388,6 +405,26 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
 
       {!scanning && !isLoading && week && data && (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {/* Cover — mirrors the skill's DOCX cover page. */}
+          <div className="aeo-cover">
+            <div className="aeo-cover-domain">{siteUrl.replace(/^https?:\/\//, "").replace(/\/$/, "")}</div>
+            <h1>SEO / GEO / AEO Audit Report</h1>
+            <span className="aeo-cover-badge">{data.pageScope === "multi" ? "FULL AUDIT" : "QUICK AUDIT"}</span>
+            <div className="aeo-cover-scores">
+              {([
+                ["SEO", latestScore?.seo_score],
+                ["GEO", latestScore?.geo_score],
+                ["AEO", latestScore?.aeo_score],
+              ] as const).map(([label, score]) => (
+                <div key={label} className="aeo-cover-score">
+                  <div className="aeo-cover-k">{label}</div>
+                  <div className="aeo-cover-v">{score ?? "—"}<span style={{ fontSize: 14, fontWeight: 400, opacity: .7 }}>/10</span></div>
+                </div>
+              ))}
+            </div>
+            <div className="aeo-cover-date">Week of {week} · {brand.name}</div>
+          </div>
+
           <div className="aeo-section">
             <h2>Executive Summary</h2>
             <div style={{ background: "var(--aeo-accent-soft)", borderRadius: 10, padding: 14, marginBottom: 14 }}>
@@ -404,13 +441,12 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
                     ["GEO", latestScore?.geo_score],
                     ["AEO", latestScore?.aeo_score],
                   ] as const).map(([label, score]) => {
-                    const n = Number(score) || 0;
-                    const status = score == null ? "—" : n >= 8 ? "Strong" : n >= 6 ? "On Track" : "Needs Work";
+                    const status = scoreStatus(score);
                     return (
                       <tr key={label}>
                         <td style={{ fontWeight: 700 }}>{label}</td>
                         <td className="aeo-v" style={{ fontSize: 18 }}>{score ?? "—"}<span style={{ fontSize: 12, color: "var(--aeo-muted)", fontWeight: 400 }}>/10</span></td>
-                        <td>{score != null && <Pill tone={n >= 8 ? "good" : n >= 6 ? "warn" : "bad"}>{status}</Pill>}</td>
+                        <td>{score != null && <Pill tone={status.tone}>{status.label}</Pill>}</td>
                         <td style={{ color: "var(--aeo-muted)" }}>
                           {(auditFindings as any)[label.toLowerCase()]?.technical_on_page?.[0]?.finding
                             ?? (auditFindings as any)[label.toLowerCase()]?.eeat?.[0]?.finding
@@ -561,19 +597,22 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
             </div>
           </div>
 
-          <div className="aeo-section">
-            <h2>Glossary</h2>
-            <div className="aeo-tscroll">
-              <table>
-                <thead><tr><th>Term</th><th>Definition</th></tr></thead>
-                <tbody>
-                  <tr><td style={{ fontWeight: 700 }}>SEO</td><td>Search Engine Optimization — improving a site's technical structure and content so traditional search engines (Google, Bing) rank it well.</td></tr>
-                  <tr><td style={{ fontWeight: 700 }}>GEO</td><td>Generative Engine Optimization — optimizing for AI-powered search engines (ChatGPT Search, Perplexity, Google AI Overviews) that synthesize answers from multiple sources and cite pages.</td></tr>
-                  <tr><td style={{ fontWeight: 700 }}>AEO</td><td>Answer Engine Optimization — optimizing for featured snippets, People Also Ask boxes, and voice search, where engines extract one direct, concise answer.</td></tr>
-                </tbody>
-              </table>
+          {/* Glossary only appears on a Full Audit, matching the skill's own rule. */}
+          {data.pageScope === "multi" && (
+            <div className="aeo-section">
+              <h2>Glossary</h2>
+              <div className="aeo-tscroll">
+                <table>
+                  <thead><tr><th>Term</th><th>Definition</th></tr></thead>
+                  <tbody>
+                    <tr><td style={{ fontWeight: 700 }}>SEO</td><td>Search Engine Optimization — improving a site's technical structure and content so traditional search engines (Google, Bing) rank it well.</td></tr>
+                    <tr><td style={{ fontWeight: 700 }}>GEO</td><td>Generative Engine Optimization — optimizing for AI-powered search engines (ChatGPT Search, Perplexity, Google AI Overviews) that synthesize answers from multiple sources and cite pages.</td></tr>
+                    <tr><td style={{ fontWeight: 700 }}>AEO</td><td>Answer Engine Optimization — optimizing for featured snippets, People Also Ask boxes, and voice search, where engines extract one direct, concise answer.</td></tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
 
@@ -607,7 +646,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
                   <td>{new Date(h.started_at).toLocaleString()}</td>
                   <td>{h.week_of}</td>
                   <td>{h.scan_type === "quick" ? "Quick check" : h.scan_type === "manual" ? "Manual (Claude)" : "Full audit"}</td>
-                  <td>{h.page_scope === "homepage" ? "Homepage only" : "Homepage + key pages"}</td>
+                  <td>{h.page_scope === "homepage" ? "Quick Audit" : "Full Audit"}</td>
                   <td>
                     <Pill tone={h.status === "completed" ? "good" : h.status === "failed" ? "bad" : "warn"}>
                       {h.status}

@@ -24,7 +24,7 @@ interface ScanRequest {
   competitors?: string[];   // optional override; defaults derived per category
   landingPageId?: string;   // HubSpot page id — if set, auto-publishes Reddit results after the scan
   scanType?: "full" | "quick";   // full = audit + prompts + Reddit + recs; quick = site audit only
-  pageScope?: "homepage" | "multi"; // multi = homepage + up to 6 pages; homepage = homepage only
+  pageScope?: "homepage" | "multi"; // homepage = Quick Audit (homepage + up to 6 pages); multi = Full Audit (uncapped crawl)
 }
 
 function mondayOfWeek(d = new Date()): string {
@@ -327,9 +327,10 @@ Deno.serve(async (req: Request) => {
   const runScan = async () => {
   try {
     // 2. Site audit — SEO/GEO/AEO rubric scores.
+    // Wording matches the seo-geo-aeo skill's own Quick Audit / Full Audit definitions exactly.
     const crawlScopeText = pageScope === "homepage"
-      ? "Fetch only the homepage via web search"
-      : "Fetch the homepage plus up to 6 high-signal pages (About/Team, Services, Case Studies, Blog, Contact, FAQ) via web search";
+      ? "This is a Quick Audit: fetch the homepage plus up to 6 high-signal pages (About/Team, Services, Case Studies, Blog, Contact, FAQ) via web search"
+      : "This is a Full Audit: crawl the entire site via web search, with no page cap — skip only Privacy Policy, Terms of Service, login, thank-you, and deep pagination pages";
     const auditText = await claude(
       anthropicKey,
       `You are an expert SEO/GEO/AEO auditor following a standard audit methodology. ${crawlScopeText} — never flag something "missing" unless you actually checked for it across the pages you fetched.
@@ -338,6 +339,8 @@ Score each dimension 1-10 (1-3 critical issues, 4-5 below average, 6-7 decent fo
 - SEO: Technical On-Page (title tags, meta descriptions, heading hierarchy, URL structure, canonical, robots meta, alt text, internal links, Open Graph), Content Quality (word count, keyword signals, freshness, readability), Structured Data (schema markup types, validity)
 - GEO: E-E-A-T Assessment (author info, About page depth, contact info, trust signals, Organization schema), Content for AI Synthesis (factual density, clear claims, source citations, comprehensiveness, entity clarity, originality), Technical GEO (structured data depth, HTTPS, crawlability, social/brand-entity links)
 - AEO: Featured Snippet Eligibility (direct-answer paragraphs, definition patterns, list/table content), Structured Answer Formats (FAQ schema, HowTo schema, question-phrased headings, Speakable schema), Voice Search Readiness (conversational language, long-tail question coverage, local/NAP signals)
+
+Do not claim to assess Core Web Vitals, page speed, backlink profiles, or JavaScript-rendered content from a plain web-search fetch — you cannot measure these reliably this way. If relevant, note that limitation in a finding rather than guessing, and point to a dedicated tool (e.g. Google PageSpeed Insights for speed/CWV, Ahrefs/SEMrush for backlinks).
 
 Reply ONLY with this exact JSON shape (every signal array item is one row — Signal/Finding/Status, Status is exactly "Good", "Needs Attention", or "Missing"):
 {"seo":n,"geo":n,"aeo":n,"pages_crawled":n,
