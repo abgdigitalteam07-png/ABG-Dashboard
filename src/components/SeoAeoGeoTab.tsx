@@ -1,68 +1,15 @@
 import { useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Brand } from "@/lib/brands";
 import { supabase } from "@/integrations/supabase/client";
 import { WaterFillLoader } from "@/components/WaterFillLoader";
-import { toast } from "sonner";
-import {
-  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription,
-} from "@/components/ui/dialog";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Label } from "@/components/ui/label";
 import "./SeoAeoGeoTab.css";
 
 // New aeo_* tables are not in the generated Database types yet — regenerate after
 // the 20260717000000 migration is applied, then drop this cast.
 const sb = supabase as any;
 
-type ScanType = "full" | "quick";
 type PageScope = "homepage" | "multi";
-
-function mondayOfWeek(d = new Date()): string {
-  const day = d.getUTCDay();
-  const diff = (day === 0 ? -6 : 1) - day;
-  const m = new Date(d);
-  m.setUTCDate(d.getUTCDate() + diff);
-  return m.toISOString().slice(0, 10);
-}
-
-// Same audit prompt the aeo-scan Edge Function sends to the API — used for the
-// "Open in Claude" handoff so a manual run in the user's own claude.ai account
-// asks for the exact same JSON shape our Import box expects. Crawl-depth wording
-// mirrors the seo-geo-aeo skill's own Quick Audit / Full Audit definitions.
-function buildAuditPrompt(brand: Brand, pageScope: PageScope, siteUrl: string): string {
-  const crawlScopeText = pageScope === "homepage"
-    ? "This is a Quick Audit: fetch the homepage plus up to 6 high-signal pages (About/Team, Services, Case Studies, Blog, Contact, FAQ) via web search"
-    : "This is a Full Audit: crawl the entire site via web search, with no page cap — skip only Privacy Policy, Terms of Service, login, thank-you, and deep pagination pages";
-  return `You are an expert SEO/GEO/AEO auditor following a standard audit methodology. ${crawlScopeText} for ${siteUrl} (brand: ${brand.name}) — never flag something "missing" unless you actually checked for it across the pages you fetched.
-
-Score each dimension 1-10 (1-3 critical issues, 4-5 below average, 6-7 decent foundation, 8-9 strong, 10 exemplary):
-- SEO: Technical On-Page (title tags, meta descriptions, heading hierarchy, URL structure, canonical, robots meta, alt text, internal links, Open Graph), Content Quality (word count, keyword signals, freshness, readability), Structured Data (schema markup types, validity)
-- GEO: E-E-A-T Assessment (author info, About page depth, contact info, trust signals, Organization schema), Content for AI Synthesis (factual density, clear claims, source citations, comprehensiveness, entity clarity, originality), Technical GEO (structured data depth, HTTPS, crawlability, social/brand-entity links)
-- AEO: Featured Snippet Eligibility (direct-answer paragraphs, definition patterns, list/table content), Structured Answer Formats (FAQ schema, HowTo schema, question-phrased headings, Speakable schema), Voice Search Readiness (conversational language, long-tail question coverage, local/NAP signals)
-
-Do not claim to assess Core Web Vitals, page speed, backlink profiles, or JavaScript-rendered content from a plain HTML/web-search fetch — you cannot measure these reliably this way. If relevant, note that limitation in a finding rather than guessing, and point to a dedicated tool (e.g. Google PageSpeed Insights for speed/CWV, Ahrefs/SEMrush for backlinks).
-
-Reply ONLY with this exact JSON shape (every signal array item is one row — Signal/Finding/Status, Status is exactly "Good", "Needs Attention", or "Missing"):
-{"seo":n,"geo":n,"aeo":n,"pages_crawled":n,
-"findings":{
- "executive_summary":"3-5 sentence summary — what's strong, most urgent issue, one key opportunity, specific to this site",
- "pages_audited":[{"url":"...","page_type":"Homepage|About|Services|Blog|...","notes":"..."}],
- "seo":{"technical_on_page":[{"signal":"...","finding":"...","status":"Good|Needs Attention|Missing"}],"content_quality":[...],"structured_data":[...]},
- "geo":{"eeat":[...],"content_ai_synthesis":[...],"technical_geo":[...]},
- "aeo":{"featured_snippet":[...],"structured_answer_formats":[...],"voice_search":[...]},
- "priority_recommendations":[{"priority":"Critical|High|Medium|Quick Win","issue":"...","dimension":"SEO|GEO|AEO","effort":"Low|Medium|High","impact":"Low|Medium|High"}],
- "whats_working":[{"item":"...","evidence":"..."}]
-}}
-
-Paste ONLY the JSON in your reply — no other text before or after it — so it can be copied straight back into the import box.`;
-}
-
-function extractJson<T>(text: string): T {
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error("No JSON object found in pasted text");
-  return JSON.parse(match[0]) as T;
-}
 
 function Pill({ tone, children }: { tone: "good" | "warn" | "bad" | "neutral" | "high"; children: React.ReactNode }) {
   return <span className={`aeo-pill ${tone}`}>{children}</span>;
@@ -111,16 +58,9 @@ function SignalTable({ rows, emptyReason }: { rows: Array<{ signal: string; find
 interface Props { brand: Brand; }
 
 export const SeoAeoGeoTab = ({ brand }: Props) => {
-  const [scanning, setScanning] = useState(false);
-  const [showDialog, setShowDialog] = useState(false);
-  const [scanType, setScanType] = useState<ScanType>("full");
-  const [pageScope, setPageScope] = useState<PageScope>("homepage");
   const [selectedWeek, setSelectedWeek] = useState<string | null>(null);
-  const [pasteText, setPasteText] = useState("");
-  const [importing, setImporting] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
   const reportRef = useRef<HTMLDivElement>(null);
-  const qc = useQueryClient();
 
   const { data: weeks } = useQuery({
     queryKey: ["aeo-weeks", brand.id],
@@ -158,20 +98,6 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
   const week = selectedWeek ?? weeks?.[0]?.week_of ?? null;
   const lastScan = weeks?.[0]?.started_at;
 
-  const { data: lastAttempt } = useQuery({
-    queryKey: ["aeo-last-attempt", brand.id],
-    queryFn: async () => {
-      const { data, error } = await sb
-        .from("aeo_scan_log")
-        .select("status, error, started_at")
-        .eq("brand_id", brand.id)
-        .order("started_at", { ascending: false })
-        .limit(1);
-      if (error) throw error;
-      return (data?.[0] ?? null) as { status: string; error: string | null; started_at: string } | null;
-    },
-  });
-
   const { data, isLoading } = useQuery({
     queryKey: ["aeo-report", brand.id, week],
     enabled: !!week,
@@ -193,101 +119,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
     },
   });
 
-  const runScan = async () => {
-    setShowDialog(false);
-    setScanning(true);
-    try {
-      const { data: res, error } = await supabase.functions.invoke("aeo-scan", {
-        body: {
-          brandId: brand.id,
-          brandName: brand.name,
-          siteUrl,
-          landingPageId: brand.redditLandingPageId,
-          scanType, pageScope,
-        },
-      });
-      if (error || res?.error) throw new Error(res?.error ?? error?.message);
-
-      toast.info(`${scanType === "full" ? "Full audit" : "Quick check"} started — this can take a few minutes.`);
-      const deadline = Date.now() + 8 * 60 * 1000;
-      while (Date.now() < deadline) {
-        await new Promise(r => setTimeout(r, 5000));
-        const { data: log } = await sb.from("aeo_scan_log")
-          .select("status, api_calls_used, error").eq("id", res.scanId).single();
-        if (log?.status === "completed") {
-          toast.success(`Scan complete — ${log.api_calls_used} API calls used`);
-          qc.invalidateQueries({ queryKey: ["aeo-weeks", brand.id] });
-          qc.invalidateQueries({ queryKey: ["aeo-report", brand.id] });
-          qc.invalidateQueries({ queryKey: ["aeo-history", brand.id] });
-          qc.invalidateQueries({ queryKey: ["aeo-last-attempt", brand.id] });
-          return;
-        }
-        if (log?.status === "failed") throw new Error(log.error ?? "scan failed");
-      }
-      throw new Error("Scan timed out after 8 minutes — check aeo_scan_log.");
-    } catch (e) {
-      toast.error(`Scan failed: ${e instanceof Error ? e.message : e}`);
-    } finally {
-      setScanning(false);
-      // Refresh even on failure/timeout so the Scan History table shows the failed attempt.
-      qc.invalidateQueries({ queryKey: ["aeo-history", brand.id] });
-      qc.invalidateQueries({ queryKey: ["aeo-last-attempt", brand.id] });
-    }
-  };
-
   const siteUrl = brand.gscSiteUrl ?? `https://${brand.id.replace(/-/g, "")}.com/`;
-
-  // Free alternative to the paid API scan — copies the audit prompt to the
-  // clipboard and opens a blank claude.ai tab (rather than passing the prompt
-  // as a URL query param, which some corporate network filters block as a
-  // long/suspicious URL). The admin pastes it in themselves, then pastes the
-  // JSON reply back via the Import box below.
-  const openInClaude = () => {
-    setShowDialog(false);
-    // Open synchronously (before any await) — otherwise the browser can lose
-    // the user-gesture context and silently block the popup.
-    window.open("https://claude.ai/new", "_blank", "noopener,noreferrer");
-    const prompt = buildAuditPrompt(brand, pageScope, siteUrl);
-    navigator.clipboard.writeText(prompt)
-      .then(() => toast.info("Audit prompt copied to your clipboard — paste it into the new Claude tab, then paste the JSON reply into the Import box below."))
-      .catch(() => toast.error("Couldn't copy to clipboard — copy the prompt manually from the Import section's instructions."));
-  };
-
-  const importManualResult = async () => {
-    setImporting(true);
-    try {
-      const parsed = extractJson<{ seo: number; geo: number; aeo: number; findings: unknown; pages_crawled?: number }>(pasteText);
-      if (typeof parsed.seo !== "number" || typeof parsed.geo !== "number" || typeof parsed.aeo !== "number") {
-        throw new Error("Pasted JSON is missing seo/geo/aeo scores — paste the full reply from Claude.");
-      }
-      const weekOf = mondayOfWeek();
-      const nowIso = new Date().toISOString();
-      const { error: scoreError } = await sb.from("seo_audit_scores").upsert({
-        brand_id: brand.id, week_of: weekOf,
-        seo_score: parsed.seo, geo_score: parsed.geo, aeo_score: parsed.aeo,
-        findings: parsed.findings, pages_crawled: parsed.pages_crawled ?? 0,
-      }, { onConflict: "brand_id,week_of" });
-      if (scoreError) throw scoreError;
-
-      const { error: logError } = await sb.from("aeo_scan_log").insert({
-        brand_id: brand.id, week_of: weekOf, status: "completed",
-        scan_type: "manual", page_scope: pageScope, api_calls_used: 0,
-        started_at: nowIso, finished_at: nowIso,
-      });
-      if (logError) throw logError;
-
-      toast.success("Manual report imported.");
-      setPasteText("");
-      qc.invalidateQueries({ queryKey: ["aeo-weeks", brand.id] });
-      qc.invalidateQueries({ queryKey: ["aeo-report", brand.id] });
-      qc.invalidateQueries({ queryKey: ["aeo-history", brand.id] });
-      qc.invalidateQueries({ queryKey: ["aeo-last-attempt", brand.id] });
-    } catch (e) {
-      toast.error(`Import failed: ${e instanceof Error ? e.message : e}`);
-    } finally {
-      setImporting(false);
-    }
-  };
 
   const handleDownloadPdf = async () => {
     if (!reportRef.current || !week) return;
@@ -371,8 +203,6 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
     whats_working?: Array<{ item: string; evidence: string }>;
   };
 
-  const scanFailing = lastAttempt?.status === "failed";
-
   return (
     <div className="aeo-tab" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       {/* Header */}
@@ -402,90 +232,17 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
             {exportingPdf ? "Exporting…" : "⬇ Download PDF"}
           </button>
         )}
-        <button onClick={() => setShowDialog(true)} disabled={scanning} className="aeo-btn">
-          {scanning ? "Scanning…" : "⟳ Run Scan"}
-        </button>
       </div>
 
-      {/* Pre-scan questions */}
-      <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Run SEO / AEO / GEO scan</DialogTitle>
-            <DialogDescription>Choose what this scan should cover for {brand.name}.</DialogDescription>
-          </DialogHeader>
-          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-            <div>
-              <p style={{ fontWeight: 600, marginBottom: 8, fontSize: 14 }}>1. What type of scan?</p>
-              <RadioGroup value={scanType} onValueChange={(v) => setScanType(v as ScanType)}>
-                <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 8 }}>
-                  <RadioGroupItem value="full" id="scan-full" />
-                  <Label htmlFor="scan-full" style={{ fontWeight: 400 }}>
-                    <div style={{ fontWeight: 600 }}>Full audit</div>
-                    <div style={{ fontSize: 12.5, color: "var(--aeo-muted)" }}>SEO + GEO + AEO site audit, tracked prompts, Reddit visibility, and recommendations. Takes longer.</div>
-                  </Label>
-                </div>
-                <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-                  <RadioGroupItem value="quick" id="scan-quick" />
-                  <Label htmlFor="scan-quick" style={{ fontWeight: 400 }}>
-                    <div style={{ fontWeight: 600 }}>Quick check</div>
-                    <div style={{ fontSize: 12.5, color: "var(--aeo-muted)" }}>Site audit only (SEO/GEO/AEO scores). Skips prompts, Reddit, and recommendations — finishes much faster.</div>
-                  </Label>
-                </div>
-              </RadioGroup>
-            </div>
-            <div>
-              <p style={{ fontWeight: 600, marginBottom: 8, fontSize: 14 }}>2. Quick Audit or Full Audit? (crawl depth)</p>
-              <RadioGroup value={pageScope} onValueChange={(v) => setPageScope(v as PageScope)}>
-                <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 8 }}>
-                  <RadioGroupItem value="homepage" id="scope-homepage" />
-                  <Label htmlFor="scope-homepage" style={{ fontWeight: 400 }}>
-                    <div style={{ fontWeight: 600 }}>Quick Audit</div>
-                    <div style={{ fontSize: 12.5, color: "var(--aeo-muted)" }}>Homepage plus up to 6 high-signal pages (About, Services, Blog, FAQ, etc.). No Glossary section.</div>
-                  </Label>
-                </div>
-                <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-                  <RadioGroupItem value="multi" id="scope-multi" />
-                  <Label htmlFor="scope-multi" style={{ fontWeight: 400 }}>
-                    <div style={{ fontWeight: 600 }}>Full Audit</div>
-                    <div style={{ fontSize: 12.5, color: "var(--aeo-muted)" }}>Crawls the entire site, no page cap (skips only Privacy/Terms/login/thank-you pages). Includes the Glossary section. Takes longer.</div>
-                  </Label>
-                </div>
-              </RadioGroup>
-            </div>
-          </div>
-          <DialogFooter style={{ flexWrap: "wrap" }}>
-            <button onClick={() => setShowDialog(false)} style={{ border: "1px solid var(--aeo-line)", borderRadius: 8, padding: "7px 14px", background: "var(--aeo-card)", color: "var(--aeo-ink)" }}>Cancel</button>
-            <button
-              onClick={openInClaude}
-              title="Free — runs in your own claude.ai account, no API billing. Paste the result back via the Import box."
-              style={{ border: "1px solid var(--aeo-line)", borderRadius: 8, padding: "7px 14px", background: "var(--aeo-card)", color: "var(--aeo-ink)" }}
-            >
-              Open in Claude (free)
-            </button>
-            <button onClick={runScan} className="aeo-btn">Start scan (uses API credits)</button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {isLoading && <WaterFillLoader />}
 
-      {scanning && (
-        <div className="aeo-section" style={{ textAlign: "center", padding: 24 }}>
-          <WaterFillLoader />
-          <p className="aeo-sub" style={{ marginTop: 8 }}>
-            Running {scanType === "full" ? "full audit" : "quick check"} for {brand.name} — this runs the same live audit as the SEO/GEO/AEO skill, so it can take a few minutes.
-          </p>
-        </div>
-      )}
-
-      {!scanning && isLoading && <WaterFillLoader />}
-
-      {!scanning && !isLoading && !week && (
+      {!isLoading && !week && (
         <div className="aeo-section" style={{ textAlign: "center", color: "var(--aeo-muted)", padding: 40 }}>
-          No scans yet for {brand.name}. Click <b>Run Scan</b> to run the first SEO/AEO/GEO scan.
+          No scans yet for {brand.name}. Reports are populated automatically by the scheduled SEO/AEO/GEO audit Routine.
         </div>
       )}
 
-      {!scanning && !isLoading && week && data && (
+      {!isLoading && week && data && (
         <div ref={reportRef} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {/* Cover — mirrors the skill's DOCX cover page. */}
           <div className="aeo-cover">
@@ -698,23 +455,6 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
         </div>
       )}
 
-      {/* Free path: run the audit prompt in the admin's own claude.ai account, then paste the JSON reply here */}
-      <div className="aeo-section">
-        <h2>Import Manual Scan</h2>
-        <p className="aeo-sub">Ran the audit via "Open in Claude" instead of paying for API credits? Paste the JSON reply below to load it into this report.</p>
-        <textarea
-          rows={4}
-          placeholder='Paste the JSON reply from Claude here, e.g. {"seo":7,"geo":6,"aeo":5,"findings":{...}}'
-          value={pasteText}
-          onChange={e => setPasteText(e.target.value)}
-          style={{ width: "100%", fontFamily: "monospace", fontSize: 12.5 }}
-        />
-        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
-          <button onClick={importManualResult} disabled={importing || !pasteText.trim()} className="aeo-btn">
-            {importing ? "Importing…" : "Import report"}
-          </button>
-        </div>
-      </div>
 
       {/* Scan history — the logged data trail, kept regardless of which week's report is shown above */}
       <div className="aeo-section">
