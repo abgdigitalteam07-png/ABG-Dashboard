@@ -1354,35 +1354,15 @@ export default function Admin() {
                 />
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1"><Calendar className="h-3 w-3" /> Run Day</label>
-                  <Select value={String(newGroup.day_of_week)} onValueChange={v => setNewGroup(g => ({ ...g, day_of_week: Number(v) }))}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>{DOW_LABELS.map((d, i) => <SelectItem key={i} value={String(i)}>{d}</SelectItem>)}</SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1"><Clock className="h-3 w-3" /> Run Time (UTC)</label>
-                  <Select value={String(newGroup.run_hour_utc)} onValueChange={v => setNewGroup(g => ({ ...g, run_hour_utc: Number(v) }))}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {Array.from({ length: 24 }, (_, h) => (
-                        <SelectItem key={h} value={String(h)}>{String(h).padStart(2, "0")}:00 UTC</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Audit Depth</label>
-                  <Select value={newGroup.page_scope} onValueChange={v => setNewGroup(g => ({ ...g, page_scope: v }))}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="homepage">Quick Audit</SelectItem>
-                      <SelectItem value="multi">Full Audit</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+              <div className="space-y-1">
+                <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Audit Depth</label>
+                <Select value={newGroup.page_scope} onValueChange={v => setNewGroup(g => ({ ...g, page_scope: v }))}>
+                  <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="homepage">Quick Audit</SelectItem>
+                    <SelectItem value="multi">Full Audit</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-1">
@@ -1437,18 +1417,12 @@ export default function Admin() {
                       <div className="flex flex-wrap items-center gap-3">
                         <span className="font-semibold">{group.group_name}</span>
                         <span className="text-xs text-muted-foreground">{group.brands.length} brand(s)</span>
-                        <Select value={String(group.day_of_week ?? 1)} onValueChange={v => updateGroupSchedule(group, "day_of_week", Number(v))}>
-                          <SelectTrigger className="h-7 w-28 text-xs"><SelectValue /></SelectTrigger>
-                          <SelectContent>{DOW_LABELS.map((d, i) => <SelectItem key={i} value={String(i)}>{d}</SelectItem>)}</SelectContent>
-                        </Select>
-                        <Select value={String(group.run_hour_utc ?? 13)} onValueChange={v => updateGroupSchedule(group, "run_hour_utc", Number(v))}>
-                          <SelectTrigger className="h-7 w-28 text-xs"><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            {Array.from({ length: 24 }, (_, h) => (
-                              <SelectItem key={h} value={String(h)}>{String(h).padStart(2, "0")}:00 UTC</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <span
+                          className="text-xs text-muted-foreground"
+                          title="Not synced — set the matching day/time inside Claude Desktop's own Routine scheduler."
+                        >
+                          {DOW_LABELS[group.day_of_week ?? 1]} · {String(group.run_hour_utc ?? 13).padStart(2, "0")}:00 UTC (set in Claude Desktop)
+                        </span>
                         <Select value={group.page_scope} onValueChange={v => updateGroupSchedule(group, "page_scope", v)}>
                           <SelectTrigger className="h-7 w-32 text-xs"><SelectValue /></SelectTrigger>
                           <SelectContent>
