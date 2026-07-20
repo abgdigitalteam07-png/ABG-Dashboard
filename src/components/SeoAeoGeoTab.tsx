@@ -224,15 +224,14 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
           </select>
         )}
         <div style={{ flex: 1 }} />
-        {week && data && (
-          <button
-            onClick={handleDownloadPdf}
-            disabled={exportingPdf}
-            style={{ border: "1px solid var(--aeo-line)", borderRadius: 8, padding: "8px 16px", background: "var(--aeo-card)", color: "var(--aeo-ink)", fontWeight: 600, fontSize: 13.5 }}
-          >
-            {exportingPdf ? "Exporting…" : "⬇ Download PDF"}
-          </button>
-        )}
+        <button
+          onClick={handleDownloadPdf}
+          disabled={exportingPdf || !week}
+          title={!week ? "No scan yet for this brand — nothing to export until the Routine runs." : undefined}
+          style={{ border: "1px solid var(--aeo-line)", borderRadius: 8, padding: "8px 16px", background: "var(--aeo-card)", color: "var(--aeo-ink)", fontWeight: 600, fontSize: 13.5 }}
+        >
+          {exportingPdf ? "Exporting…" : "⬇ Download PDF"}
+        </button>
       </div>
 
       {isLoading && <WaterFillLoader />}
