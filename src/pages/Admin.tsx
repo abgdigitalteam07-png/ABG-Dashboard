@@ -68,7 +68,7 @@ export default function Admin() {
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const [loginsLast7, setLoginsLast7] = useState(0);
-  const [activeAdminTab, setActiveAdminTab] = useState<"users" | "usage" | "schedules" | "access">("users");
+  const [activeAdminTab, setActiveAdminTab] = useState<"users" | "usage" | "schedules" | "access" | "routines">("users");
 
   // ── Tab Access Permissions state ───────────────────────────────────────────
   interface TabPermRow { user_id: string; tab_id: string; can_view: boolean; show_insights: boolean; }
@@ -100,6 +100,28 @@ export default function Admin() {
   });
   const [schedSaving, setSchedSaving] = useState(false);
   const [sendingId, setSendingId] = useState<string | null>(null);
+
+  // ── Routine Groups state (SEO/AEO/GEO audit Routine brand batches) ─────
+  interface RoutineGroupBrand { id: string; name: string; site_url: string }
+  interface RoutineGroup {
+    id: string;
+    group_name: string;
+    brands: RoutineGroupBrand[];
+    scan_type: string;
+    page_scope: string;
+    day_of_week: number | null;
+    run_hour_utc: number | null;
+    is_active: boolean;
+    notes: string | null;
+  }
+  const [routineGroups, setRoutineGroups] = useState<RoutineGroup[]>([]);
+  const [routineGroupsLoading, setRoutineGroupsLoading] = useState(false);
+  const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null);
+  const [newGroup, setNewGroup] = useState({
+    group_name: "", brandIds: new Set<string>(), page_scope: "homepage",
+    day_of_week: 1, run_hour_utc: 13,
+  });
+  const [groupSaving, setGroupSaving] = useState(false);
 
   // Filters
   const [searchQuery, setSearchQuery] = useState("");
@@ -485,6 +507,71 @@ export default function Admin() {
 
   const DOW_LABELS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
+  // ── Routine Groups helpers ───────────────────────────────────────────────
+  async function loadRoutineGroups() {
+    setRoutineGroupsLoading(true);
+    const { data } = await (supabase as any).from("aeo_routine_groups").select("*").order("group_name");
+    setRoutineGroups(data ?? []);
+    setRoutineGroupsLoading(false);
+  }
+
+  function brandSiteUrl(brandId: string) {
+    const b = brands.find(x => x.id === brandId);
+    return b?.gscSiteUrl ?? `https://${brandId.replace(/-/g, "")}.com/`;
+  }
+
+  async function saveNewGroup() {
+    const trimmed = newGroup.group_name.trim();
+    if (!trimmed || newGroup.brandIds.size === 0) {
+      toast({ title: "Missing fields", description: "Name the group and select at least one brand.", variant: "destructive" });
+      return;
+    }
+    setGroupSaving(true);
+    const brandList = [...newGroup.brandIds].map(id => {
+      const b = brands.find(x => x.id === id)!;
+      return { id: b.id, name: b.name, site_url: brandSiteUrl(b.id) };
+    });
+    const { error } = await (supabase as any).from("aeo_routine_groups").insert({
+      group_name: trimmed, brands: brandList, page_scope: newGroup.page_scope,
+      day_of_week: newGroup.day_of_week, run_hour_utc: newGroup.run_hour_utc,
+    });
+    setGroupSaving(false);
+    if (error) { toast({ title: "Error", description: error.message, variant: "destructive" }); return; }
+    toast({ title: "Group created", description: `${trimmed} saved with ${brandList.length} brand(s).` });
+    setNewGroup({ group_name: "", brandIds: new Set(), page_scope: "homepage", day_of_week: 1, run_hour_utc: 13 });
+    loadRoutineGroups();
+  }
+
+  async function toggleGroupBrand(group: RoutineGroup, brandId: string) {
+    const has = group.brands.some(b => b.id === brandId);
+    const nextBrands = has
+      ? group.brands.filter(b => b.id !== brandId)
+      : [...group.brands, { id: brandId, name: brands.find(x => x.id === brandId)!.name, site_url: brandSiteUrl(brandId) }];
+    const { error } = await (supabase as any).from("aeo_routine_groups").update({ brands: nextBrands }).eq("id", group.id);
+    if (error) { toast({ title: "Error", description: error.message, variant: "destructive" }); return; }
+    setRoutineGroups(gs => gs.map(g => g.id === group.id ? { ...g, brands: nextBrands } : g));
+  }
+
+  async function updateGroupSchedule(group: RoutineGroup, field: "day_of_week" | "run_hour_utc" | "page_scope", value: number | string) {
+    const { error } = await (supabase as any).from("aeo_routine_groups").update({ [field]: value }).eq("id", group.id);
+    if (error) { toast({ title: "Error", description: error.message, variant: "destructive" }); return; }
+    setRoutineGroups(gs => gs.map(g => g.id === group.id ? { ...g, [field]: value } : g));
+  }
+
+  async function toggleGroupActive(group: RoutineGroup) {
+    const { error } = await (supabase as any).from("aeo_routine_groups").update({ is_active: !group.is_active }).eq("id", group.id);
+    if (error) { toast({ title: "Error", description: error.message, variant: "destructive" }); return; }
+    setRoutineGroups(gs => gs.map(g => g.id === group.id ? { ...g, is_active: !g.is_active } : g));
+  }
+
+  async function deleteGroup(group: RoutineGroup) {
+    if (!confirm(`Delete routine group "${group.group_name}"?`)) return;
+    const { error } = await (supabase as any).from("aeo_routine_groups").delete().eq("id", group.id);
+    if (error) { toast({ title: "Error", description: error.message, variant: "destructive" }); return; }
+    setRoutineGroups(gs => gs.filter(g => g.id !== group.id));
+    toast({ title: "Deleted", description: `${group.group_name} removed.` });
+  }
+
   if (isAdmin === null) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -524,6 +611,7 @@ export default function Admin() {
               { id: "usage", label: "Daily Usage", icon: BarChart2 },
               { id: "schedules", label: "Report Schedules", icon: Mail },
               { id: "access", label: "Tab Access", icon: Shield },
+              { id: "routines", label: "Routine Groups", icon: Play },
             ] as const).map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
@@ -531,6 +619,7 @@ export default function Admin() {
                   setActiveAdminTab(id);
                   if (id === "schedules") loadSchedules();
                   if (id === "access") loadTabPermissions();
+                  if (id === "routines") loadRoutineGroups();
                 }}
                 className={`flex items-center gap-2 rounded-lg px-4 py-1.5 text-sm font-medium transition-all ${
                   activeAdminTab === id
@@ -1229,6 +1318,176 @@ export default function Admin() {
                     ))}
                   </TableBody>
                 </Table>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* ══ ROUTINE GROUPS TAB ══ */}
+      {activeAdminTab === "routines" && (
+        <div className="space-y-6 px-6">
+          <Card className="border-sky-200 bg-sky-50 dark:bg-sky-950/20">
+            <CardContent className="pt-4 pb-4 text-sm text-muted-foreground">
+              These groups feed the SEO/AEO/GEO audit Routine in Claude Desktop — its prompt reads
+              a group's brand list live from this table via the Supabase MCP connector. Editing a
+              group here takes effect the next time that Routine runs, no re-pasting needed.
+              The day/time below is a <b>reference schedule</b> only — Claude Desktop's own Routine
+              scheduler still needs to be set to match, since this app can't control that scheduler directly.
+            </CardContent>
+          </Card>
+
+          {/* ── Add new group ── */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Plus className="h-4 w-4 text-brand-red" /> New Routine Group
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Group Name</label>
+                <Input
+                  placeholder="e.g. group_2"
+                  value={newGroup.group_name}
+                  onChange={e => setNewGroup(g => ({ ...g, group_name: e.target.value }))}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1"><Calendar className="h-3 w-3" /> Run Day</label>
+                  <Select value={String(newGroup.day_of_week)} onValueChange={v => setNewGroup(g => ({ ...g, day_of_week: Number(v) }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>{DOW_LABELS.map((d, i) => <SelectItem key={i} value={String(i)}>{d}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1"><Clock className="h-3 w-3" /> Run Time (UTC)</label>
+                  <Select value={String(newGroup.run_hour_utc)} onValueChange={v => setNewGroup(g => ({ ...g, run_hour_utc: Number(v) }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: 24 }, (_, h) => (
+                        <SelectItem key={h} value={String(h)}>{String(h).padStart(2, "0")}:00 UTC</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Audit Depth</label>
+                  <Select value={newGroup.page_scope} onValueChange={v => setNewGroup(g => ({ ...g, page_scope: v }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="homepage">Quick Audit</SelectItem>
+                      <SelectItem value="multi">Full Audit</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Brands ({newGroup.brandIds.size} selected)</label>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-1 max-h-64 overflow-y-auto border rounded-md p-3">
+                  {brands.map(b => (
+                    <label key={b.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={newGroup.brandIds.has(b.id)}
+                        onChange={() => setNewGroup(g => {
+                          const next = new Set(g.brandIds);
+                          next.has(b.id) ? next.delete(b.id) : next.add(b.id);
+                          return { ...g, brandIds: next };
+                        })}
+                      />
+                      {b.name}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <Button
+                onClick={saveNewGroup}
+                disabled={groupSaving || !newGroup.group_name.trim() || newGroup.brandIds.size === 0}
+                className="bg-brand-red hover:bg-brand-red/90 text-white"
+              >
+                {groupSaving ? "Saving…" : <><Plus className="h-4 w-4 mr-1" /> Save Group</>}
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* ── Existing groups ── */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Play className="h-4 w-4" /> Routine Groups
+                <span className="ml-auto text-xs font-normal text-muted-foreground">{routineGroups.length} total</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              {routineGroupsLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                </div>
+              ) : routineGroups.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground text-sm">No groups yet. Add one above.</div>
+              ) : (
+                <div className="divide-y">
+                  {routineGroups.map(group => (
+                    <div key={group.id} className="p-4">
+                      <div className="flex flex-wrap items-center gap-3">
+                        <span className="font-semibold">{group.group_name}</span>
+                        <span className="text-xs text-muted-foreground">{group.brands.length} brand(s)</span>
+                        <Select value={String(group.day_of_week ?? 1)} onValueChange={v => updateGroupSchedule(group, "day_of_week", Number(v))}>
+                          <SelectTrigger className="h-7 w-28 text-xs"><SelectValue /></SelectTrigger>
+                          <SelectContent>{DOW_LABELS.map((d, i) => <SelectItem key={i} value={String(i)}>{d}</SelectItem>)}</SelectContent>
+                        </Select>
+                        <Select value={String(group.run_hour_utc ?? 13)} onValueChange={v => updateGroupSchedule(group, "run_hour_utc", Number(v))}>
+                          <SelectTrigger className="h-7 w-28 text-xs"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {Array.from({ length: 24 }, (_, h) => (
+                              <SelectItem key={h} value={String(h)}>{String(h).padStart(2, "0")}:00 UTC</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Select value={group.page_scope} onValueChange={v => updateGroupSchedule(group, "page_scope", v)}>
+                          <SelectTrigger className="h-7 w-32 text-xs"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="homepage">Quick Audit</SelectItem>
+                            <SelectItem value="multi">Full Audit</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <button onClick={() => toggleGroupActive(group)} className="flex items-center gap-1 text-xs">
+                          {group.is_active
+                            ? <><ToggleRight className="h-4 w-4 text-emerald-500" /><span className="text-emerald-600 font-medium">Active</span></>
+                            : <><ToggleLeft className="h-4 w-4 text-muted-foreground" /><span className="text-muted-foreground">Paused</span></>}
+                        </button>
+                        <div className="ml-auto flex items-center gap-1">
+                          <Button size="sm" variant="outline" onClick={() => setExpandedGroupId(id => id === group.id ? null : group.id)}>
+                            {expandedGroupId === group.id ? "Hide brands" : "Edit brands"}
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => deleteGroup(group)} className="text-destructive hover:text-destructive">
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+
+                      {expandedGroupId === group.id && (
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-1 max-h-64 overflow-y-auto border rounded-md p-3 mt-3">
+                          {brands.map(b => (
+                            <label key={b.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={group.brands.some(gb => gb.id === b.id)}
+                                onChange={() => toggleGroupBrand(group, b.id)}
+                              />
+                              {b.name}
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
               )}
             </CardContent>
           </Card>
