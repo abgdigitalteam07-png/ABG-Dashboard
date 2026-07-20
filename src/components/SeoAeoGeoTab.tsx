@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Brand } from "@/lib/brands";
 import { supabase } from "@/integrations/supabase/client";
@@ -118,6 +118,8 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
   const [selectedWeek, setSelectedWeek] = useState<string | null>(null);
   const [pasteText, setPasteText] = useState("");
   const [importing, setImporting] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const reportRef = useRef<HTMLDivElement>(null);
   const qc = useQueryClient();
 
   const { data: weeks } = useQuery({
@@ -287,6 +289,77 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
     }
   };
 
+  const handleDownloadPdf = async () => {
+    if (!reportRef.current || !week) return;
+    setExportingPdf(true);
+    try {
+      const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+        import("html2canvas"),
+        import("jspdf"),
+      ]);
+
+      const el = reportRef.current;
+      const scale = 2;
+      const elW = el.offsetWidth;
+      const elH = el.offsetHeight;
+
+      // Collect safe break Y-positions from data-pb markers BEFORE capturing —
+      // always cut between report sections, never mid-table.
+      const pbEls = Array.from(el.querySelectorAll("[data-pb]")) as HTMLElement[];
+      const safeBreaks: number[] = pbEls.map(e => Math.round((e.offsetTop + e.offsetHeight / 2) * scale));
+      safeBreaks.unshift(0);
+      safeBreaks.push(elH * scale);
+
+      const canvas = await html2canvas(el, {
+        scale, useCORS: true, allowTaint: true, backgroundColor: "#ffffff", logging: false,
+        width: elW, height: elH, windowWidth: elW, windowHeight: elH, scrollX: 0, scrollY: 0,
+      });
+
+      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const pageWmm = 210;
+      const pageHmm = 297;
+      const pxPerMm = canvas.width / pageWmm;
+      const pageHpx = Math.round(pageHmm * pxPerMm);
+
+      function pickBreak(fromY: number): number {
+        const target = fromY + pageHpx;
+        if (target >= canvas.height) return canvas.height;
+        const candidates = safeBreaks.filter(b => b > fromY && b <= target);
+        return candidates.length > 0 ? candidates[candidates.length - 1] : target;
+      }
+
+      let srcY = 0;
+      let page = 0;
+      while (srcY < canvas.height) {
+        const breakY = pickBreak(srcY);
+        const sliceH = breakY - srcY;
+        if (sliceH <= 0) break;
+
+        const slice = document.createElement("canvas");
+        slice.width = canvas.width;
+        slice.height = sliceH;
+        const ctx = slice.getContext("2d")!;
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, slice.width, slice.height);
+        ctx.drawImage(canvas, 0, srcY, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+
+        if (page > 0) pdf.addPage();
+        pdf.addImage(slice.toDataURL("image/png"), "PNG", 0, 0, pageWmm, sliceH / pxPerMm);
+
+        srcY = breakY;
+        page++;
+      }
+
+      const safeName = brand.name.replace(/[^a-zA-Z0-9]/g, "_");
+      pdf.save(`${safeName}_seo-audit-report_${week}.pdf`);
+    } catch (err) {
+      console.error("PDF export failed:", err);
+      toast.error("PDF export failed — see console for details.");
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
   const latestScore = data?.score;
   const auditFindings = (latestScore?.findings ?? {}) as {
     executive_summary?: string;
@@ -320,6 +393,15 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
           </select>
         )}
         <div style={{ flex: 1 }} />
+        {week && data && (
+          <button
+            onClick={handleDownloadPdf}
+            disabled={exportingPdf}
+            style={{ border: "1px solid var(--aeo-line)", borderRadius: 8, padding: "8px 16px", background: "var(--aeo-card)", color: "var(--aeo-ink)", fontWeight: 600, fontSize: 13.5 }}
+          >
+            {exportingPdf ? "Exporting…" : "⬇ Download PDF"}
+          </button>
+        )}
         <button onClick={() => setShowDialog(true)} disabled={scanning} className="aeo-btn">
           {scanning ? "Scanning…" : "⟳ Run Scan"}
         </button>
@@ -404,7 +486,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
       )}
 
       {!scanning && !isLoading && week && data && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div ref={reportRef} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {/* Cover — mirrors the skill's DOCX cover page. */}
           <div className="aeo-cover">
             <div className="aeo-cover-domain">{siteUrl.replace(/^https?:\/\//, "").replace(/\/$/, "")}</div>
@@ -425,7 +507,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
             <div className="aeo-cover-date">Week of {week} · {brand.name}</div>
           </div>
 
-          <div className="aeo-section">
+          <div className="aeo-section" data-pb>
             <h2>Executive Summary</h2>
             <div style={{ background: "var(--aeo-accent-soft)", borderRadius: 10, padding: 14, marginBottom: 14 }}>
               <p style={{ margin: 0, fontSize: 13.5 }}>
@@ -469,7 +551,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
             </div>
           </div>
 
-          <div className="aeo-section">
+          <div className="aeo-section" data-pb>
             <h2>Pages Audited</h2>
             <div className="aeo-tscroll">
               <table>
@@ -488,7 +570,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
             </div>
           </div>
 
-          <div className="aeo-section">
+          <div className="aeo-section" data-pb>
             <h2>SEO Analysis <span className="aeo-v" style={{ fontSize: 16 }}>{latestScore?.seo_score ?? "—"}<span style={{ fontSize: 12, color: "var(--aeo-muted)", fontWeight: 400 }}>/10</span></span></h2>
             <p className="aeo-sub">Technical On-Page</p>
             <SignalTable rows={auditFindings.seo?.technical_on_page ?? []} emptyReason="No technical on-page findings yet." />
@@ -498,7 +580,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
             <SignalTable rows={auditFindings.seo?.structured_data ?? []} emptyReason="No structured data findings yet." />
           </div>
 
-          <div className="aeo-section">
+          <div className="aeo-section" data-pb>
             <h2>GEO Analysis <span className="aeo-v" style={{ fontSize: 16 }}>{latestScore?.geo_score ?? "—"}<span style={{ fontSize: 12, color: "var(--aeo-muted)", fontWeight: 400 }}>/10</span></span></h2>
             <p className="aeo-sub">E-E-A-T Assessment</p>
             <SignalTable rows={auditFindings.geo?.eeat ?? []} emptyReason="No E-E-A-T findings yet." />
@@ -508,7 +590,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
             <SignalTable rows={auditFindings.geo?.technical_geo ?? []} emptyReason="No technical GEO findings yet." />
           </div>
 
-          <div className="aeo-section">
+          <div className="aeo-section" data-pb>
             <h2>AEO Analysis <span className="aeo-v" style={{ fontSize: 16 }}>{latestScore?.aeo_score ?? "—"}<span style={{ fontSize: 12, color: "var(--aeo-muted)", fontWeight: 400 }}>/10</span></span></h2>
             <p className="aeo-sub">Featured Snippet Eligibility</p>
             <SignalTable rows={auditFindings.aeo?.featured_snippet ?? []} emptyReason="No featured-snippet findings yet." />
@@ -518,7 +600,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
             <SignalTable rows={auditFindings.aeo?.voice_search ?? []} emptyReason="No voice-search findings yet." />
           </div>
 
-          <div className="aeo-section">
+          <div className="aeo-section" data-pb>
             <h2>Priority Recommendations</h2>
             <div className="aeo-tscroll">
               <table>
@@ -539,7 +621,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
             </div>
           </div>
 
-          <div className="aeo-section">
+          <div className="aeo-section" data-pb>
             <h2>What's Working Well</h2>
             <div className="aeo-tscroll">
               <table>
@@ -557,7 +639,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
             </div>
           </div>
 
-          <div className="aeo-section">
+          <div className="aeo-section" data-pb>
             <h2>Citation Analysis</h2>
             <p className="aeo-sub">Domains AI engines cited when answering tracked prompts this week. Empty on quick-check scans (prompts aren't run).</p>
             <div className="aeo-tscroll">
@@ -577,7 +659,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
             </div>
           </div>
 
-          <div className="aeo-section">
+          <div className="aeo-section" data-pb>
             <h2>Recommendations</h2>
             <div className="aeo-tscroll">
               <table>
@@ -599,7 +681,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
 
           {/* Glossary only appears on a Full Audit, matching the skill's own rule. */}
           {data.pageScope === "multi" && (
-            <div className="aeo-section">
+            <div className="aeo-section" data-pb>
               <h2>Glossary</h2>
               <div className="aeo-tscroll">
                 <table>
