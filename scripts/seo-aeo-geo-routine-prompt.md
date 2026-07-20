@@ -67,7 +67,7 @@ When done, report a summary: how many brands completed, how many skipped and why
 Insert a new row into `aeo_routine_groups` via Supabase Studio's table editor:
 - `group_name`: e.g. `group_2`
 - `brands`: JSON array of `{"id","name","site_url"}` for that batch
-- `scan_type` / `page_scope`: defaults to `routine` / `homepage` (Quick Audit) if left blank
+- `scan_type` / `page_scope`: defaults to `routine` / `multi` (Full Audit) if left blank
 
 Then create a second Claude Desktop Routine with this same prompt, just changing
 `group_name = 'group_1'` to `group_name = 'group_2'` in step 1.

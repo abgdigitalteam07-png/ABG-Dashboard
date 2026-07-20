@@ -249,7 +249,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
           <div className="aeo-cover">
             <div className="aeo-cover-domain">{siteUrl.replace(/^https?:\/\//, "").replace(/\/$/, "")}</div>
             <h1>SEO / GEO / AEO Audit Report</h1>
-            <span className="aeo-cover-badge">{data?.pageScope === "multi" ? "FULL AUDIT" : "QUICK AUDIT"}</span>
+            <span className="aeo-cover-badge">{data?.pageScope === "homepage" ? "QUICK AUDIT" : "FULL AUDIT"}</span>
             <div className="aeo-cover-scores">
               {([
                 ["SEO", latestScore?.seo_score],
@@ -438,7 +438,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
           </div>
 
           {/* Glossary only appears on a Full Audit, matching the skill's own rule. */}
-          {data?.pageScope === "multi" && (
+          {data?.pageScope !== "homepage" && (
             <div className="aeo-section" data-pb>
               <h2>Glossary</h2>
               <div className="aeo-tscroll">

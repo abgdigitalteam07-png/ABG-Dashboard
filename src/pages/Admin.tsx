@@ -118,7 +118,7 @@ export default function Admin() {
   const [routineGroupsLoading, setRoutineGroupsLoading] = useState(false);
   const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null);
   const [newGroup, setNewGroup] = useState({
-    group_name: "", brandIds: new Set<string>(), page_scope: "homepage",
+    group_name: "", brandIds: new Set<string>(), page_scope: "multi",
     day_of_week: 1, run_hour_utc: 13,
   });
   const [groupSaving, setGroupSaving] = useState(false);
@@ -538,7 +538,7 @@ export default function Admin() {
     setGroupSaving(false);
     if (error) { toast({ title: "Error", description: error.message, variant: "destructive" }); return; }
     toast({ title: "Group created", description: `${trimmed} saved with ${brandList.length} brand(s).` });
-    setNewGroup({ group_name: "", brandIds: new Set(), page_scope: "homepage", day_of_week: 1, run_hour_utc: 13 });
+    setNewGroup({ group_name: "", brandIds: new Set(), page_scope: "multi", day_of_week: 1, run_hour_utc: 13 });
     loadRoutineGroups();
   }
 
