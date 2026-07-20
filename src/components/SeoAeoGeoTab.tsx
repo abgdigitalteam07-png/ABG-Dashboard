@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Brand } from "@/lib/brands";
 import { supabase } from "@/integrations/supabase/client";
 import { WaterFillLoader } from "@/components/WaterFillLoader";
+import { toast } from "sonner";
 import "./SeoAeoGeoTab.css";
 
 // New aeo_* tables are not in the generated Database types yet — regenerate after
@@ -237,18 +238,18 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
       {isLoading && <WaterFillLoader />}
 
       {!isLoading && !week && (
-        <div className="aeo-section" style={{ textAlign: "center", color: "var(--aeo-muted)", padding: 40 }}>
-          No scans yet for {brand.name}. Reports are populated automatically by the scheduled SEO/AEO/GEO audit Routine.
+        <div className="aeo-section" style={{ textAlign: "center", color: "var(--aeo-muted)" }}>
+          No scans yet for {brand.name} — the report below is empty and ready to be filled in automatically by the scheduled SEO/AEO/GEO audit Routine.
         </div>
       )}
 
-      {!isLoading && week && data && (
+      {!isLoading && (
         <div ref={reportRef} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {/* Cover — mirrors the skill's DOCX cover page. */}
           <div className="aeo-cover">
             <div className="aeo-cover-domain">{siteUrl.replace(/^https?:\/\//, "").replace(/\/$/, "")}</div>
             <h1>SEO / GEO / AEO Audit Report</h1>
-            <span className="aeo-cover-badge">{data.pageScope === "multi" ? "FULL AUDIT" : "QUICK AUDIT"}</span>
+            <span className="aeo-cover-badge">{data?.pageScope === "multi" ? "FULL AUDIT" : "QUICK AUDIT"}</span>
             <div className="aeo-cover-scores">
               {([
                 ["SEO", latestScore?.seo_score],
@@ -261,14 +262,14 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
                 </div>
               ))}
             </div>
-            <div className="aeo-cover-date">Week of {week} · {brand.name}</div>
+            <div className="aeo-cover-date">{week ? `Week of ${week}` : "No scan yet"} · {brand.name}</div>
           </div>
 
           <div className="aeo-section" data-pb>
             <h2>Executive Summary</h2>
             <div style={{ background: "var(--aeo-accent-soft)", borderRadius: 10, padding: 14, marginBottom: 14 }}>
               <p style={{ margin: 0, fontSize: 13.5 }}>
-                {auditFindings.executive_summary ?? "No audit run yet — click Run Scan to generate the executive summary for this site."}
+                {auditFindings.executive_summary ?? "No audit run yet — this will populate once the scheduled Routine runs."}
               </p>
             </div>
             <div className="aeo-tscroll">
@@ -403,14 +404,14 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
               <table>
                 <thead><tr><th>Domain</th><th style={{ textAlign: "right" }}>Frequency</th><th>Brand mentioned</th></tr></thead>
                 <tbody>
-                  {(data.citations ?? []).slice(0, 10).map((c: any) => (
+                  {(data?.citations ?? []).slice(0, 10).map((c: any) => (
                     <tr key={c.id}>
                       <td style={{ fontWeight: 600 }}><a href={`https://${c.domain}`} target="_blank" rel="noreferrer">{c.domain}</a></td>
                       <td style={{ textAlign: "right" }}>{c.frequency}</td>
                       <td>{c.brand_mentioned ? <Pill tone="good">Yes</Pill> : "No"}</td>
                     </tr>
                   ))}
-                  {!data.citations?.length && <tr><td colSpan={3} style={{ textAlign: "center", color: "var(--aeo-muted)", padding: "16px 0" }}>No citations captured this week.</td></tr>}
+                  {!data?.citations?.length && <tr><td colSpan={3} style={{ textAlign: "center", color: "var(--aeo-muted)", padding: "16px 0" }}>No citations captured this week.</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -422,7 +423,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
               <table>
                 <thead><tr><th>Title</th><th>Type</th><th>Priority</th><th>Status</th></tr></thead>
                 <tbody>
-                  {(data.recs ?? []).slice(0, 10).map((r: any) => (
+                  {(data?.recs ?? []).slice(0, 10).map((r: any) => (
                     <tr key={r.id}>
                       <td style={{ fontWeight: 600 }}>{r.title}</td>
                       <td>{r.rec_type}</td>
@@ -430,14 +431,14 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
                       <td>{r.status ?? "New"}</td>
                     </tr>
                   ))}
-                  {!data.recs?.length && <tr><td colSpan={4} style={{ textAlign: "center", color: "var(--aeo-muted)", padding: "16px 0" }}>No recommendations yet.</td></tr>}
+                  {!data?.recs?.length && <tr><td colSpan={4} style={{ textAlign: "center", color: "var(--aeo-muted)", padding: "16px 0" }}>No recommendations yet.</td></tr>}
                 </tbody>
               </table>
             </div>
           </div>
 
           {/* Glossary only appears on a Full Audit, matching the skill's own rule. */}
-          {data.pageScope === "multi" && (
+          {data?.pageScope === "multi" && (
             <div className="aeo-section" data-pb>
               <h2>Glossary</h2>
               <div className="aeo-tscroll">
