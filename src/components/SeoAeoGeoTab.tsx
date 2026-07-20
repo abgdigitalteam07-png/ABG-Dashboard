@@ -645,7 +645,12 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
                 <tr key={h.id}>
                   <td>{new Date(h.started_at).toLocaleString()}</td>
                   <td>{h.week_of}</td>
-                  <td>{h.scan_type === "quick" ? "Quick check" : h.scan_type === "manual" ? "Manual (Claude)" : "Full audit"}</td>
+                  <td>{
+                    h.scan_type === "quick" ? "Quick check"
+                    : h.scan_type === "manual" ? "Manual (Claude)"
+                    : h.scan_type === "routine" ? "Automated (Routine)"
+                    : "Full audit"
+                  }</td>
                   <td>{h.page_scope === "homepage" ? "Quick Audit" : "Full Audit"}</td>
                   <td>
                     <Pill tone={h.status === "completed" ? "good" : h.status === "failed" ? "bad" : "warn"}>

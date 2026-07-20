@@ -44,4 +44,6 @@ export const brands: Brand[] = [
   { id: "vintage-ca", name: "Vintage.ca", logoUrl: clearbitLogo("vintage.ca"), hubspotBusinessUnitId: "2659249", hasGA4: false, hasGSC: false, hasHubSpot: true },
   { id: "vita-spa", name: "Vita Spa", logoUrl: clearbitLogo("vitaspa.com"), ga4PropertyIds: ["360436693"], gscSiteUrl: "https://vitaspa.com/", hubspotAccount: "secondary", redditLandingPageId: "370024805096", hasGA4: true, hasGSC: true, hasHubSpot: true },
   { id: "maax-sauna", name: "MAAX Sauna", logoUrl: clearbitLogo("maaxsaunas.com"), gscSiteUrl: "https://www.maaxsaunas.com/", hubspotAccount: "secondary", hasGA4: false, hasGSC: false, hasHubSpot: true },
+  // New brand — hubspotBusinessUnitId still needed before its HubSpot CRM/Emails tabs will pull real data.
+  { id: "california-cooperage", name: "California Cooperage", logoUrl: clearbitLogo("californiacooperagehottubs.com"), gscSiteUrl: "https://californiacooperagehottubs.com/", hubspotAccount: "secondary", hasGA4: false, hasGSC: false, hasHubSpot: true },
 ];
