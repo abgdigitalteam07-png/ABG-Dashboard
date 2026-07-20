@@ -17,7 +17,7 @@ function clearbitLogo(domain: string) {
 }
 
 export const brands: Brand[] = [
-  { id: "abg-home-services", name: "ABG Home Services", logoUrl: clearbitLogo("americanbathgroup.com"), ga4PropertyIds: ["411738217"], hasGA4: true, hasGSC: false, hasHubSpot: false },
+  { id: "abg-home-services", name: "ABG Home Services", logoUrl: clearbitLogo("abghomeservices.com"), ga4PropertyIds: ["411738217"], gscSiteUrl: "https://abghomeservices.com/", hasGA4: true, hasGSC: false, hasHubSpot: false },
   { id: "abg-hospitality", name: "ABG Hospitality", logoUrl: clearbitLogo("abghospitality.com"), ga4PropertyIds: ["360388805"], gscSiteUrl: "https://abghospitality.com/", hubspotBusinessUnitId: "1982882", hasGA4: true, hasGSC: true, hasHubSpot: true },
   { id: "accessible-home-store", name: "Accessible Home Store", logoUrl: clearbitLogo("accessiblehomestore.com"), hubspotBusinessUnitId: "2625978", hasGA4: false, hasGSC: false, hasHubSpot: true },
   { id: "aker", name: "Aker", logoUrl: clearbitLogo("akerbymaax.com"), gscSiteUrl: "http://www.akerbymaax.com/", hubspotBusinessUnitId: "1982881", hasGA4: false, hasGSC: true, hasHubSpot: true },
@@ -43,5 +43,5 @@ export const brands: Brand[] = [
   { id: "swan", name: "Swan", logoUrl: clearbitLogo("swanstone.com"), ga4PropertyIds: ["353105661"], gscSiteUrl: "https://swanstone.com/", hubspotBusinessUnitId: "843133", hasGA4: true, hasGSC: true, hasHubSpot: true },
   { id: "vintage-ca", name: "Vintage.ca", logoUrl: clearbitLogo("vintage.ca"), hubspotBusinessUnitId: "2659249", hasGA4: false, hasGSC: false, hasHubSpot: true },
   { id: "vita-spa", name: "Vita Spa", logoUrl: clearbitLogo("vitaspa.com"), ga4PropertyIds: ["360436693"], gscSiteUrl: "https://vitaspa.com/", hubspotAccount: "secondary", redditLandingPageId: "370024805096", hasGA4: true, hasGSC: true, hasHubSpot: true },
-  { id: "maax-sauna", name: "MAAX Sauna", logoUrl: clearbitLogo("maax.com"), hubspotAccount: "secondary", hasGA4: false, hasGSC: false, hasHubSpot: true },
+  { id: "maax-sauna", name: "MAAX Sauna", logoUrl: clearbitLogo("maaxsaunas.com"), gscSiteUrl: "https://www.maaxsaunas.com/", hubspotAccount: "secondary", hasGA4: false, hasGSC: false, hasHubSpot: true },
 ];
