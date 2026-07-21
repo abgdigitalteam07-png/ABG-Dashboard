@@ -15,7 +15,7 @@ const ALLOWED_DOMAINS = [
   "bathcraft.com", "bathauthority.com", "americanstandard-bootz.com",
 ];
 
-const ADMIN_ALERT_EMAIL = "mali@americanbathgroup.com";
+const ADMIN_ALERT_EMAIL = "abgdigitalteam07@gmail.com";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
