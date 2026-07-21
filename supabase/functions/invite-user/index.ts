@@ -14,7 +14,7 @@ const ALLOWED_DOMAINS = [
   "maidstonesupply.com", "mrsteam.com", "praxiscompanies.com",
   "produitsneptune.com", "neptuneb.com", "salomfg.com", "swanstone.com",
   "vintagetub.com", "vintagetub.ca", "bathcraft.onmicrosoft.com",
-  "bathcraft.com", "bathauthority.com",
+  "bathcraft.com", "bathauthority.com", "americanstandard-bootz.com",
 ];
 
 Deno.serve(async (req) => {

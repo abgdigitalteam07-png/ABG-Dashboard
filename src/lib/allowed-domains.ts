@@ -28,6 +28,7 @@ export const ALLOWED_DOMAINS = [
   "bathcraft.onmicrosoft.com",
   "bathcraft.com",
   "bathauthority.com",
+  "americanstandard-bootz.com",
 ];
 
 export function isAllowedDomain(email: string): boolean {
