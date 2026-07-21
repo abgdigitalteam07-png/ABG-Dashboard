@@ -1,5 +1,25 @@
 project_id = "ffxhonryhaadyudpopvv"
 
+[auth]
+site_url = "https://wholesaledigitaldashboard.lovable.app"
+additional_redirect_urls = ["https://wholesaledigitaldashboard.lovable.app/**", "https://wholesaledigitaldashboard.lovable.app/", "http://localhost:5173/**"]
+
+[auth.mfa.totp]
+enroll_enabled = true
+verify_enabled = true
+
+[auth.email]
+max_frequency = "1m0s"
+otp_length = 8
+
+[auth.email.template.invite]
+subject = "You now have access to the ABG Brand Performance Hub"
+content_path = "./supabase/templates/invite.html"
+
+[auth.email.template.magic_link]
+subject = "Your Brand Performance Hub sign-in link"
+content_path = "./supabase/templates/magic-link.html"
+
 [functions.ga4-data]
 verify_jwt = false
 
@@ -31,4 +51,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.claude-chat]
+verify_jwt = false
+
+[functions.notify-external-login]
 verify_jwt = false

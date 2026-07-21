@@ -1,11 +1,10 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { isAllowedDomain } from "@/lib/allowed-domains";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, MailCheck } from "lucide-react";
 import { HelpButton } from "@/components/HelpButton";
 
 const ABG_LOGO_URL =
@@ -15,6 +14,7 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  const [linkSent, setLinkSent] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const deactivated = (location.state as any)?.deactivated;
@@ -35,52 +35,22 @@ export default function Login() {
       return;
     }
 
-    if (!isAllowedDomain(trimmed)) {
-      setError("ACCESS_RESTRICTED");
-      return;
-    }
-
     setSending(true);
 
     try {
-      const { data: res, error: fnError } = await supabase.functions.invoke("shared-login", {
-        body: { email: trimmed },
+      const { error: otpError } = await supabase.auth.signInWithOtp({
+        email: trimmed,
+        options: { emailRedirectTo: window.location.origin },
       });
-
-      if (fnError || !res?.session) {
-        const msg = res?.error || fnError?.message || "Login failed. Please try again.";
-        setSending(false);
-        setError(msg);
-        return;
-      }
-
-      const { error: setSessionError } = await supabase.auth.setSession({
-        access_token: res.session.access_token,
-        refresh_token: res.session.refresh_token,
-      });
-
-      if (setSessionError) {
-        setSending(false);
-        setError(setSessionError.message || "Sign-in failed. Please try again.");
-        return;
-      }
-
-      const { data: { session: activeSession } } = await supabase.auth.getSession();
-      if (activeSession) {
-        const now = new Date().toISOString();
-        await Promise.all([
-          supabase.from("user_activity_log").insert({
-            user_id: activeSession.user.id,
-            email: activeSession.user.email || trimmed,
-            action: "login",
-            metadata: {},
-          }),
-          supabase.from("user_profiles").update({ last_login_at: now }).eq("id", activeSession.user.id),
-        ]);
-      }
 
       setSending(false);
-      navigate("/", { replace: true });
+
+      if (otpError) {
+        setError(otpError.message || "Failed to send login link. Please try again.");
+        return;
+      }
+
+      setLinkSent(true);
     } catch (err: any) {
       setSending(false);
       setError(err.message || "An unexpected error occurred.");
@@ -109,7 +79,7 @@ export default function Login() {
               US Wholesale Digital Dashboard
             </h1>
             <p className="text-sm text-muted-foreground text-center">
-              Sign in with your company email
+              Sign in with your email
             </p>
           </div>
 
@@ -127,54 +97,61 @@ export default function Login() {
             </div>
           )}
 
-          <div className="space-y-4">
-            <Input
-              type="email"
-              placeholder="you@americanbathgroup.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleLogin()}
-              className="h-12 text-base"
-              disabled={sending}
-              autoFocus
-            />
+          {linkSent ? (
+            <div className="flex flex-col items-center gap-3 text-center py-2">
+              <MailCheck className="h-10 w-10 text-primary" />
+              <p className="text-sm text-foreground font-medium">Check your email</p>
+              <p className="text-sm text-muted-foreground">
+                We sent a sign-in link to <span className="font-medium">{email.trim()}</span>.
+                Click it to access the dashboard.
+              </p>
+              <Button
+                variant="ghost"
+                className="text-sm"
+                onClick={() => {
+                  setLinkSent(false);
+                  setEmail("");
+                }}
+              >
+                Use a different email
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <Input
+                type="email"
+                placeholder="you@company.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+                className="h-12 text-base"
+                disabled={sending}
+                autoFocus
+              />
 
-            {error && (
-              <div className="flex items-start gap-2 text-destructive text-sm">
-                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-                {error === "ACCESS_RESTRICTED" ? (
-                  <span>
-                    Access restricted to ABG team members only. Need access?{" "}
-                    <a
-                      href="https://teams.microsoft.com/l/chat/0/0?users=mali@americanbathgroup.com"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="underline underline-offset-2 hover:opacity-80"
-                    >
-                      Contact us on Microsoft Teams
-                    </a>
+              {error && (
+                <div className="flex items-start gap-2 text-destructive text-sm">
+                  <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                  <span>{error}</span>
+                </div>
+              )}
+
+              <Button
+                onClick={handleLogin}
+                disabled={sending}
+                className="w-full h-12 text-base font-semibold"
+              >
+                {sending ? (
+                  <span className="flex items-center gap-2">
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
+                    Sending link…
                   </span>
                 ) : (
-                  <span>{error}</span>
+                  "Send Sign-In Link"
                 )}
-              </div>
-            )}
-
-            <Button
-              onClick={handleLogin}
-              disabled={sending}
-              className="w-full h-12 text-base font-semibold"
-            >
-              {sending ? (
-                <span className="flex items-center gap-2">
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
-                  Signing in…
-                </span>
-              ) : (
-                "Access Dashboard"
-              )}
-            </Button>
-          </div>
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
       <HelpButton variant="login" />

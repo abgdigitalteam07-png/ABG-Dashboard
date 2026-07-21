@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { isAllowedDomain } from "@/lib/allowed-domains";
 import { WaterFillLoader } from "./WaterFillLoader";
 
 interface AuthGuardProps {
@@ -92,6 +93,12 @@ export function AuthGuard({ children }: AuthGuardProps) {
           ).then(({ error }) => {
             if (error) console.error("Failed to upsert profile:", error);
           });
+
+          if (!isAllowedDomain(userEmail)) {
+            void supabase.functions.invoke("notify-external-login", {
+              body: { email: userEmail },
+            });
+          }
         }
 
         if (event === "TOKEN_REFRESHED" || event === "SIGNED_IN") {
