@@ -35,6 +35,11 @@ export default function Login() {
       return;
     }
 
+    if (trimmed.split("@")[1] === "gmail.com") {
+      setError("Personal Gmail addresses are not allowed. Please use your company email.");
+      return;
+    }
+
     setSending(true);
 
     try {
