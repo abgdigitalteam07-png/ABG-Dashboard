@@ -20,6 +20,20 @@ function statusTone(status: string): "good" | "warn" | "bad" {
   if (status === "Missing") return "bad";
   return "warn";
 }
+// Reddit opportunity — HIGH (unmet demand, brand should be recommended but isn't) is the
+// most actionable, hence red; the two MED variants are worth engaging but lower urgency.
+function opportunityTone(opportunity: string | null): "good" | "warn" | "bad" | "neutral" {
+  if (opportunity === "HIGH") return "bad";
+  if (opportunity === "MED — amplify" || opportunity === "MED — support") return "warn";
+  if (opportunity === "LOW") return "neutral";
+  return "neutral";
+}
+function sentimentTone(sentiment: string | null): "good" | "warn" | "bad" | "neutral" {
+  if (sentiment === "Positive") return "good";
+  if (sentiment === "Negative") return "bad";
+  if (sentiment === "Neutral") return "neutral";
+  return "neutral";
+}
 // Matches the skill's own priority color coding exactly: Critical=red, High=orange, Medium=amber, Quick Win=green.
 function priorityTone(priority: string): "good" | "warn" | "bad" | "high" {
   if (priority === "Critical") return "bad";
@@ -103,19 +117,23 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
     queryKey: ["aeo-report", brand.id, week],
     enabled: !!week,
     queryFn: async () => {
-      const [scoreRes, citationsRes, recsRes, scanRes] = await Promise.all([
+      const [scoreRes, citationsRes, recsRes, scanRes, redditRes] = await Promise.all([
         sb.from("seo_audit_scores").select("*").eq("brand_id", brand.id).eq("week_of", week).maybeSingle(),
         sb.from("aeo_citations").select("*").eq("brand_id", brand.id).eq("week_of", week).order("frequency", { ascending: false }),
         sb.from("aeo_recommendations").select("*").eq("brand_id", brand.id).order("created_at", { ascending: false }),
         sb.from("aeo_scan_log").select("page_scope").eq("brand_id", brand.id).eq("week_of", week).eq("status", "completed")
           .order("started_at", { ascending: false }).limit(1).maybeSingle(),
+        sb.from("reddit_threads").select("*").eq("brand_id", brand.id).eq("week_of", week)
+          .order("upvotes", { ascending: false }),
       ]);
       if (scoreRes.error) throw scoreRes.error;
       if (citationsRes.error) throw citationsRes.error;
       if (recsRes.error) throw recsRes.error;
+      if (redditRes.error) throw redditRes.error;
       return {
         score: scoreRes.data, citations: citationsRes.data ?? [], recs: recsRes.data ?? [],
         pageScope: (scanRes.data?.page_scope as PageScope | undefined) ?? null,
+        redditThreads: redditRes.data ?? [],
       };
     },
   });
@@ -431,6 +449,29 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
                     </tr>
                   ))}
                   {!data?.recs?.length && <tr><td colSpan={4} style={{ textAlign: "center", color: "var(--aeo-muted)", padding: "16px 0" }}>No recommendations yet.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="aeo-section" data-pb>
+            <h2>Reddit Threads</h2>
+            <p className="aeo-sub">Real threads discussing this brand's category — engaging with high-opportunity threads (answering questions, correcting misinformation, being a helpful presence) is one of the highest-leverage ways to improve AEO/GEO visibility, since AI answer engines increasingly cite Reddit directly.</p>
+            <div className="aeo-tscroll">
+              <table>
+                <thead><tr><th>Topic</th><th>Subreddit</th><th>Opportunity</th><th>Sentiment</th><th>Brand Mentioned</th><th style={{ textAlign: "right" }}>Engagement</th></tr></thead>
+                <tbody>
+                  {(data?.redditThreads ?? []).slice(0, 20).map((t: any) => (
+                    <tr key={t.id}>
+                      <td style={{ fontWeight: 600 }}><a href={t.thread_url} target="_blank" rel="noreferrer">{t.title}</a></td>
+                      <td>{t.subreddit}</td>
+                      <td>{t.opportunity && <Pill tone={opportunityTone(t.opportunity)}>{t.opportunity}</Pill>}</td>
+                      <td>{t.sentiment && <Pill tone={sentimentTone(t.sentiment)}>{t.sentiment}</Pill>}</td>
+                      <td>{t.brand_mentioned ? <Pill tone="good">Yes</Pill> : "No"}</td>
+                      <td style={{ textAlign: "right" }}>{t.upvotes}↑ · {t.num_comments}💬</td>
+                    </tr>
+                  ))}
+                  {!data?.redditThreads?.length && <tr><td colSpan={6} style={{ textAlign: "center", color: "var(--aeo-muted)", padding: "16px 0" }}>No Reddit threads captured yet.</td></tr>}
                 </tbody>
               </table>
             </div>
