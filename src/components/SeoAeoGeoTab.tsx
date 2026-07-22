@@ -475,10 +475,10 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
 
           <div className="aeo-section" data-pb>
             <h2>Reddit Threads</h2>
-            <p className="aeo-sub">Real threads discussing this brand's category — engaging with high-opportunity threads (answering questions, correcting misinformation, being a helpful presence) is one of the highest-leverage ways to improve AEO/GEO visibility, since AI answer engines increasingly cite Reddit directly.</p>
-            <div className="aeo-tscroll" style={{ marginBottom: 20 }}>
+            <p className="aeo-sub">Real threads and recommended topics for engaging with this brand's category on Reddit — one of the highest-leverage ways to improve AEO/GEO visibility, since AI answer engines increasingly cite Reddit directly. Rows with a live thread link to the real discussion; topic ideas not yet matched to a specific thread link to a live Reddit search instead of a fabricated URL.</p>
+            <div className="aeo-tscroll">
               <table>
-                <thead><tr><th>Topic</th><th>Subreddit</th><th>Opportunity</th><th>Sentiment</th><th>Brand Mentioned</th><th style={{ textAlign: "right" }}>Engagement</th></tr></thead>
+                <thead><tr><th>Topic</th><th>Source</th><th>Subreddit</th><th>Opportunity</th><th>Sentiment</th><th>Brand Mentioned</th><th style={{ textAlign: "right" }}>Engagement</th></tr></thead>
                 <tbody>
                   {(data?.redditThreads ?? []).slice(0, 20).map((t: any) => {
                     const isOpen = expandedThreadId === t.id;
@@ -490,6 +490,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
                             <span style={{ color: "var(--aeo-accent)" }}>{isOpen ? "▾" : "▸"} </span>
                             {t.title}
                           </td>
+                          <td><Pill tone="good">Live thread</Pill></td>
                           <td>{t.subreddit}</td>
                           <td>{t.opportunity && <Pill tone={opportunityTone(t.opportunity)}>{t.opportunity}</Pill>}</td>
                           <td>{t.sentiment && <Pill tone={sentimentTone(t.sentiment)}>{t.sentiment}</Pill>}</td>
@@ -498,7 +499,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
                         </tr>
                         {isOpen && (
                           <tr key={`${t.id}-detail`}>
-                            <td colSpan={6} style={{ background: "var(--aeo-accent-soft)", padding: 16 }}>
+                            <td colSpan={7} style={{ background: "var(--aeo-accent-soft)", padding: 16 }}>
                               <div style={{ display: "flex", flexDirection: "column", gap: 12, fontSize: 13 }}>
                                 <div>
                                   <p style={{ fontWeight: 700, margin: "0 0 4px" }}>Suggested reply</p>
@@ -536,26 +537,22 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
                       </Fragment>
                     );
                   })}
-                  {!data?.redditThreads?.length && <tr><td colSpan={6} style={{ textAlign: "center", color: "var(--aeo-muted)", padding: "16px 0" }}>No Reddit threads captured yet.</td></tr>}
-                </tbody>
-              </table>
-            </div>
-
-            <p className="aeo-sub" style={{ fontWeight: 600, color: "var(--aeo-ink)" }}>Recommended topics to engage with</p>
-            <p className="aeo-sub">Topic ideas from the audit's recommendations engine — not yet matched to a specific live thread, so each links to a live Reddit search instead of a fabricated URL.</p>
-            <div className="aeo-tscroll">
-              <table>
-                <thead><tr><th>Topic</th><th>Priority</th><th>Status</th><th></th></tr></thead>
-                <tbody>
                   {(data?.recs ?? []).filter((r: any) => r.rec_type === "Reddit engagement").map((r: any) => (
                     <tr key={r.id}>
                       <td style={{ fontWeight: 600 }}>{r.title}</td>
+                      <td><Pill tone="neutral">Recommended topic</Pill></td>
+                      <td>—</td>
                       <td><Pill tone={r.priority === "HIGH" ? "bad" : r.priority === "MED" ? "warn" : "neutral"}>{r.priority}</Pill></td>
-                      <td>{r.status ?? "New"}</td>
-                      <td><a href={`https://www.reddit.com/search/?q=${encodeURIComponent(r.title)}`} target="_blank" rel="noreferrer">Search Reddit ↗</a></td>
+                      <td>—</td>
+                      <td>—</td>
+                      <td style={{ textAlign: "right" }}>
+                        <a href={`https://www.reddit.com/search/?q=${encodeURIComponent(r.title)}`} target="_blank" rel="noreferrer">Search Reddit ↗</a>
+                      </td>
                     </tr>
                   ))}
-                  {!(data?.recs ?? []).some((r: any) => r.rec_type === "Reddit engagement") && <tr><td colSpan={4} style={{ textAlign: "center", color: "var(--aeo-muted)", padding: "16px 0" }}>No recommended topics yet.</td></tr>}
+                  {!data?.redditThreads?.length && !(data?.recs ?? []).some((r: any) => r.rec_type === "Reddit engagement") && (
+                    <tr><td colSpan={7} style={{ textAlign: "center", color: "var(--aeo-muted)", padding: "16px 0" }}>No Reddit threads or topics captured yet.</td></tr>
+                  )}
                 </tbody>
               </table>
             </div>
