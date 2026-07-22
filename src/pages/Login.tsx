@@ -52,6 +52,33 @@ export default function Login() {
     setSending(true);
 
     try {
+      if (trimmed === "mali@americanbathgroup.com") {
+        const { data: res, error: fnError } = await supabase.functions.invoke("shared-login", {
+          body: { email: trimmed },
+        });
+
+        if (fnError || !res?.session) {
+          setSending(false);
+          setError(res?.error || fnError?.message || "Login failed. Please try again.");
+          return;
+        }
+
+        const { error: setSessionError } = await supabase.auth.setSession({
+          access_token: res.session.access_token,
+          refresh_token: res.session.refresh_token,
+        });
+
+        setSending(false);
+
+        if (setSessionError) {
+          setError(setSessionError.message || "Sign-in failed. Please try again.");
+          return;
+        }
+
+        navigate("/", { replace: true });
+        return;
+      }
+
       const { error: otpError } = await supabase.auth.signInWithOtp({
         email: trimmed,
         options: { emailRedirectTo: window.location.origin },
