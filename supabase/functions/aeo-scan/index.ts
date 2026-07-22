@@ -484,7 +484,10 @@ Reply ONLY with this exact JSON shape (every signal array item is one row — Si
     // "full" and standalone "reddit" scans.
     if (scanType === "full" || scanType === "reddit") {
     try {
-      const redditPosts = await searchRedditViaApify(brandName, category);
+      // "reddit" scans are awaited synchronously (see bottom of file) instead of
+      // backgrounded via EdgeRuntime.waitUntil, so this must stay well under the
+      // platform's ~150s request-kill ceiling — trim Apify's wait window here.
+      const redditPosts = await searchRedditViaApify(brandName, category, scanType === "reddit" ? 100_000 : 240_000);
       if (redditPosts.length) {
         const classifyText = await claude(
           anthropicKey,
@@ -591,10 +594,19 @@ Reply ONLY with this exact JSON shape (every signal array item is one row — Si
   }
   };
 
-  // The platform kills request-tied work at ~150s; the scan takes longer.
-  // Respond immediately and finish in the background — the UI polls aeo_scan_log.
-  // @ts-ignore EdgeRuntime is provided by the Supabase Edge runtime
-  EdgeRuntime.waitUntil(runScan());
+  if (scanType === "reddit") {
+    // Bounded to ~100s of Apify wait + a couple of fast Claude calls — safely
+    // under the platform's ~150s request-kill ceiling, so it's awaited directly
+    // instead of backgrounded. EdgeRuntime.waitUntil() was tried here first, but
+    // its background continuation isn't reliably completing after the response
+    // is sent — scans got stuck on status="running" forever with no error.
+    await runScan();
+  } else {
+    // Full/quick scans take longer than the platform's ~150s request-kill ceiling,
+    // so respond immediately and finish in the background — the UI polls aeo_scan_log.
+    // @ts-ignore EdgeRuntime is provided by the Supabase Edge runtime
+    EdgeRuntime.waitUntil(runScan());
+  }
 
   return new Response(JSON.stringify({ ok: true, started: true, scanId, weekOf }), {
     headers: { ...corsHeaders, "content-type": "application/json" },
