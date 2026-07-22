@@ -15,6 +15,7 @@ export default function Login() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [linkSent, setLinkSent] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
   const navigate = useNavigate();
   const location = useLocation();
   const deactivated = (location.state as any)?.deactivated;
@@ -25,6 +26,14 @@ export default function Login() {
       if (session) navigate("/", { replace: true });
     });
   }, [navigate]);
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setResendCooldown((s) => Math.max(0, s - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [resendCooldown]);
 
   const handleLogin = async () => {
     setError("");
@@ -56,6 +65,7 @@ export default function Login() {
       }
 
       setLinkSent(true);
+      setResendCooldown(120);
     } catch (err: any) {
       setSending(false);
       setError(err.message || "An unexpected error occurred.");
@@ -110,11 +120,35 @@ export default function Login() {
                 We sent a sign-in link to <span className="font-medium">{email.trim()}</span>.
                 Click it to access the dashboard.
               </p>
+
+              {error && (
+                <div className="flex items-start gap-2 text-destructive text-sm text-left">
+                  <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                  <span>{error}</span>
+                </div>
+              )}
+
+              {resendCooldown > 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  Didn't get it? You can resend in {resendCooldown}s.
+                </p>
+              ) : (
+                <Button
+                  variant="outline"
+                  className="text-sm"
+                  disabled={sending}
+                  onClick={handleLogin}
+                >
+                  {sending ? "Resending…" : "Resend link"}
+                </Button>
+              )}
+
               <Button
                 variant="ghost"
                 className="text-sm"
                 onClick={() => {
                   setLinkSent(false);
+                  setResendCooldown(0);
                   setEmail("");
                 }}
               >
