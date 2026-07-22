@@ -55,3 +55,6 @@ verify_jwt = false
 
 [functions.notify-external-login]
 verify_jwt = false
+
+[functions.aeo-scan]
+verify_jwt = false

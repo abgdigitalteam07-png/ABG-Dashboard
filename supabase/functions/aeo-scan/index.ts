@@ -23,7 +23,7 @@ interface ScanRequest {
   siteUrl: string;          // from brands.ts gscSiteUrl or website
   competitors?: string[];   // optional override; defaults derived per category
   landingPageId?: string;   // HubSpot page id — if set, auto-publishes Reddit results after the scan
-  scanType?: "full" | "quick";   // full = audit + prompts + Reddit + recs; quick = site audit only
+  scanType?: "full" | "quick" | "reddit";   // full = audit + prompts + Reddit + recs; quick = site audit only; reddit = Reddit thread scan only (standalone, on-demand)
   pageScope?: "homepage" | "multi"; // homepage = Quick Audit (homepage + up to 6 pages); multi = Full Audit (uncapped crawl)
 }
 
@@ -190,7 +190,20 @@ function extractJson<T>(text: string): T {
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  try {
+    return await handleRequest(req);
+  } catch (err) {
+    // Any uncaught throw here would otherwise produce the platform's generic
+    // error response, which drops our CORS headers — the browser then reports
+    // that as an opaque "Failed to fetch" instead of surfacing the real error.
+    console.error("aeo-scan top-level error:", err);
+    return new Response(JSON.stringify({ error: String(err) }), {
+      status: 500, headers: { ...corsHeaders, "content-type": "application/json" },
+    });
+  }
+});
 
+async function handleRequest(req: Request): Promise<Response> {
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
@@ -221,7 +234,8 @@ Deno.serve(async (req: Request) => {
 
   const body = await req.json();
   const { brandId, brandName, siteUrl, landingPageId }: ScanRequest = body;
-  const scanType: "full" | "quick" = body.scanType === "quick" ? "quick" : "full";
+  const scanType: "full" | "quick" | "reddit" =
+    body.scanType === "quick" ? "quick" : body.scanType === "reddit" ? "reddit" : "full";
   const pageScope: "homepage" | "multi" = body.pageScope === "homepage" ? "homepage" : "multi";
   const weekOf = mondayOfWeek();
 
@@ -326,7 +340,13 @@ Deno.serve(async (req: Request) => {
 
   const runScan = async () => {
   try {
-    // 2. Site audit — SEO/GEO/AEO rubric scores.
+    // 2. Site audit — SEO/GEO/AEO rubric scores. Skipped for a "reddit" scan — that
+    // mode is a standalone, on-demand Reddit-only refresh (see step 4 below), not a
+    // full site audit, so it finishes in a few seconds instead of a couple minutes.
+    let audit: { seo: number; geo: number; aeo: number; findings: any; pages_crawled: number } = {
+      seo: 0, geo: 0, aeo: 0, findings: {}, pages_crawled: 0,
+    };
+    if (scanType !== "reddit") {
     // Wording matches the seo-geo-aeo skill's own Quick Audit / Full Audit definitions exactly.
     const crawlScopeText = pageScope === "homepage"
       ? "This is a Quick Audit: fetch the homepage plus up to 6 high-signal pages (About/Team, Services, Case Studies, Blog, Contact, FAQ) via web search"
@@ -357,15 +377,26 @@ Reply ONLY with this exact JSON shape (every signal array item is one row — Si
       true,
     );
     apiCalls++;
-    const audit = extractJson<{ seo: number; geo: number; aeo: number; findings: unknown; pages_crawled: number }>(auditText);
+    audit = extractJson<{ seo: number; geo: number; aeo: number; findings: unknown; pages_crawled: number }>(auditText);
     await supabase.from("seo_audit_scores").upsert({
       brand_id: brandId, week_of: weekOf,
       seo_score: audit.seo, geo_score: audit.geo, aeo_score: audit.aeo,
       findings: audit.findings, pages_crawled: audit.pages_crawled ?? 0,
     }, { onConflict: "brand_id,week_of" });
+    } // end scanType !== "reddit" (site audit)
 
     // 3-5 (prompts, Reddit, recommendations) are skipped for a "quick" scan —
     // it's the site audit only, so it finishes in a fraction of the time.
+    let category: string | undefined;
+    if (scanType === "reddit") {
+      // Standalone Reddit refresh: reuse whatever category this brand's tracked
+      // prompts already settled on (if any) instead of running the full prompts
+      // pipeline — keeps this mode fast and cheap.
+      const { data: existingPrompts } = await supabase
+        .from("aeo_prompts").select("product_service")
+        .eq("brand_id", brandId).eq("is_active", true).limit(1);
+      category = existingPrompts?.[0]?.product_service ?? undefined;
+    }
     if (scanType === "full") {
     // 3. Tracked prompts → visibility + citations (Claude as the first engine).
     let { data: prompts } = await supabase
@@ -443,21 +474,25 @@ Reply ONLY with this exact JSON shape (every signal array item is one row — Si
         frequency: e.freq, brand_mentioned: e.brandMentioned,
       });
     }
+    category = prompts?.[0]?.product_service ?? category;
+    } // end scanType === "full" (prompts + citations)
 
     // 4. Reddit visibility — real threads via Apify (residential proxies, real URLs,
-    // real upvote/comment counts), then Claude classifies sentiment/opportunity only
-    // (classification can't invent new URLs — it just labels the real ones).
+    // real upvote/comment counts), then Claude classifies sentiment/opportunity AND
+    // drafts a suggested reply + keywords for anything worth engaging with (classification
+    // can't invent new URLs — it just labels/replies to the real ones). Runs for both
+    // "full" and standalone "reddit" scans.
+    if (scanType === "full" || scanType === "reddit") {
     try {
-      const category = prompts?.[0]?.product_service ?? undefined;
       const redditPosts = await searchRedditViaApify(brandName, category);
       if (redditPosts.length) {
         const classifyText = await claude(
           anthropicKey,
-          `For each real Reddit thread below (title + URL, already verified — do not alter URLs), classify it for a brand's marketing team. Reply ONLY JSON array, SAME ORDER as input: [{"brand_mentioned":bool,"competitors_mentioned":["..."],"sentiment":"Positive|Neutral|Negative","opportunity":"HIGH|MED — amplify|MED — support|LOW"}]. brand_mentioned = does the title/context suggest "${brandName}" is discussed. opportunity = HIGH if it's a buying-advice thread where the brand should be recommended but isn't mentioned; MED — amplify if a positive brand mention; MED — support if a complaint/issue about the brand; LOW otherwise.`,
+          `For each real Reddit thread below (title + URL, already verified — do not alter URLs), classify it for a brand's marketing team. Reply ONLY JSON array, SAME ORDER as input: [{"brand_mentioned":bool,"competitors_mentioned":["..."],"sentiment":"Positive|Neutral|Negative","opportunity":"HIGH|MED — amplify|MED — support|LOW","suggested_reply":"..."|null,"keywords":["...","..."]|null}]. brand_mentioned = does the title/context suggest "${brandName}" is discussed. opportunity = HIGH if it's a buying-advice thread where the brand should be recommended but isn't mentioned; MED — amplify if a positive brand mention; MED — support if a complaint/issue about the brand; LOW otherwise. For any thread NOT scored LOW, also draft suggested_reply: a genuinely helpful, non-promotional, Reddit-norms-appropriate reply (2-4 sentences) a real person from the brand could post — answer the actual question first, mention the brand naturally only where relevant, never sound like an ad; and keywords: 3-6 short phrases describing what the thread is about. For LOW-opportunity threads set both to null.`,
           `Brand: ${brandName}. Threads:\n${redditPosts.map((p, i) => `${i + 1}. [r/${p.subreddit}] "${p.title}"`).join("\n")}`,
         );
         apiCalls++;
-        let classifications: Array<{ brand_mentioned?: boolean; competitors_mentioned?: string[]; sentiment?: string; opportunity?: string }> = [];
+        let classifications: Array<{ brand_mentioned?: boolean; competitors_mentioned?: string[]; sentiment?: string; opportunity?: string; suggested_reply?: string | null; keywords?: string[] | null }> = [];
         try { classifications = extractJson(classifyText); } catch { /* defaults below */ }
 
         for (let i = 0; i < redditPosts.length; i++) {
@@ -475,14 +510,19 @@ Reply ONLY with this exact JSON shape (every signal array item is one row — Si
             competitors_mentioned: cl.competitors_mentioned ?? [],
             sentiment: ["Positive", "Neutral", "Negative"].includes(cl.sentiment ?? "") ? cl.sentiment : "Neutral",
             opportunity: ["HIGH", "MED — amplify", "MED — support", "LOW"].includes(cl.opportunity ?? "") ? cl.opportunity : null,
+            suggested_reply: cl.suggested_reply ?? null,
+            keywords: cl.keywords ?? null,
           }, { onConflict: "brand_id,week_of,thread_url" });
         }
       }
     } catch (e) {
       console.error("Reddit step failed:", e);
     }
+    } // end Reddit step
 
-    // 5. Recommendations from this week's citations.
+    // 5. Recommendations. Full scans fold in citation data; a standalone Reddit
+    // scan generates a focused batch of 5-8 concrete Reddit engagement ideas only.
+    if (scanType === "full") {
     const topDomains = [...domainFreq.entries()].sort((a, b) => b[1].freq - a[1].freq).slice(0, 8);
     const recsText = await claude(
       anthropicKey,
@@ -500,7 +540,23 @@ Reply ONLY with this exact JSON shape (every signal array item is one row — Si
         }, { onConflict: "brand_id,title", ignoreDuplicates: true }); // never clobber statuses
       }
     } catch { /* recommendations are best-effort */ }
-    } // end scanType === "full"
+    } else if (scanType === "reddit") {
+      const recsText = await claude(
+        anthropicKey,
+        `You generate Reddit engagement ideas for a brand's marketing team. Brainstorm 5-8 real, specific opportunities for this brand's product category — buying-advice threads to seed, complaint threads to address, comparison/review threads to correct misinformation in, subreddits to monitor. Titles must be concrete and actionable (e.g. "Answer 'best hot tub under $X' threads in r/hottubs with steel-frame differentiators"), not generic. Reply ONLY JSON array: [{"title","priority":"HIGH|MED|LOW"}]`,
+        `Brand: ${brandName}${category ? `. Product category: ${category}` : ""}. Website: ${siteUrl}.`,
+      );
+      apiCalls++;
+      try {
+        const recs = extractJson<Array<{ title: string; priority: string }>>(recsText);
+        for (const r of recs) {
+          await supabase.from("aeo_recommendations").upsert({
+            brand_id: brandId, title: r.title, rec_type: "Reddit engagement",
+            channel: "Reddit", priority: r.priority, source_week: weekOf,
+          }, { onConflict: "brand_id,title", ignoreDuplicates: true });
+        }
+      } catch { /* recommendations are best-effort */ }
+    } // end recommendations
 
     // 6. If this brand has a HubSpot landing page configured, publish the Reddit
     // table + weekly PDF archive automatically — no separate manual step needed.
@@ -543,4 +599,4 @@ Reply ONLY with this exact JSON shape (every signal array item is one row — Si
   return new Response(JSON.stringify({ ok: true, started: true, scanId, weekOf }), {
     headers: { ...corsHeaders, "content-type": "application/json" },
   });
-});
+}

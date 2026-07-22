@@ -1,5 +1,5 @@
 import { Fragment, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Brand } from "@/lib/brands";
 import { supabase } from "@/integrations/supabase/client";
 import { WaterFillLoader } from "@/components/WaterFillLoader";
@@ -76,7 +76,9 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
   const [selectedWeek, setSelectedWeek] = useState<string | null>(null);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [expandedThreadId, setExpandedThreadId] = useState<string | null>(null);
+  const [scanningReddit, setScanningReddit] = useState(false);
   const reportRef = useRef<HTMLDivElement>(null);
+  const queryClient = useQueryClient();
 
   const { data: weeks } = useQuery({
     queryKey: ["aeo-weeks", brand.id],
@@ -227,6 +229,48 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
       toast.error("PDF export failed — see console for details.");
     } finally {
       setExportingPdf(false);
+    }
+  };
+
+  // Standalone Reddit scan — runs on demand via the aeo-scan edge function
+  // (scanType: "reddit"), independent of the scheduled weekly Routine.
+  const handleScanReddit = async () => {
+    setScanningReddit(true);
+    try {
+      const { data: res, error } = await supabase.functions.invoke("aeo-scan", {
+        body: { brandId: brand.id, brandName: brand.name, siteUrl, scanType: "reddit" },
+      });
+      if (error) throw error;
+      if (res?.error) throw new Error(res.error);
+
+      const scanId = res.scanId as string;
+      const scannedWeek = res.weekOf as string;
+      toast.info("Scanning Reddit for real threads — this takes about a minute…");
+
+      const deadline = Date.now() + 3 * 60_000;
+      while (Date.now() < deadline) {
+        await new Promise(r => setTimeout(r, 4000));
+        const { data: log } = await sb.from("aeo_scan_log").select("status, error").eq("id", scanId).maybeSingle();
+        if (log?.status === "completed") {
+          setSelectedWeek(scannedWeek);
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ["aeo-weeks", brand.id] }),
+            queryClient.invalidateQueries({ queryKey: ["aeo-history", brand.id] }),
+            queryClient.invalidateQueries({ queryKey: ["aeo-report", brand.id, scannedWeek] }),
+          ]);
+          toast.success("Reddit scan complete — table refreshed.");
+          return;
+        }
+        if (log?.status === "failed") {
+          throw new Error(log.error ?? "Scan failed");
+        }
+      }
+      toast.error("Reddit scan is taking longer than expected — check back in a bit.");
+    } catch (err) {
+      console.error("Reddit scan failed:", err);
+      toast.error(`Reddit scan failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setScanningReddit(false);
     }
   };
 
@@ -474,8 +518,20 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
           </div>
 
           <div className="aeo-section" data-pb>
-            <h2>Reddit Threads</h2>
-            <p className="aeo-sub">Real threads and recommended topics for engaging with this brand's category on Reddit — one of the highest-leverage ways to improve AEO/GEO visibility, since AI answer engines increasingly cite Reddit directly. Rows with a live thread link to the real discussion; topic ideas not yet matched to a specific thread link to a live Reddit search instead of a fabricated URL.</p>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+              <div style={{ flex: 1 }}>
+                <h2>Reddit Threads</h2>
+                <p className="aeo-sub">Real threads and recommended topics for engaging with this brand's category on Reddit — one of the highest-leverage ways to improve AEO/GEO visibility, since AI answer engines increasingly cite Reddit directly. Rows with a live thread link to the real discussion; topic ideas not yet matched to a specific thread link to a live Reddit search instead of a fabricated URL.</p>
+              </div>
+              <button
+                onClick={handleScanReddit}
+                disabled={scanningReddit}
+                title="Runs a fresh Reddit search right now — doesn't wait for the scheduled weekly Routine."
+                style={{ border: "1px solid var(--aeo-line)", borderRadius: 8, padding: "8px 16px", background: "var(--aeo-card)", color: "var(--aeo-ink)", fontWeight: 600, fontSize: 13.5, whiteSpace: "nowrap" }}
+              >
+                {scanningReddit ? "Scanning…" : "🔄 Scan Reddit Now"}
+              </button>
+            </div>
             <div className="aeo-tscroll">
               <table>
                 <thead><tr><th>Topic</th><th>Source</th><th>Subreddit</th><th>Opportunity</th><th>Sentiment</th><th>Brand Mentioned</th><th style={{ textAlign: "right" }}>Engagement</th></tr></thead>
