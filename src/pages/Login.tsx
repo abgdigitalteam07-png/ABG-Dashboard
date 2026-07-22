@@ -143,6 +143,20 @@ export default function Login() {
                 </Button>
               )}
 
+              <p className="text-xs text-muted-foreground border-t pt-3 mt-1">
+                Still nothing after a few minutes? Check your spam folder, or if your
+                company uses Mimecast, check your{" "}
+                <a
+                  href="https://login-us.mimecast.com/m/portal/app/#/advanced/personal-on-hold"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline underline-offset-2 hover:opacity-80"
+                >
+                  held messages
+                </a>
+                {" "}— emails from Supabase Auth are sometimes held there.
+              </p>
+
               <Button
                 variant="ghost"
                 className="text-sm"
