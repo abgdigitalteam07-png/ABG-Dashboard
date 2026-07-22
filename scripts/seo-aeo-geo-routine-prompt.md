@@ -69,9 +69,19 @@ Using the Supabase MCP connector against project ref `ffxhonryhaadyudpopvv`:
      "MED — amplify" (positive brand mention worth boosting), "MED — support" (complaint/issue
      about the brand worth responding to), or "LOW" (general discussion, low relevance)
 
+   For any thread scored `opportunity` = "HIGH" or "MED — amplify" or "MED — support" (i.e. every
+   opportunity level except "LOW"), also draft:
+   - `suggested_reply`: a genuinely helpful, non-promotional, Reddit-norms-appropriate reply (2-4
+     sentences) that a real person from the brand could post — answer the actual question first,
+     mention the brand naturally only where relevant, never sound like an ad. Skip this for "LOW"
+     opportunity threads (not worth engaging).
+   - `keywords`: 3-6 short keyword/phrase strings this thread is relevant to (e.g. brand terms,
+     product category terms, buyer-intent phrases) — these describe what the thread is about, not
+     SEO keywords to stuff into the reply.
+
    Write each one via the Supabase MCP connector:
-   INSERT INTO reddit_threads (brand_id, week_of, thread_url, subreddit, title, upvotes, num_comments, brand_mentioned, sentiment, opportunity)
-   VALUES ('{brand_id}', '{week_of}', '{thread_url}', '{subreddit}', '{title}', {upvotes}, {num_comments}, {brand_mentioned}, '{sentiment}', '{opportunity}')
+   INSERT INTO reddit_threads (brand_id, week_of, thread_url, subreddit, title, upvotes, num_comments, brand_mentioned, sentiment, opportunity, suggested_reply, keywords)
+   VALUES ('{brand_id}', '{week_of}', '{thread_url}', '{subreddit}', '{title}', {upvotes}, {num_comments}, {brand_mentioned}, '{sentiment}', '{opportunity}', {suggested_reply_or_NULL}, {keywords_array_or_NULL})
    ON CONFLICT (brand_id, week_of, thread_url) DO NOTHING;
 
    If WebSearch finds nothing relevant for a brand, leave its reddit_threads empty for this week

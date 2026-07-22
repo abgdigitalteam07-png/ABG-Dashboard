@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Brand } from "@/lib/brands";
 import { supabase } from "@/integrations/supabase/client";
@@ -75,6 +75,7 @@ interface Props { brand: Brand; }
 export const SeoAeoGeoTab = ({ brand }: Props) => {
   const [selectedWeek, setSelectedWeek] = useState<string | null>(null);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [expandedThreadId, setExpandedThreadId] = useState<string | null>(null);
   const reportRef = useRef<HTMLDivElement>(null);
 
   const { data: weeks } = useQuery({
@@ -117,7 +118,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
     queryKey: ["aeo-report", brand.id, week],
     enabled: !!week,
     queryFn: async () => {
-      const [scoreRes, citationsRes, recsRes, scanRes, redditRes] = await Promise.all([
+      const [scoreRes, citationsRes, recsRes, scanRes, redditRes, promptResultsRes] = await Promise.all([
         sb.from("seo_audit_scores").select("*").eq("brand_id", brand.id).eq("week_of", week).maybeSingle(),
         sb.from("aeo_citations").select("*").eq("brand_id", brand.id).eq("week_of", week).order("frequency", { ascending: false }),
         sb.from("aeo_recommendations").select("*").eq("brand_id", brand.id).order("created_at", { ascending: false }),
@@ -125,15 +126,33 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
           .order("started_at", { ascending: false }).limit(1).maybeSingle(),
         sb.from("reddit_threads").select("*").eq("brand_id", brand.id).eq("week_of", week)
           .order("upvotes", { ascending: false }),
+        sb.from("aeo_prompt_results").select("cited_urls, aeo_prompts(prompt)").eq("brand_id", brand.id).eq("week_of", week),
       ]);
       if (scoreRes.error) throw scoreRes.error;
       if (citationsRes.error) throw citationsRes.error;
       if (recsRes.error) throw recsRes.error;
       if (redditRes.error) throw redditRes.error;
+      if (promptResultsRes.error) throw promptResultsRes.error;
+
+      // Cross-reference which tracked prompts' AI answers cited each exact Reddit thread URL —
+      // "what's driving this recommendation," matching HubSpot's AEO citation-tracking view.
+      const citingPromptsByUrl = new Map<string, string[]>();
+      for (const pr of (promptResultsRes.data ?? []) as any[]) {
+        const promptText = pr.aeo_prompts?.prompt;
+        if (!promptText) continue;
+        for (const cited of (pr.cited_urls ?? []) as Array<{ url?: string }>) {
+          if (!cited?.url) continue;
+          const list = citingPromptsByUrl.get(cited.url) ?? [];
+          list.push(promptText);
+          citingPromptsByUrl.set(cited.url, list);
+        }
+      }
+
       return {
         score: scoreRes.data, citations: citationsRes.data ?? [], recs: recsRes.data ?? [],
         pageScope: (scanRes.data?.page_scope as PageScope | undefined) ?? null,
         redditThreads: redditRes.data ?? [],
+        citingPromptsByUrl,
       };
     },
   });
@@ -461,16 +480,62 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
               <table>
                 <thead><tr><th>Topic</th><th>Subreddit</th><th>Opportunity</th><th>Sentiment</th><th>Brand Mentioned</th><th style={{ textAlign: "right" }}>Engagement</th></tr></thead>
                 <tbody>
-                  {(data?.redditThreads ?? []).slice(0, 20).map((t: any) => (
-                    <tr key={t.id}>
-                      <td style={{ fontWeight: 600 }}><a href={t.thread_url} target="_blank" rel="noreferrer">{t.title}</a></td>
-                      <td>{t.subreddit}</td>
-                      <td>{t.opportunity && <Pill tone={opportunityTone(t.opportunity)}>{t.opportunity}</Pill>}</td>
-                      <td>{t.sentiment && <Pill tone={sentimentTone(t.sentiment)}>{t.sentiment}</Pill>}</td>
-                      <td>{t.brand_mentioned ? <Pill tone="good">Yes</Pill> : "No"}</td>
-                      <td style={{ textAlign: "right" }}>{t.upvotes}↑ · {t.num_comments}💬</td>
-                    </tr>
-                  ))}
+                  {(data?.redditThreads ?? []).slice(0, 20).map((t: any) => {
+                    const isOpen = expandedThreadId === t.id;
+                    const citingPrompts = data?.citingPromptsByUrl?.get(t.thread_url) ?? [];
+                    return (
+                      <Fragment key={t.id}>
+                        <tr onClick={() => setExpandedThreadId(isOpen ? null : t.id)} style={{ cursor: "pointer" }}>
+                          <td style={{ fontWeight: 600 }}>
+                            <span style={{ color: "var(--aeo-accent)" }}>{isOpen ? "▾" : "▸"} </span>
+                            {t.title}
+                          </td>
+                          <td>{t.subreddit}</td>
+                          <td>{t.opportunity && <Pill tone={opportunityTone(t.opportunity)}>{t.opportunity}</Pill>}</td>
+                          <td>{t.sentiment && <Pill tone={sentimentTone(t.sentiment)}>{t.sentiment}</Pill>}</td>
+                          <td>{t.brand_mentioned ? <Pill tone="good">Yes</Pill> : "No"}</td>
+                          <td style={{ textAlign: "right" }}>{t.upvotes}↑ · {t.num_comments}💬</td>
+                        </tr>
+                        {isOpen && (
+                          <tr key={`${t.id}-detail`}>
+                            <td colSpan={6} style={{ background: "var(--aeo-accent-soft)", padding: 16 }}>
+                              <div style={{ display: "flex", flexDirection: "column", gap: 12, fontSize: 13 }}>
+                                <div>
+                                  <p style={{ fontWeight: 700, margin: "0 0 4px" }}>Suggested reply</p>
+                                  <p style={{ margin: 0, color: t.suggested_reply ? "var(--aeo-ink)" : "var(--aeo-muted)" }}>
+                                    {t.suggested_reply ?? "Not generated for this thread (only drafted for HIGH/MED-opportunity threads)."}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p style={{ fontWeight: 700, margin: "0 0 4px" }}>Keywords</p>
+                                  {t.keywords?.length ? (
+                                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                      {t.keywords.map((k: string) => <span key={k} className="aeo-pill neutral">{k}</span>)}
+                                    </div>
+                                  ) : <p style={{ margin: 0, color: "var(--aeo-muted)" }}>None generated.</p>}
+                                </div>
+                                <div>
+                                  <p style={{ fontWeight: 700, margin: "0 0 4px" }}>What's driving this recommendation</p>
+                                  {citingPrompts.length ? (
+                                    <ul style={{ margin: 0, paddingLeft: 18 }}>
+                                      {citingPrompts.map((p, i) => <li key={i}>Cited in the AI answer for tracked prompt: "{p}"</li>)}
+                                    </ul>
+                                  ) : (
+                                    <p style={{ margin: 0, color: "var(--aeo-muted)" }}>Not yet cited by any of this brand's tracked prompts this week.</p>
+                                  )}
+                                </div>
+                                <div>
+                                  <a href={t.thread_url} target="_blank" rel="noreferrer" className="aeo-btn" style={{ display: "inline-block", textDecoration: "none" }}>
+                                    Open thread on Reddit ↗
+                                  </a>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
                   {!data?.redditThreads?.length && <tr><td colSpan={6} style={{ textAlign: "center", color: "var(--aeo-muted)", padding: "16px 0" }}>No Reddit threads captured yet.</td></tr>}
                 </tbody>
               </table>
