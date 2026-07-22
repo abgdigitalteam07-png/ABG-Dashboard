@@ -440,7 +440,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
               <table>
                 <thead><tr><th>Title</th><th>Type</th><th>Priority</th><th>Status</th></tr></thead>
                 <tbody>
-                  {(data?.recs ?? []).slice(0, 10).map((r: any) => (
+                  {(data?.recs ?? []).filter((r: any) => r.rec_type !== "Reddit engagement").slice(0, 10).map((r: any) => (
                     <tr key={r.id}>
                       <td style={{ fontWeight: 600 }}>{r.title}</td>
                       <td>{r.rec_type}</td>
@@ -448,7 +448,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
                       <td>{r.status ?? "New"}</td>
                     </tr>
                   ))}
-                  {!data?.recs?.length && <tr><td colSpan={4} style={{ textAlign: "center", color: "var(--aeo-muted)", padding: "16px 0" }}>No recommendations yet.</td></tr>}
+                  {!data?.recs?.filter((r: any) => r.rec_type !== "Reddit engagement").length && <tr><td colSpan={4} style={{ textAlign: "center", color: "var(--aeo-muted)", padding: "16px 0" }}>No recommendations yet.</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -457,7 +457,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
           <div className="aeo-section" data-pb>
             <h2>Reddit Threads</h2>
             <p className="aeo-sub">Real threads discussing this brand's category — engaging with high-opportunity threads (answering questions, correcting misinformation, being a helpful presence) is one of the highest-leverage ways to improve AEO/GEO visibility, since AI answer engines increasingly cite Reddit directly.</p>
-            <div className="aeo-tscroll">
+            <div className="aeo-tscroll" style={{ marginBottom: 20 }}>
               <table>
                 <thead><tr><th>Topic</th><th>Subreddit</th><th>Opportunity</th><th>Sentiment</th><th>Brand Mentioned</th><th style={{ textAlign: "right" }}>Engagement</th></tr></thead>
                 <tbody>
@@ -472,6 +472,25 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
                     </tr>
                   ))}
                   {!data?.redditThreads?.length && <tr><td colSpan={6} style={{ textAlign: "center", color: "var(--aeo-muted)", padding: "16px 0" }}>No Reddit threads captured yet.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+
+            <p className="aeo-sub" style={{ fontWeight: 600, color: "var(--aeo-ink)" }}>Recommended topics to engage with</p>
+            <p className="aeo-sub">Topic ideas from the audit's recommendations engine — not yet matched to a specific live thread, so each links to a live Reddit search instead of a fabricated URL.</p>
+            <div className="aeo-tscroll">
+              <table>
+                <thead><tr><th>Topic</th><th>Priority</th><th>Status</th><th></th></tr></thead>
+                <tbody>
+                  {(data?.recs ?? []).filter((r: any) => r.rec_type === "Reddit engagement").map((r: any) => (
+                    <tr key={r.id}>
+                      <td style={{ fontWeight: 600 }}>{r.title}</td>
+                      <td><Pill tone={r.priority === "HIGH" ? "bad" : r.priority === "MED" ? "warn" : "neutral"}>{r.priority}</Pill></td>
+                      <td>{r.status ?? "New"}</td>
+                      <td><a href={`https://www.reddit.com/search/?q=${encodeURIComponent(r.title)}`} target="_blank" rel="noreferrer">Search Reddit ↗</a></td>
+                    </tr>
+                  ))}
+                  {!(data?.recs ?? []).some((r: any) => r.rec_type === "Reddit engagement") && <tr><td colSpan={4} style={{ textAlign: "center", color: "var(--aeo-muted)", padding: "16px 0" }}>No recommended topics yet.</td></tr>}
                 </tbody>
               </table>
             </div>

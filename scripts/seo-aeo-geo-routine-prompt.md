@@ -55,10 +55,33 @@ Using the Supabase MCP connector against project ref `ffxhonryhaadyudpopvv`:
    INSERT INTO aeo_scan_log (brand_id, week_of, status, scan_type, page_scope, api_calls_used, started_at, finished_at)
    VALUES ('{brand_id}', '{week_of}', 'completed', '{scan_type}', '{page_scope}', 0, now(), now());
 
-5. Move to the next brand. If a brand's site doesn't load or the domain looks wrong, skip it and
+5. Reddit research — for each brand, use WebSearch (NOT a fabricated URL) with queries like
+   `site:reddit.com {brand_name}`, `site:reddit.com {product category} recommendations`, and
+   `site:reddit.com best {product category} brands` to find 5-15 REAL, currently-indexed Reddit
+   threads relevant to the brand's product category (hot tubs, bathtubs, shower doors, etc. —
+   infer from the brand/site). For each real thread found, capture:
+   - `thread_url` (the actual reddit.com URL from search results — never invent one)
+   - `subreddit`, `title` (as they appear in the thread)
+   - `upvotes`/`num_comments` if visible in the search snippet, else 0 (never guess a number)
+   - `brand_mentioned` (true if the brand name appears in the title/snippet)
+   - `sentiment`: "Positive"|"Neutral"|"Negative" — how the brand (or category, if unmentioned) is discussed
+   - `opportunity`: "HIGH" (buying-advice thread where this brand should be recommended but isn't),
+     "MED — amplify" (positive brand mention worth boosting), "MED — support" (complaint/issue
+     about the brand worth responding to), or "LOW" (general discussion, low relevance)
+
+   Write each one via the Supabase MCP connector:
+   INSERT INTO reddit_threads (brand_id, week_of, thread_url, subreddit, title, upvotes, num_comments, brand_mentioned, sentiment, opportunity)
+   VALUES ('{brand_id}', '{week_of}', '{thread_url}', '{subreddit}', '{title}', {upvotes}, {num_comments}, {brand_mentioned}, '{sentiment}', '{opportunity}')
+   ON CONFLICT (brand_id, week_of, thread_url) DO NOTHING;
+
+   If WebSearch finds nothing relevant for a brand, leave its reddit_threads empty for this week
+   rather than inventing threads — the dashboard already handles an empty result gracefully.
+
+6. Move to the next brand. If a brand's site doesn't load or the domain looks wrong, skip it and
    report which ones you skipped at the end — don't guess a domain.
 
-When done, report a summary: how many brands completed, how many skipped and why.
+When done, report a summary: how many brands completed, how many skipped and why, and how many
+real Reddit threads were found per brand.
 
 ---
 
