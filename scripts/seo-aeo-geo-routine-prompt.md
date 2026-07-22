@@ -55,7 +55,34 @@ Using the Supabase MCP connector against project ref `ffxhonryhaadyudpopvv`:
    INSERT INTO aeo_scan_log (brand_id, week_of, status, scan_type, page_scope, api_calls_used, started_at, finished_at)
    VALUES ('{brand_id}', '{week_of}', 'completed', '{scan_type}', '{page_scope}', 0, now(), now());
 
-5. Reddit research — for each brand, use WebSearch (NOT a fabricated URL) with queries like
+5. Recommendations — turn the `priority_recommendations` from step 2/3's findings into rows in
+   `aeo_recommendations` (this is the "Recommendations" table and the "Recommended topics to
+   engage with" sub-table in the dashboard, so more here = more visible topics/actions).
+
+   For each brand, generate:
+   - One `aeo_recommendations` row per `priority_recommendations` item from the findings JSON,
+     mapped to the closest `rec_type`: SEO dimension → "Technical fix" (schema/meta/tags) or
+     "Net new content" (thin/missing content), GEO dimension → "Net new content" or "Outreach"
+     (E-E-A-T/trust building), AEO dimension → "Net new content" (snippet-ready content) or
+     "Technical fix" (schema markup).
+   - **5-8 dedicated "Reddit engagement" rows** (not just whatever the general audit happens to
+     surface) — brainstorm real, specific engagement opportunities for this brand's product
+     category: buying-advice threads to seed, complaint threads to address, comparison/review
+     threads to correct misinformation in, subreddits to monitor, etc. Titles should be concrete
+     and actionable (e.g. "Answer 'best hot tub under $X' threads in r/hottubs with steel-frame
+     differentiators"), not generic ("Do Reddit engagement").
+
+   Map `priority` from Critical/High → HIGH, Medium → MED, Quick Win → LOW effort but treat as MED
+   priority. Set `content_type`/`channel` when the recommendation clearly implies one (e.g.
+   channel: "Reddit" for Reddit engagement rows), else leave null.
+
+   Write each one via the Supabase MCP connector:
+   INSERT INTO aeo_recommendations (brand_id, title, rec_type, content_type, channel, priority, source_week, details)
+   VALUES ('{brand_id}', '{title}', '{rec_type}', {content_type_or_NULL}, {channel_or_NULL}, '{priority}', '{week_of}', '{}'::jsonb)
+   ON CONFLICT (brand_id, title) DO UPDATE SET
+     priority = EXCLUDED.priority, source_week = EXCLUDED.source_week, updated_at = now();
+
+6. Reddit research — for each brand, use WebSearch (NOT a fabricated URL) with queries like
    `site:reddit.com {brand_name}`, `site:reddit.com {product category} recommendations`, and
    `site:reddit.com best {product category} brands` to find 5-15 REAL, currently-indexed Reddit
    threads relevant to the brand's product category (hot tubs, bathtubs, shower doors, etc. —
@@ -87,7 +114,7 @@ Using the Supabase MCP connector against project ref `ffxhonryhaadyudpopvv`:
    If WebSearch finds nothing relevant for a brand, leave its reddit_threads empty for this week
    rather than inventing threads — the dashboard already handles an empty result gracefully.
 
-6. Move to the next brand. If a brand's site doesn't load or the domain looks wrong, skip it and
+7. Move to the next brand. If a brand's site doesn't load or the domain looks wrong, skip it and
    report which ones you skipped at the end — don't guess a domain.
 
 When done, report a summary: how many brands completed, how many skipped and why, and how many
