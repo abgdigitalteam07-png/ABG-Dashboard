@@ -8,11 +8,12 @@ import { useFirstLoad } from "@/hooks/useFirstLoad";
 import { generateRecommendations } from "@/lib/recommendation-rules";
 import { SummaryPrintView } from "@/components/SummaryPrintView";
 import { format } from "date-fns";
-import { TrendingUp, TrendingDown, WifiOff, Download, Mail, Send, Calendar, Clock, Pencil, ChevronDown, ChevronUp } from "lucide-react";
+import { TrendingUp, TrendingDown, WifiOff, Download, Mail, Send, Calendar, Clock, Pencil, ChevronDown, ChevronUp, X } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "sonner";
 
 const DOW_LABELS = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
@@ -224,6 +225,8 @@ export function SummaryTab({ brand, dateFrom, dateTo, showInsights = true }: Sum
     date_range_days: 7,
     is_active: true,
   });
+  const [recipientInput, setRecipientInput] = useState("");
+  const [recipientsList, setRecipientsList] = useState<string[]>(["mali@americanbathgroup.com"]);
   const [schedSaving, setSchedSaving] = useState(false);
   const [sendingNow, setSendingNow] = useState(false);
 
@@ -244,6 +247,7 @@ export function SummaryTab({ brand, dateFrom, dateTo, showInsights = true }: Sum
       .then(({ data }) => {
         if (data) {
           setBrandSchedule(data as EmailSchedule);
+          setRecipientsList(data.recipients);
           setSchedForm({
             recipients: data.recipients.join(", "),
             day_of_week: data.day_of_week,
@@ -256,17 +260,21 @@ export function SummaryTab({ brand, dateFrom, dateTo, showInsights = true }: Sum
   }, [isAdmin, brand.id]);
 
   async function openEmailDialog() {
+    setRecipientInput("");
     setEmailDialogOpen(true);
   }
 
   async function saveSchedule() {
     setSchedSaving(true);
-    const recipientList = schedForm.recipients.split(",").map(e => e.trim().toLowerCase()).filter(Boolean);
-    if (!recipientList.length) { toast.error("Add at least one recipient email"); setSchedSaving(false); return; }
+    if (!recipientsList.length) {
+      toast.error("Add at least one recipient email");
+      setSchedSaving(false);
+      return;
+    }
     const payload = {
       brand_id: brand.id,
       brand_name: brand.name,
-      recipients: recipientList,
+      recipients: recipientsList,
       day_of_week: schedForm.day_of_week,
       send_hour_utc: schedForm.send_hour_utc,
       date_range_days: schedForm.date_range_days,
@@ -295,6 +303,31 @@ export function SummaryTab({ brand, dateFrom, dateTo, showInsights = true }: Sum
       toast.success(`Report sent to ${brandSchedule.recipients.join(", ")}`);
     } catch {
       toast.error("Failed to send — check Edge Function logs");
+    } finally {
+      setSendingNow(false);
+    }
+  }
+
+  async function sendTestEmail() {
+    if (!recipientsList.length) {
+      toast.error("Add at least one recipient email");
+      return;
+    }
+    setSendingNow(true);
+    try {
+      const { error } = await supabase.functions.invoke("send-test-email", {
+        body: {
+          recipients: recipientsList,
+          brand_id: brand.id,
+          brand_name: brand.name,
+          date_range_days: schedForm.date_range_days,
+        },
+      });
+      if (error) throw error;
+      toast.success(`Test email sent to ${recipientsList.join(", ")}`);
+    } catch (err) {
+      console.error("Test email failed:", err);
+      toast.error("Failed to send test email — check Edge Function logs");
     } finally {
       setSendingNow(false);
     }
@@ -587,26 +620,109 @@ export function SummaryTab({ brand, dateFrom, dateTo, showInsights = true }: Sum
             </p>
             <h1 className="text-3xl font-black text-foreground leading-tight">{brand.name}</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Week of {format(dateFrom, "MMM d")} – {format(dateTo, "MMM d, yyyy")} · weekly edition
+              {format(dateFrom, "MMM d")} – {format(dateTo, "MMM d, yyyy")} · {Math.round((dateTo.getTime() - dateFrom.getTime()) / (1000 * 60 * 60 * 24))} days
             </p>
           </div>
           <div className="flex flex-col items-end gap-2">
             <p className="text-[11px] text-muted-foreground">Issued {format(new Date(), "MMM d, yyyy")}</p>
             <div className="flex items-center gap-2">
               {isAdmin && (
-                <button
-                  onClick={openEmailDialog}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-[11px] font-semibold transition-colors ${
-                    brandSchedule
-                      ? "border-emerald-400 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-700"
-                      : "border-border bg-background text-foreground hover:bg-muted"
-                  }`}
-                >
-                  <Mail className="h-3.5 w-3.5" />
-                  {brandSchedule
-                    ? `Scheduled · ${DOW_LABELS[brandSchedule.day_of_week]}s · Edit`
-                    : "Email this dashboard"}
-                </button>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-[11px] font-semibold transition-colors ${
+                        brandSchedule
+                          ? "border-emerald-400 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-700"
+                          : "border-border bg-background text-foreground hover:bg-muted"
+                      }`}
+                    >
+                      <Mail className="h-3.5 w-3.5" />
+                      {brandSchedule
+                        ? `Scheduled · ${DOW_LABELS[brandSchedule.day_of_week]}s`
+                        : "Email this dashboard"}
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-72 p-0" align="end">
+                    {brandSchedule ? (
+                      <div className="space-y-4 p-4">
+                        <div>
+                          <p className="text-[11px] font-black uppercase tracking-widest text-muted-foreground mb-2">Schedule Status</p>
+                          <div className="flex items-center gap-2 rounded-md bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 px-3 py-2">
+                            <div className="h-2 w-2 rounded-full bg-emerald-500" />
+                            <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">Active</span>
+                          </div>
+                        </div>
+
+                        <div className="space-y-2 pt-2 border-t border-border">
+                          <div>
+                            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Send Day & Time</p>
+                            <p className="text-sm font-semibold text-foreground mt-1">
+                              {DOW_LABELS[brandSchedule.day_of_week]}s at {String(brandSchedule.send_hour_utc).padStart(2,"0")}:00 UTC
+                            </p>
+                          </div>
+
+                          <div>
+                            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Recipients</p>
+                            <div className="mt-1 space-y-1">
+                              {brandSchedule.recipients.map((email, idx) => (
+                                <p key={idx} className="text-xs text-foreground font-mono bg-muted/40 rounded px-2 py-1">
+                                  {email}
+                                </p>
+                              ))}
+                            </div>
+                          </div>
+
+                          {brandSchedule.last_sent_at && (
+                            <div>
+                              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Last Sent</p>
+                              <p className="text-xs text-foreground mt-1">{format(new Date(brandSchedule.last_sent_at), "MMM d, yyyy 'at' h:mm a")}</p>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex gap-2 pt-2 border-t border-border">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="flex-1 text-[11px]"
+                            disabled={sendingNow}
+                            onClick={() => {
+                              sendNow();
+                            }}
+                          >
+                            <Send className="h-3 w-3 mr-1" />
+                            {sendingNow ? "Sending…" : "Send Now"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            className="flex-1 bg-brand-red hover:bg-brand-red/90 text-[11px]"
+                            onClick={() => {
+                              setEmailDialogOpen(true);
+                            }}
+                          >
+                            <Pencil className="h-3 w-3 mr-1" />
+                            Edit
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-3 p-4">
+                        <p className="text-sm text-foreground font-semibold">No schedule yet</p>
+                        <p className="text-xs text-muted-foreground">Create a schedule to send this report automatically to your team.</p>
+                        <Button
+                          className="w-full bg-brand-red hover:bg-brand-red/90"
+                          size="sm"
+                          onClick={() => {
+                            setEmailDialogOpen(true);
+                          }}
+                        >
+                          <Mail className="h-3 w-3 mr-1.5" />
+                          Create Schedule
+                        </Button>
+                      </div>
+                    )}
+                  </PopoverContent>
+                </Popover>
               )}
               <button
                 onClick={handleDownloadPDF}
@@ -1051,19 +1167,81 @@ export function SummaryTab({ brand, dateFrom, dateTo, showInsights = true }: Sum
 
           <div className="space-y-4 py-1">
             {/* Recipients */}
-            <div className="space-y-1">
+            <div className="space-y-2">
               <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1">
-                <Mail className="h-3 w-3" /> Recipients
+                <Mail className="h-3 w-3" /> Recipients ({recipientsList.length})
               </label>
-              <Input
-                placeholder="mali@americanbathgroup.com, brad@americanbathgroup.com"
-                value={schedForm.recipients}
-                onChange={e => setSchedForm(s => ({ ...s, recipients: e.target.value }))}
-              />
+
+              {/* Current Recipients as Chips */}
+              <div className="flex flex-wrap gap-2 p-3 bg-muted/30 rounded-md min-h-[44px] border border-border">
+                {recipientsList.length > 0 ? (
+                  recipientsList.map((email, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center gap-1.5 px-2.5 py-1 bg-brand-red/10 text-brand-red rounded-full text-xs font-medium border border-brand-red/20"
+                    >
+                      <span className="font-mono">{email}</span>
+                      <button
+                        onClick={() => {
+                          const newList = recipientsList.filter((_, i) => i !== idx);
+                          setRecipientsList(newList);
+                          setSchedForm(s => ({ ...s, recipients: newList.join(", ") }));
+                        }}
+                        className="ml-1 hover:text-brand-red/70 transition-colors"
+                        title="Remove recipient"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))
+                ) : (
+                  <span className="text-xs text-muted-foreground italic">No recipients added yet</span>
+                )}
+              </div>
+
+              {/* Add New Recipient */}
+              <div className="flex gap-2">
+                <Input
+                  placeholder="name@company.com"
+                  value={recipientInput}
+                  onChange={e => setRecipientInput(e.target.value)}
+                  onKeyPress={e => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      const email = recipientInput.trim().toLowerCase();
+                      if (email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && !recipientsList.includes(email)) {
+                        const newList = [...recipientsList, email];
+                        setRecipientsList(newList);
+                        setSchedForm(s => ({ ...s, recipients: newList.join(", ") }));
+                        setRecipientInput("");
+                      }
+                    }
+                  }}
+                  className="flex-1"
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    const email = recipientInput.trim().toLowerCase();
+                    if (email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && !recipientsList.includes(email)) {
+                      const newList = [...recipientsList, email];
+                      setRecipientsList(newList);
+                      setSchedForm(s => ({ ...s, recipients: newList.join(", ") }));
+                      setRecipientInput("");
+                    } else if (recipientsList.includes(email)) {
+                      alert("This email is already in the list");
+                    } else {
+                      alert("Please enter a valid email address");
+                    }
+                  }}
+                  className="text-[11px]"
+                >
+                  Add
+                </Button>
+              </div>
               <p className="text-[10px] text-muted-foreground">
-                {schedForm.recipients.split(",").filter(e => e.trim()).length} recipient(s) —
-                separate multiple emails with a comma, e.g.{" "}
-                <span className="font-mono text-foreground">mali@americanbathgroup.com, brad@americanbathgroup.com</span>
+                Type an email and press Enter or click Add. Remove recipients by clicking the X on their chip.
               </p>
             </div>
 
@@ -1124,25 +1302,39 @@ export function SummaryTab({ brand, dateFrom, dateTo, showInsights = true }: Sum
             </div>
           </div>
 
-          <DialogFooter className="flex-col sm:flex-row gap-2">
+          <DialogFooter className="flex gap-1.5 justify-end flex-nowrap">
             {brandSchedule && (
-              <Button
-                variant="outline"
-                disabled={sendingNow}
-                onClick={sendNow}
-                className="flex items-center gap-1.5"
-              >
-                <Send className="h-3.5 w-3.5" />
-                {sendingNow ? "Sending…" : "Send Now"}
-              </Button>
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={sendingNow}
+                  onClick={sendNow}
+                  className="flex items-center gap-1 text-xs"
+                >
+                  <Send className="h-3 w-3" />
+                  Send Now
+                </Button>
+                <Button
+                  size="sm"
+                  disabled={sendingNow}
+                  onClick={sendTestEmail}
+                  className="flex items-center gap-1.5 text-xs font-semibold bg-blue-600 text-white border border-blue-700 hover:bg-blue-700 dark:bg-blue-600 dark:text-white dark:border-blue-700 dark:hover:bg-blue-700"
+                  title="Send a test email to verify the schedule will work"
+                >
+                  <Send className="h-3.5 w-3.5" />
+                  {sendingNow ? "Testing…" : "Test Email"}
+                </Button>
+              </>
             )}
             <Button
               onClick={saveSchedule}
               disabled={schedSaving}
-              className="bg-brand-red hover:bg-brand-red/90 text-white flex items-center gap-1.5 flex-1"
+              size="sm"
+              className="bg-brand-red hover:bg-brand-red/90 text-white flex items-center gap-1 text-xs"
             >
-              <Mail className="h-3.5 w-3.5" />
-              {schedSaving ? "Saving…" : brandSchedule ? "Update Schedule" : "Save Schedule"}
+              <Mail className="h-3 w-3" />
+              {schedSaving ? "Saving…" : brandSchedule ? "Update" : "Save"}
             </Button>
           </DialogFooter>
         </DialogContent>
