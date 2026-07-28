@@ -325,26 +325,6 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
 
       {!isLoading && (
         <div ref={reportRef} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {/* Cover — mirrors the skill's DOCX cover page. */}
-          <div className="aeo-cover">
-            <div className="aeo-cover-domain">{siteUrl.replace(/^https?:\/\//, "").replace(/\/$/, "")}</div>
-            <h1>SEO / GEO / AEO Audit Report</h1>
-            <span className="aeo-cover-badge">{data?.pageScope === "homepage" ? "QUICK AUDIT" : "FULL AUDIT"}</span>
-            <div className="aeo-cover-scores">
-              {([
-                ["SEO", latestScore?.seo_score],
-                ["GEO", latestScore?.geo_score],
-                ["AEO", latestScore?.aeo_score],
-              ] as const).map(([label, score]) => (
-                <div key={label} className="aeo-cover-score">
-                  <div className="aeo-cover-k">{label}</div>
-                  <div className="aeo-cover-v">{score ?? "—"}<span style={{ fontSize: 14, fontWeight: 400, opacity: .7 }}>/10</span></div>
-                </div>
-              ))}
-            </div>
-            <div className="aeo-cover-date">{week ? `Week of ${week}` : "No scan yet"} · {brand.name}</div>
-          </div>
-
           <div className="aeo-section" data-pb>
             <h2>Executive Summary</h2>
             <div style={{ background: "var(--aeo-accent-soft)", borderRadius: 10, padding: 14, marginBottom: 14 }}>
