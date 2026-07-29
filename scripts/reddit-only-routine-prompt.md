@@ -43,7 +43,13 @@ connector's `call-actor` / `get-actor-run` / `get-actor-output` tools:
      once per brand in that category group (see step 3), so every brand's row is judged fairly
      against the identical evidence.
 
-   For each category group, call the Apify actor `trudax/reddit-scraper-lite` ONCE with input:
+   For each category group, run the Apify actor `trudax/reddit-scraper-lite` in TWO passes —
+   keyword search alone misses recent, on-topic posts that just don't happen to match the exact
+   search phrase (e.g. "House with new hot tub- not sure how to start" won't rank in a
+   `sort: relevance` search for "hot tubs", even though it's exactly the kind of thread worth
+   engaging with):
+
+   **Pass A — keyword search** (catches conversations in subreddits you don't already know about):
    ```json
    {
      "searches": ["{product_category}", "best {product_category} brands", "{product_category} buying advice"],
@@ -54,17 +60,35 @@ connector's `call-actor` / `get-actor-run` / `get-actor-output` tools:
      "maxComments": 0
    }
    ```
-   Wait for the run to finish (poll `get-actor-run` until status is `SUCCEEDED`, `FAILED`, or
-   `TIMED-OUT`/`ABORTED`), then fetch results with `get-actor-output`. Each real item gives you:
+
+   **Pass B — direct subreddit crawl** (catches everything recent, regardless of keyword match):
+   identify the 1-3 most relevant subreddits for this category (e.g. hot tubs → r/hottub,
+   r/hottubs) from general knowledge of Reddit, then call:
+   ```json
+   {
+     "startUrls": [{"url": "https://www.reddit.com/r/{subreddit}/"}],
+     "sort": "new",
+     "time": "week",
+     "includeMediaLinks": true,
+     "maxItems": 15,
+     "maxPostCount": 15,
+     "maxComments": 0
+   }
+   ```
+   (one call per identified subreddit, or combine multiple subreddits' `startUrls` in one call).
+
+   Wait for each run to finish (poll `get-actor-run` until status is `SUCCEEDED`, `FAILED`, or
+   `TIMED-OUT`/`ABORTED`), then fetch results with `get-actor-output`. Merge Pass A + Pass B,
+   de-duplicating by `thread_url`. Each real item gives you:
    - `thread_url` (the actual reddit.com post URL — from the actor's real output, never
      invented)
    - `subreddit`, `title` (as returned)
-   - `upvotes`/`num_comments` if the actor exposes them for that field name, else 0 (never
-     guess a number)
+   - `upvotes`/`num_comments` (from `includeMediaLinks: true` in Pass B; else 0 — never guess a
+     number)
 
-   If the actor run `FAILED`/`TIMED-OUT`/`ABORTED`, or returns zero items, leave every brand in
-   that category group's `reddit_threads` empty for this week rather than inventing threads —
-   do not fall back to WebSearch or fabricate results to compensate.
+   If both passes `FAILED`/`TIMED-OUT`/`ABORTED`, or return zero items combined, leave every
+   brand in that category group's `reddit_threads` empty for this week rather than inventing
+   threads — do not fall back to WebSearch or fabricate results to compensate.
 
 3. For EACH brand in the category group, classify the SAME real thread list against that
    specific brand — this produces one row per (brand, thread) pair, so the same thread can
