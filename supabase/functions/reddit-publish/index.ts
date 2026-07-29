@@ -188,11 +188,23 @@ Deno.serve(async (req: Request) => {
     return json({ error: `No Reddit data for ${brandIds.join(", ")} — run a scan first.`, lastScans }, 404);
   }
 
-  const { data: threads, error: thErr } = await supabase.from("reddit_threads").select("*")
+  const { data: rawThreads, error: thErr } = await supabase.from("reddit_threads").select("*")
     .in("brand_id", brandIds).eq("week_of", week)
-    .order("cited_by_ai_count", { ascending: false }).order("upvotes", { ascending: false }).limit(showBrandColumn ? 30 : 15);
+    .order("cited_by_ai_count", { ascending: false }).order("upvotes", { ascending: false });
   if (thErr) return json({ error: thErr.message }, 500);
-  if (!threads?.length) return json({ error: `No threads for ${brandIds.join(", ")} week ${week}` }, 404);
+  if (!rawThreads?.length) return json({ error: `No threads for ${brandIds.join(", ")} week ${week}` }, 404);
+
+  // Shared pages pull the same real thread once per brand in the group (each brand
+  // gets its own brand_mentioned/opportunity/keywords) — dedupe by URL for display so
+  // one thread shows once, preferring whichever brand's row actually mentions it.
+  const byUrl = new Map<string, Thread>();
+  for (const t of rawThreads as Thread[]) {
+    const existing = byUrl.get(t.thread_url);
+    if (!existing || (t.brand_mentioned && !existing.brand_mentioned)) {
+      byUrl.set(t.thread_url, t);
+    }
+  }
+  const threads = [...byUrl.values()].slice(0, showBrandColumn ? 30 : 15);
 
   const html = renderTable(brandName, week, threads as Thread[]);
   const hs = (path: string, init: RequestInit = {}) =>
