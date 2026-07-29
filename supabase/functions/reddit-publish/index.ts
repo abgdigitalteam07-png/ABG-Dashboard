@@ -19,15 +19,9 @@ const MARKER = "<!--REDDIT_TABLE-->";
 // Some landing pages are shared across multiple related brands (e.g. the hot-tub
 // brands all point stakeholders at one aggregated page) — when publishing to one
 // of these, pull threads from every brand_id in the group, not just the one passed
-// in the request, and label each row with its brand so it's still clear whose
-// thread is whose.
+// in the request.
 const SHARED_LANDING_PAGES: Record<string, string[]> = {
   "370024805096": ["vita-spa", "american-whirlpool", "california-cooperage"],
-};
-const BRAND_DISPLAY_NAMES: Record<string, string> = {
-  "vita-spa": "Vita Spa",
-  "american-whirlpool": "American Whirlpool",
-  "california-cooperage": "California Cooperage",
 };
 
 function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = 90_000): Promise<Response> {
@@ -70,27 +64,15 @@ function renderIntro(brandName: string, weekOf: string, count: number, feedbackC
 </div>`;
 }
 
-function renderTable(brandName: string, weekOf: string, threads: Thread[], showBrandColumn: boolean): string {
+function renderTable(brandName: string, weekOf: string, threads: Thread[]): string {
   const rows = threads.map((t, i) => {
-    const sent = t.sentiment ?? "Neutral";
-    const sentColor = sent === "Positive" ? "#15803d" : sent === "Negative" ? "#b91c1c" : "#5a646e";
-    const pri = t.opportunity ?? (t.cited_by_ai_count > 0 ? "HIGH" : "MED");
-    const priColor = pri.startsWith("HIGH") ? "#b91c1c" : "#b45309";
-    const brandCell = showBrandColumn
-      ? `<td style="padding:10px 12px;font-size:13px;color:#33475b">${esc(BRAND_DISPLAY_NAMES[t.brand_id] ?? t.brand_id)}</td>`
-      : "";
     return `<tr style="background:${i % 2 ? "#f6f8fa" : "#ffffff"}">
       <td style="padding:10px 12px;font-size:14px;color:#5a646e">${i + 1}</td>
       <td style="padding:10px 12px"><a href="${esc(t.thread_url)}" target="_blank" style="color:#0091ae;font-weight:600;font-size:14px;text-decoration:none">${esc(t.title)}</a></td>
-      ${brandCell}
       <td style="padding:10px 12px;font-size:13px;color:#33475b">${esc(t.subreddit)}</td>
       <td style="padding:10px 12px;font-size:13px;color:#33475b;white-space:nowrap">${t.upvotes} ▲ · ${t.num_comments} 💬</td>
-      <td style="padding:10px 12px;font-size:13px;font-weight:600;color:${sentColor}">${esc(sent)}</td>
-      <td style="padding:10px 12px;font-size:12px;font-weight:700;color:${priColor}">${esc(pri)}</td>
     </tr>`;
   }).join("");
-
-  const brandHeader = showBrandColumn ? `<th style="padding:10px 12px;color:#fff;font-size:12px;text-align:left">Brand</th>` : "";
 
   return `${MARKER}
 <div style="font-family:'Lexend Deca',Helvetica,Arial,sans-serif;max-width:900px;margin:0 auto">
@@ -98,11 +80,8 @@ function renderTable(brandName: string, weekOf: string, threads: Thread[], showB
     <thead><tr style="background:#0f2542">
       <th style="padding:10px 12px;color:#fff;font-size:12px;text-align:left">#</th>
       <th style="padding:10px 12px;color:#fff;font-size:12px;text-align:left">Thread</th>
-      ${brandHeader}
       <th style="padding:10px 12px;color:#fff;font-size:12px;text-align:left">Subreddit</th>
       <th style="padding:10px 12px;color:#fff;font-size:12px;text-align:left">Activity</th>
-      <th style="padding:10px 12px;color:#fff;font-size:12px;text-align:left">Sentiment</th>
-      <th style="padding:10px 12px;color:#fff;font-size:12px;text-align:left">Priority</th>
     </tr></thead>
     <tbody>${rows}</tbody>
   </table>
@@ -207,7 +186,7 @@ Deno.serve(async (req: Request) => {
   if (thErr) return json({ error: thErr.message }, 500);
   if (!threads?.length) return json({ error: `No threads for ${brandIds.join(", ")} week ${week}` }, 404);
 
-  const html = renderTable(brandName, week, threads as Thread[], showBrandColumn);
+  const html = renderTable(brandName, week, threads as Thread[]);
   const hs = (path: string, init: RequestInit = {}) =>
     fetch(`https://api.hubapi.com${path}`, {
       ...init,
@@ -292,19 +271,13 @@ Deno.serve(async (req: Request) => {
       doc.text("recommendation — a helpful dealer reply there reaches far beyond Reddit.", M, 148);
 
       // Manual table: fixed column layout, word-wrapped title/action cells, row height
-      // grows to fit the wrapped title. Colors match the approved sample design. Widths
-      // are named (not indexed off `cols`) so an optional Brand column can be inserted
-      // without renumbering every reference below.
-      const numW = 18, threadW = showBrandColumn ? 150 : 190, brandW = 60,
-        subredditW = 60, activityW = 90, sentimentW = 60, priorityW = 55;
+      // grows to fit the wrapped title. Colors match the approved sample design.
+      const numW = 18, threadW = 260, subredditW = 90, activityW = 110;
       const cols = [
         { w: numW, label: "#" },
         { w: threadW, label: "Thread (click to open)" },
-        ...(showBrandColumn ? [{ w: brandW, label: "Brand" }] : []),
         { w: subredditW, label: "Subreddit" },
         { w: activityW, label: "Activity" },
-        { w: sentimentW, label: "Sentiment" },
-        { w: priorityW, label: "Priority" },
       ];
       const tableW = cols.reduce((s, c) => s + c.w, 0);
       let y = 165;
@@ -338,26 +311,10 @@ Deno.serve(async (req: Request) => {
         doc.link(M + numW, y, threadW, rowH, { url: t.thread_url });
         doc.setFont("helvetica", "normal"); x += threadW;
 
-        if (showBrandColumn) {
-          doc.setTextColor(30, 41, 59);
-          doc.text(BRAND_DISPLAY_NAMES[t.brand_id] ?? t.brand_id, x, y + rowPad + 8, { maxWidth: brandW - 6 });
-          x += brandW;
-        }
-
         doc.setTextColor(30, 41, 59);
         doc.text(t.subreddit, x, y + rowPad + 8, { maxWidth: subredditW - 6 }); x += subredditW;
         doc.text(`${t.upvotes} up`, x, y + rowPad + 8);
-        doc.text(`${t.num_comments} comments`, x, y + rowPad + 18); x += activityW;
-
-        const sentiment = t.sentiment ?? "Neutral";
-        doc.setTextColor(...(sentiment === "Positive" ? [21, 128, 61] : sentiment === "Negative" ? [185, 28, 28] : [90, 100, 110]) as [number, number, number]);
-        doc.text(sentiment, x, y + rowPad + 8); x += sentimentW;
-
-        const priority = t.opportunity ?? (t.cited_by_ai_count > 0 ? "HIGH" : "MED");
-        doc.setFont("helvetica", "bold");
-        doc.setTextColor(...(priority.startsWith("HIGH") ? [185, 28, 28] : [180, 83, 9]) as [number, number, number]);
-        doc.text(priority, x, y + rowPad + 8);
-        doc.setFont("helvetica", "normal");
+        doc.text(`${t.num_comments} comments`, x, y + rowPad + 18);
 
         y += rowH;
       });
