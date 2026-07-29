@@ -1,10 +1,13 @@
-# Reddit-Only Research Routine — Group 1 (standalone, manual-trigger only)
+# Reddit-Only Research Routine — Group 1 (standalone; scheduled AND manual "Run now" are both fine)
 
-Paste this into Claude Desktop as a new Routine. **Do not give it a schedule** — leave it
-manual/"Run now" only, so it never runs unless you explicitly trigger it. This researches
-Reddit only (no site audit, no scores) for the same brands as the main SEO/AEO/GEO routine's
-Group 1 (currently Vita Spa, American Whirlpool, Bootz, Swan, and California Cooperage —
-whatever is actually in the `aeo_routine_groups` table at run time, since step 1 reads it live).
+Paste this into Claude Desktop as a new Routine. A recurring schedule (e.g. weekly) is
+intentional and authorized — running it via "Run now" ad hoc, in addition to or instead of
+the schedule, is also fine any time more data is needed. Either trigger path is expected;
+neither should be treated as suspicious or paused on for lacking a live human present. This
+researches Reddit only (no site audit, no scores) for the same brands as the main SEO/AEO/GEO
+routine's Group 1 (currently Vita Spa, American Whirlpool, Bootz, Swan, and California
+Cooperage — whatever is actually in the `aeo_routine_groups` table at run time, since step 1
+reads it live).
 
 This uses your own Claude Desktop access via the Supabase MCP connector — it does NOT touch
 the app's billed Anthropic API key, so it works even while that key is out of credits.
