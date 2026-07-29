@@ -97,22 +97,31 @@ Using the Supabase MCP connector against project ref `ffxhonryhaadyudpopvv`:
      about the brand worth responding to), or "LOW" (general discussion, low relevance)
 
    For any thread scored `opportunity` = "HIGH" or "MED — amplify" or "MED — support" (i.e. every
-   opportunity level except "LOW"), also draft:
+   opportunity level except "LOW"), also draft, matching HubSpot's own AEO recommendation format:
    - `suggested_reply`: a genuinely helpful, non-promotional, Reddit-norms-appropriate reply (2-4
      sentences) that a real person from the brand could post — answer the actual question first,
      mention the brand naturally only where relevant, never sound like an ad. Skip this for "LOW"
      opportunity threads (not worth engaging).
-   - `keywords`: 3-6 short keyword/phrase strings this thread is relevant to (e.g. brand terms,
-     product category terms, buyer-intent phrases) — these describe what the thread is about, not
-     SEO keywords to stuff into the reply.
+   - `primary_keyword`: the single main search phrase this thread is most relevant to (e.g. "modern
+     whirlpool hot tub brands") — one phrase, not a list.
+   - `secondary_keywords`: 3-6 related phrases (brand terms, product category terms, buyer-intent
+     phrases) describing what the thread is about — not SEO keywords to stuff into the reply.
+   Set `suggested_reply`, `primary_keyword`, and `secondary_keywords` all to NULL for "LOW"
+   opportunity threads.
 
    Write each one via the Supabase MCP connector:
-   INSERT INTO reddit_threads (brand_id, week_of, thread_url, subreddit, title, upvotes, num_comments, brand_mentioned, sentiment, opportunity, suggested_reply, keywords)
-   VALUES ('{brand_id}', '{week_of}', '{thread_url}', '{subreddit}', '{title}', {upvotes}, {num_comments}, {brand_mentioned}, '{sentiment}', '{opportunity}', {suggested_reply_or_NULL}, {keywords_array_or_NULL})
+   INSERT INTO reddit_threads (brand_id, week_of, thread_url, subreddit, title, upvotes, num_comments, brand_mentioned, sentiment, opportunity, suggested_reply, primary_keyword, secondary_keywords, discovery_source)
+   VALUES ('{brand_id}', '{week_of}', '{thread_url}', '{subreddit}', '{title}', {upvotes}, {num_comments}, {brand_mentioned}, '{sentiment}', '{opportunity}', {suggested_reply_or_NULL}, {primary_keyword_or_NULL}, {secondary_keywords_array_or_NULL}, 'search')
    ON CONFLICT (brand_id, week_of, thread_url) DO NOTHING;
 
    If WebSearch finds nothing relevant for a brand, leave its reddit_threads empty for this week
    rather than inventing threads — the dashboard already handles an empty result gracefully.
+
+   Once threads are written, if this brand has a `redditLandingPageId` (check `src/lib/brands.ts`
+   in the repo, or ask the user), you can trigger the HubSpot publish step directly — it's a
+   separate Supabase Edge Function (`reddit-publish`) that only calls the HubSpot API, no
+   Anthropic/Claude involved, so it works even while API credits are out. That step is normally
+   run from the dashboard/agent side, not from within this routine.
 
 7. Move to the next brand. If a brand's site doesn't load or the domain looks wrong, skip it and
    report which ones you skipped at the end — don't guess a domain.
