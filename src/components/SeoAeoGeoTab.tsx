@@ -238,7 +238,10 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
     setScanningReddit(true);
     try {
       const { data: res, error } = await supabase.functions.invoke("aeo-scan", {
-        body: { brandId: brand.id, brandName: brand.name, siteUrl, scanType: "reddit" },
+        body: {
+          brandId: brand.id, brandName: brand.name, siteUrl, scanType: "reddit",
+          landingPageId: brand.redditLandingPageId,
+        },
       });
       if (error) throw error;
       if (res?.error) throw new Error(res.error);
@@ -514,7 +517,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
             </div>
             <div className="aeo-tscroll">
               <table>
-                <thead><tr><th>Topic</th><th>Source</th><th>Subreddit</th><th>Opportunity</th><th>Sentiment</th><th>Brand Mentioned</th><th style={{ textAlign: "right" }}>Engagement</th></tr></thead>
+                <thead><tr><th>Topic</th><th>Source</th><th>Primary Keyword</th><th>Secondary Keywords</th><th>Brand Mentioned</th><th style={{ textAlign: "right" }}>Added</th></tr></thead>
                 <tbody>
                   {(data?.redditThreads ?? []).slice(0, 20).map((t: any) => {
                     const isOpen = expandedThreadId === t.id;
@@ -531,29 +534,26 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
                               {t.discovery_source === "citation" ? "Cited by AI" : "Reddit search"}
                             </Pill>
                           </td>
-                          <td>{t.subreddit}</td>
-                          <td>{t.opportunity && <Pill tone={opportunityTone(t.opportunity)}>{t.opportunity}</Pill>}</td>
-                          <td>{t.sentiment && <Pill tone={sentimentTone(t.sentiment)}>{t.sentiment}</Pill>}</td>
+                          <td>{t.primary_keyword ?? "—"}</td>
+                          <td>
+                            {t.secondary_keywords?.length ? (
+                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                {t.secondary_keywords.map((k: string) => <span key={k} className="aeo-pill neutral">{k}</span>)}
+                              </div>
+                            ) : "—"}
+                          </td>
                           <td>{t.brand_mentioned ? <Pill tone="good">Yes</Pill> : "No"}</td>
-                          <td style={{ textAlign: "right" }}>{t.upvotes}↑ · {t.num_comments}💬</td>
+                          <td style={{ textAlign: "right" }}>{t.created_at ? new Date(t.created_at).toLocaleDateString() : "—"}</td>
                         </tr>
                         {isOpen && (
                           <tr key={`${t.id}-detail`}>
-                            <td colSpan={7} style={{ background: "var(--aeo-accent-soft)", padding: 16 }}>
+                            <td colSpan={6} style={{ background: "var(--aeo-accent-soft)", padding: 16 }}>
                               <div style={{ display: "flex", flexDirection: "column", gap: 12, fontSize: 13 }}>
                                 <div>
                                   <p style={{ fontWeight: 700, margin: "0 0 4px" }}>Suggested reply</p>
                                   <p style={{ margin: 0, color: t.suggested_reply ? "var(--aeo-ink)" : "var(--aeo-muted)" }}>
                                     {t.suggested_reply ?? "Not generated for this thread (only drafted for HIGH/MED-opportunity threads)."}
                                   </p>
-                                </div>
-                                <div>
-                                  <p style={{ fontWeight: 700, margin: "0 0 4px" }}>Keywords</p>
-                                  {t.keywords?.length ? (
-                                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                                      {t.keywords.map((k: string) => <span key={k} className="aeo-pill neutral">{k}</span>)}
-                                    </div>
-                                  ) : <p style={{ margin: 0, color: "var(--aeo-muted)" }}>None generated.</p>}
                                 </div>
                                 <div>
                                   <p style={{ fontWeight: 700, margin: "0 0 4px" }}>What's driving this recommendation</p>
@@ -582,16 +582,17 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
                       <td style={{ fontWeight: 600 }}>{r.title}</td>
                       <td><Pill tone="neutral">Recommended topic</Pill></td>
                       <td>—</td>
-                      <td><Pill tone={r.priority === "HIGH" ? "bad" : r.priority === "MED" ? "warn" : "neutral"}>{r.priority}</Pill></td>
                       <td>—</td>
                       <td>—</td>
                       <td style={{ textAlign: "right" }}>
+                        {r.created_at ? new Date(r.created_at).toLocaleDateString() : "—"}
+                        {" · "}
                         <a href={`https://www.reddit.com/search/?q=${encodeURIComponent(r.title)}`} target="_blank" rel="noreferrer">Search Reddit ↗</a>
                       </td>
                     </tr>
                   ))}
                   {!data?.redditThreads?.length && !(data?.recs ?? []).some((r: any) => r.rec_type === "Reddit engagement") && (
-                    <tr><td colSpan={7} style={{ textAlign: "center", color: "var(--aeo-muted)", padding: "16px 0" }}>No Reddit threads or topics captured yet.</td></tr>
+                    <tr><td colSpan={6} style={{ textAlign: "center", color: "var(--aeo-muted)", padding: "16px 0" }}>No Reddit threads or topics captured yet.</td></tr>
                   )}
                 </tbody>
               </table>

@@ -510,8 +510,9 @@ Reply ONLY with this exact JSON shape (every signal array item is one row — Si
 
       // "reddit" scans are awaited synchronously (see bottom of file) instead of
       // backgrounded via EdgeRuntime.waitUntil, so this must stay well under the
-      // platform's ~150s request-kill ceiling — trim Apify's wait window here.
-      const searchPosts = await searchRedditViaApify(brandName, category, scanType === "reddit" ? 100_000 : 240_000);
+      // platform's ~150s request-kill ceiling — trim Apify's wait window here,
+      // leaving room for the classify/recs Claude calls and an optional HubSpot publish.
+      const searchPosts = await searchRedditViaApify(brandName, category, scanType === "reddit" ? 70_000 : 240_000);
       const seenUrls = new Set(citationPosts.map(p => p.thread_url));
       const redditPosts = [
         ...citationPosts,
@@ -521,11 +522,11 @@ Reply ONLY with this exact JSON shape (every signal array item is one row — Si
       if (redditPosts.length) {
         const classifyText = await claude(
           anthropicKey,
-          `For each real Reddit thread below (title + URL, already verified — do not alter URLs), classify it for a brand's marketing team. Reply ONLY JSON array, SAME ORDER as input: [{"brand_mentioned":bool,"competitors_mentioned":["..."],"sentiment":"Positive|Neutral|Negative","opportunity":"HIGH|MED — amplify|MED — support|LOW","suggested_reply":"..."|null,"keywords":["...","..."]|null}]. brand_mentioned = does the title/context suggest "${brandName}" is discussed. opportunity = HIGH if it's a buying-advice thread where the brand should be recommended but isn't mentioned; MED — amplify if a positive brand mention; MED — support if a complaint/issue about the brand; LOW otherwise. For any thread NOT scored LOW, also draft suggested_reply: a genuinely helpful, non-promotional, Reddit-norms-appropriate reply (2-4 sentences) a real person from the brand could post — answer the actual question first, mention the brand naturally only where relevant, never sound like an ad; and keywords: 3-6 short phrases describing what the thread is about. For LOW-opportunity threads set both to null.`,
+          `For each real Reddit thread below (title + URL, already verified — do not alter URLs), classify it for a brand's marketing team, matching HubSpot's own AEO recommendation format. Reply ONLY JSON array, SAME ORDER as input: [{"brand_mentioned":bool,"competitors_mentioned":["..."],"sentiment":"Positive|Neutral|Negative","opportunity":"HIGH|MED — amplify|MED — support|LOW","suggested_reply":"..."|null,"primary_keyword":"..."|null,"secondary_keywords":["...","..."]|null}]. brand_mentioned = does the title/context suggest "${brandName}" is discussed. opportunity = HIGH if it's a buying-advice thread where the brand should be recommended but isn't mentioned; MED — amplify if a positive brand mention; MED — support if a complaint/issue about the brand; LOW otherwise. For any thread NOT scored LOW, also draft suggested_reply: a genuinely helpful, non-promotional, Reddit-norms-appropriate reply (2-4 sentences) a real person from the brand could post — answer the actual question first, mention the brand naturally only where relevant, never sound like an ad; primary_keyword: the single main search phrase this thread is most relevant to (e.g. "modern whirlpool hot tub brands"); secondary_keywords: 3-6 related phrases. For LOW-opportunity threads set suggested_reply, primary_keyword, and secondary_keywords all to null.`,
           `Brand: ${brandName}. Threads:\n${redditPosts.map((p, i) => `${i + 1}. [r/${p.subreddit}] "${p.title}"`).join("\n")}`,
         );
         apiCalls++;
-        let classifications: Array<{ brand_mentioned?: boolean; competitors_mentioned?: string[]; sentiment?: string; opportunity?: string; suggested_reply?: string | null; keywords?: string[] | null }> = [];
+        let classifications: Array<{ brand_mentioned?: boolean; competitors_mentioned?: string[]; sentiment?: string; opportunity?: string; suggested_reply?: string | null; primary_keyword?: string | null; secondary_keywords?: string[] | null }> = [];
         try { classifications = extractJson(classifyText); } catch { /* defaults below */ }
 
         for (let i = 0; i < redditPosts.length; i++) {
@@ -545,7 +546,8 @@ Reply ONLY with this exact JSON shape (every signal array item is one row — Si
             sentiment: ["Positive", "Neutral", "Negative"].includes(cl.sentiment ?? "") ? cl.sentiment : "Neutral",
             opportunity: ["HIGH", "MED — amplify", "MED — support", "LOW"].includes(cl.opportunity ?? "") ? cl.opportunity : null,
             suggested_reply: cl.suggested_reply ?? null,
-            keywords: cl.keywords ?? null,
+            primary_keyword: cl.primary_keyword ?? null,
+            secondary_keywords: cl.secondary_keywords ?? null,
           }, { onConflict: "brand_id,week_of,thread_url" });
         }
       }
@@ -593,19 +595,24 @@ Reply ONLY with this exact JSON shape (every signal array item is one row — Si
     } // end recommendations
 
     // 6. If this brand has a HubSpot landing page configured, publish the Reddit
-    // table + weekly PDF archive automatically — no separate manual step needed.
-    // Hard-timeout so a slow/hung publish call can never block the scan from
-    // reaching "completed" (this is what caused an earlier stuck run).
-    if (landingPageId && scanType === "full") {
+    // table (+ weekly PDF archive, full scans only) automatically — no separate
+    // manual step needed. Runs for standalone "reddit" scans too, but skips the
+    // PDF (slower) and uses a tighter timeout to stay inside the synchronous
+    // ~150s budget that scanType covers. Hard-timeout so a slow/hung publish
+    // call can never block the scan from reaching "completed" (this is what
+    // caused an earlier stuck run).
+    if (landingPageId && (scanType === "full" || scanType === "reddit")) {
       try {
         const ac = new AbortController();
-        const timer = setTimeout(() => ac.abort(), 60_000);
+        const publishTimeoutMs = scanType === "reddit" ? 30_000 : 60_000;
+        const timer = setTimeout(() => ac.abort(), publishTimeoutMs);
         await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/reddit-publish`, {
           method: "POST",
           headers: { "content-type": "application/json", authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}` },
           body: JSON.stringify({
             brandId, brandName, landingPageId, weekOf,
             introFind: "Territory Sales Manager", tableFind: "Gary Bruch",
+            uploadPdf: scanType === "full",
           }),
           signal: ac.signal,
         });
