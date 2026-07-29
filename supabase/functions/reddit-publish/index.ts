@@ -16,6 +16,20 @@ const corsHeaders = {
 
 const MARKER = "<!--REDDIT_TABLE-->";
 
+// Some landing pages are shared across multiple related brands (e.g. the hot-tub
+// brands all point stakeholders at one aggregated page) — when publishing to one
+// of these, pull threads from every brand_id in the group, not just the one passed
+// in the request, and label each row with its brand so it's still clear whose
+// thread is whose.
+const SHARED_LANDING_PAGES: Record<string, string[]> = {
+  "370024805096": ["vita-spa", "american-whirlpool", "california-cooperage"],
+};
+const BRAND_DISPLAY_NAMES: Record<string, string> = {
+  "vita-spa": "Vita Spa",
+  "american-whirlpool": "American Whirlpool",
+  "california-cooperage": "California Cooperage",
+};
+
 function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = 90_000): Promise<Response> {
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), timeoutMs);
@@ -37,7 +51,7 @@ interface PublishRequest {
 }
 
 interface Thread {
-  thread_url: string; subreddit: string; title: string; upvotes: number;
+  brand_id: string; thread_url: string; subreddit: string; title: string; upvotes: number;
   num_comments: number; sentiment: string | null; opportunity: string | null;
   brand_mentioned: boolean; cited_by_ai_count: number;
 }
@@ -56,15 +70,19 @@ function renderIntro(brandName: string, weekOf: string, count: number, feedbackC
 </div>`;
 }
 
-function renderTable(brandName: string, weekOf: string, threads: Thread[]): string {
+function renderTable(brandName: string, weekOf: string, threads: Thread[], showBrandColumn: boolean): string {
   const rows = threads.map((t, i) => {
     const sent = t.sentiment ?? "Neutral";
     const sentColor = sent === "Positive" ? "#15803d" : sent === "Negative" ? "#b91c1c" : "#5a646e";
     const pri = t.opportunity ?? (t.cited_by_ai_count > 0 ? "HIGH" : "MED");
     const priColor = pri.startsWith("HIGH") ? "#b91c1c" : "#b45309";
+    const brandCell = showBrandColumn
+      ? `<td style="padding:10px 12px;font-size:13px;color:#33475b">${esc(BRAND_DISPLAY_NAMES[t.brand_id] ?? t.brand_id)}</td>`
+      : "";
     return `<tr style="background:${i % 2 ? "#f6f8fa" : "#ffffff"}">
       <td style="padding:10px 12px;font-size:14px;color:#5a646e">${i + 1}</td>
       <td style="padding:10px 12px"><a href="${esc(t.thread_url)}" target="_blank" style="color:#0091ae;font-weight:600;font-size:14px;text-decoration:none">${esc(t.title)}</a></td>
+      ${brandCell}
       <td style="padding:10px 12px;font-size:13px;color:#33475b">${esc(t.subreddit)}</td>
       <td style="padding:10px 12px;font-size:13px;color:#33475b;white-space:nowrap">${t.upvotes} ▲ · ${t.num_comments} 💬</td>
       <td style="padding:10px 12px;font-size:13px;font-weight:600;color:${sentColor}">${esc(sent)}</td>
@@ -72,12 +90,15 @@ function renderTable(brandName: string, weekOf: string, threads: Thread[]): stri
     </tr>`;
   }).join("");
 
+  const brandHeader = showBrandColumn ? `<th style="padding:10px 12px;color:#fff;font-size:12px;text-align:left">Brand</th>` : "";
+
   return `${MARKER}
 <div style="font-family:'Lexend Deca',Helvetica,Arial,sans-serif;max-width:900px;margin:0 auto">
   <table style="border-collapse:collapse;width:100%;border:1px solid #e2e8f0">
     <thead><tr style="background:#0f2542">
       <th style="padding:10px 12px;color:#fff;font-size:12px;text-align:left">#</th>
       <th style="padding:10px 12px;color:#fff;font-size:12px;text-align:left">Thread</th>
+      ${brandHeader}
       <th style="padding:10px 12px;color:#fff;font-size:12px;text-align:left">Subreddit</th>
       <th style="padding:10px 12px;color:#fff;font-size:12px;text-align:left">Activity</th>
       <th style="padding:10px 12px;color:#fff;font-size:12px;text-align:left">Sentiment</th>
@@ -161,27 +182,32 @@ Deno.serve(async (req: Request) => {
   }
   const { brandId, brandName, landingPageId, weekOf, uploadPdf = true, introFind, tableFind, feedbackContact, brandLogoUrl }: PublishRequest = reqBody;
 
+  // This page shared across multiple brands? Aggregate all of their threads
+  // instead of just the one brand that triggered this call.
+  const brandIds = SHARED_LANDING_PAGES[landingPageId] ?? [brandId];
+  const showBrandColumn = brandIds.length > 1;
+
   // Latest week with data if not specified
   let week = weekOf;
   if (!week) {
     const { data } = await supabase.from("reddit_threads").select("week_of")
-      .eq("brand_id", brandId).order("week_of", { ascending: false }).limit(1);
+      .in("brand_id", brandIds).order("week_of", { ascending: false }).limit(1);
     week = data?.[0]?.week_of;
   }
   if (!week) {
     const { data: lastScans } = await supabase.from("aeo_scan_log")
       .select("status, error, api_calls_used, started_at, finished_at")
       .eq("brand_id", brandId).order("started_at", { ascending: false }).limit(3);
-    return json({ error: `No Reddit data for ${brandId} — run a scan first.`, lastScans }, 404);
+    return json({ error: `No Reddit data for ${brandIds.join(", ")} — run a scan first.`, lastScans }, 404);
   }
 
   const { data: threads, error: thErr } = await supabase.from("reddit_threads").select("*")
-    .eq("brand_id", brandId).eq("week_of", week)
-    .order("cited_by_ai_count", { ascending: false }).order("upvotes", { ascending: false }).limit(15);
+    .in("brand_id", brandIds).eq("week_of", week)
+    .order("cited_by_ai_count", { ascending: false }).order("upvotes", { ascending: false }).limit(showBrandColumn ? 30 : 15);
   if (thErr) return json({ error: thErr.message }, 500);
-  if (!threads?.length) return json({ error: `No threads for ${brandId} week ${week}` }, 404);
+  if (!threads?.length) return json({ error: `No threads for ${brandIds.join(", ")} week ${week}` }, 404);
 
-  const html = renderTable(brandName, week, threads as Thread[]);
+  const html = renderTable(brandName, week, threads as Thread[], showBrandColumn);
   const hs = (path: string, init: RequestInit = {}) =>
     fetch(`https://api.hubapi.com${path}`, {
       ...init,
@@ -266,14 +292,19 @@ Deno.serve(async (req: Request) => {
       doc.text("recommendation — a helpful dealer reply there reaches far beyond Reddit.", M, 148);
 
       // Manual table: fixed column layout, word-wrapped title/action cells, row height
-      // grows to fit the wrapped title. Colors match the approved sample design.
+      // grows to fit the wrapped title. Colors match the approved sample design. Widths
+      // are named (not indexed off `cols`) so an optional Brand column can be inserted
+      // without renumbering every reference below.
+      const numW = 18, threadW = showBrandColumn ? 150 : 190, brandW = 60,
+        subredditW = 60, activityW = 90, sentimentW = 60, priorityW = 55;
       const cols = [
-        { w: 18, label: "#" },
-        { w: 190, label: "Thread (click to open)" },
-        { w: 60, label: "Subreddit" },
-        { w: 90, label: "Activity" },
-        { w: 60, label: "Sentiment" },
-        { w: 55, label: "Priority" },
+        { w: numW, label: "#" },
+        { w: threadW, label: "Thread (click to open)" },
+        ...(showBrandColumn ? [{ w: brandW, label: "Brand" }] : []),
+        { w: subredditW, label: "Subreddit" },
+        { w: activityW, label: "Activity" },
+        { w: sentimentW, label: "Sentiment" },
+        { w: priorityW, label: "Priority" },
       ];
       const tableW = cols.reduce((s, c) => s + c.w, 0);
       let y = 165;
@@ -291,7 +322,7 @@ Deno.serve(async (req: Request) => {
 
       doc.setFont("helvetica", "normal");
       list.forEach((t, i) => {
-        const titleLines = doc.splitTextToSize(t.title, cols[1].w - 12);
+        const titleLines = doc.splitTextToSize(t.title, threadW - 12);
         const rowH = Math.max(28, titleLines.length * 10 + rowPad * 2);
 
         if (y + rowH > H - 60) { doc.addPage(); y = 40; drawHeader(); }
@@ -300,21 +331,27 @@ Deno.serve(async (req: Request) => {
 
         let x = M + 6;
         doc.setFontSize(8.5); doc.setTextColor(30, 41, 59);
-        doc.text(String(i + 1), x, y + rowPad + 8); x += cols[0].w;
+        doc.text(String(i + 1), x, y + rowPad + 8); x += numW;
 
         doc.setTextColor(0, 145, 174); doc.setFont("helvetica", "bold");
         doc.text(titleLines, x, y + rowPad + 8);
-        doc.link(M + cols[0].w, y, cols[1].w, rowH, { url: t.thread_url });
-        doc.setFont("helvetica", "normal"); x += cols[1].w;
+        doc.link(M + numW, y, threadW, rowH, { url: t.thread_url });
+        doc.setFont("helvetica", "normal"); x += threadW;
+
+        if (showBrandColumn) {
+          doc.setTextColor(30, 41, 59);
+          doc.text(BRAND_DISPLAY_NAMES[t.brand_id] ?? t.brand_id, x, y + rowPad + 8, { maxWidth: brandW - 6 });
+          x += brandW;
+        }
 
         doc.setTextColor(30, 41, 59);
-        doc.text(t.subreddit, x, y + rowPad + 8, { maxWidth: cols[2].w - 6 }); x += cols[2].w;
+        doc.text(t.subreddit, x, y + rowPad + 8, { maxWidth: subredditW - 6 }); x += subredditW;
         doc.text(`${t.upvotes} up`, x, y + rowPad + 8);
-        doc.text(`${t.num_comments} comments`, x, y + rowPad + 18); x += cols[3].w;
+        doc.text(`${t.num_comments} comments`, x, y + rowPad + 18); x += activityW;
 
         const sentiment = t.sentiment ?? "Neutral";
         doc.setTextColor(...(sentiment === "Positive" ? [21, 128, 61] : sentiment === "Negative" ? [185, 28, 28] : [90, 100, 110]) as [number, number, number]);
-        doc.text(sentiment, x, y + rowPad + 8); x += cols[4].w;
+        doc.text(sentiment, x, y + rowPad + 8); x += sentimentW;
 
         const priority = t.opportunity ?? (t.cited_by_ai_count > 0 ? "HIGH" : "MED");
         doc.setFont("helvetica", "bold");
@@ -351,7 +388,7 @@ Deno.serve(async (req: Request) => {
   }
 
   await supabase.from("reddit_threads").update({ included_in_dealer_email: true })
-    .eq("brand_id", brandId).eq("week_of", week);
+    .in("brand_id", brandIds).eq("week_of", week);
 
-  return json({ ok: true, week, threads: threads.length, pageUpdated: true, published, fileUrl, fileError });
+  return json({ ok: true, week, brandIds, threads: threads.length, pageUpdated: true, published, fileUrl, fileError });
 });

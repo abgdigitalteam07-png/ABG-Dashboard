@@ -23,7 +23,7 @@ export const brands: Brand[] = [
   { id: "aker", name: "Aker", logoUrl: clearbitLogo("akerbymaax.com"), gscSiteUrl: "http://www.akerbymaax.com/", hubspotBusinessUnitId: "1982881", hasGA4: false, hasGSC: true, hasHubSpot: true },
   { id: "amazing-shower-door", name: "Amazing Shower Door", logoUrl: clearbitLogo("amazingshowerdoor.com"), ga4PropertyIds: ["392147256"], hasGA4: true, hasGSC: false, hasHubSpot: false },
   { id: "american-bath-group", name: "American Bath Group", logoUrl: clearbitLogo("americanbathgroup.com"), gscSiteUrl: "https://americanbathgroup.com/", hubspotBusinessUnitId: "0", hasGA4: false, hasGSC: true, hasHubSpot: true },
-  { id: "american-whirlpool", name: "American Whirlpool", logoUrl: clearbitLogo("americanwhirlpool.com"), ga4PropertyIds: ["391075012"], gscSiteUrl: "https://americanwhirlpool.com/", hubspotAccount: "secondary", hasGA4: true, hasGSC: true, hasHubSpot: true },
+  { id: "american-whirlpool", name: "American Whirlpool", logoUrl: clearbitLogo("americanwhirlpool.com"), ga4PropertyIds: ["391075012"], gscSiteUrl: "https://americanwhirlpool.com/", hubspotAccount: "secondary", redditLandingPageId: "370024805096", hasGA4: true, hasGSC: true, hasHubSpot: true },
   { id: "aquarius", name: "Aquarius", logoUrl: clearbitLogo("aquariusproducts.com"), ga4PropertyIds: ["368656609"], gscSiteUrl: "https://aquariusproducts.com/", hubspotBusinessUnitId: "1982883", hasGA4: true, hasGSC: true, hasHubSpot: true },
   { id: "aquatic", name: "Aquatic", logoUrl: clearbitLogo("aquaticbath.com"), ga4PropertyIds: ["385631854"], gscSiteUrl: "https://aquaticbath.com/", hubspotBusinessUnitId: "1982884", hasGA4: true, hasGSC: true, hasHubSpot: true },
   { id: "bootz", name: "Bootz", logoUrl: clearbitLogo("bootz.com"), ga4PropertyIds: ["353109505"], gscSiteUrl: "https://bootz.com/", hubspotBusinessUnitId: "1982886", hasGA4: true, hasGSC: true, hasHubSpot: true },
@@ -45,5 +45,5 @@ export const brands: Brand[] = [
   { id: "vita-spa", name: "Vita Spa", logoUrl: clearbitLogo("vitaspa.com"), ga4PropertyIds: ["360436693"], gscSiteUrl: "https://vitaspa.com/", hubspotAccount: "secondary", redditLandingPageId: "370024805096", hasGA4: true, hasGSC: true, hasHubSpot: true },
   { id: "maax-sauna", name: "MAAX Sauna", logoUrl: clearbitLogo("maaxsaunas.com"), gscSiteUrl: "https://www.maaxsaunas.com/", hubspotAccount: "secondary", hasGA4: false, hasGSC: false, hasHubSpot: true },
   // New brand — hubspotBusinessUnitId still needed before its HubSpot CRM/Emails tabs will pull real data.
-  { id: "california-cooperage", name: "California Cooperage", logoUrl: clearbitLogo("californiacooperagehottubs.com"), gscSiteUrl: "https://californiacooperagehottubs.com/", hubspotAccount: "secondary", hasGA4: false, hasGSC: false, hasHubSpot: true },
+  { id: "california-cooperage", name: "California Cooperage", logoUrl: clearbitLogo("californiacooperagehottubs.com"), gscSiteUrl: "https://californiacooperagehottubs.com/", hubspotAccount: "secondary", redditLandingPageId: "370024805096", hasGA4: false, hasGSC: false, hasHubSpot: true },
 ];
