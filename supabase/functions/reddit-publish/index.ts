@@ -49,6 +49,7 @@ interface Thread {
   num_comments: number; sentiment: string | null; opportunity: string | null;
   brand_mentioned: boolean; cited_by_ai_count: number;
   primary_keyword: string | null; secondary_keywords: string[] | null;
+  topic_summary: string | null; most_related_brand: string | null;
 }
 
 function esc(s: string): string {
@@ -67,16 +68,13 @@ function renderIntro(brandName: string, weekOf: string, count: number, feedbackC
 
 function renderTable(brandName: string, weekOf: string, threads: Thread[]): string {
   const rows = threads.map((t, i) => {
-    const secondary = t.secondary_keywords?.length
-      ? esc(t.secondary_keywords.join(", "))
-      : "—";
     return `<tr style="background:${i % 2 ? "#f6f8fa" : "#ffffff"}">
       <td style="padding:10px 12px;font-size:14px;color:#5a646e">${i + 1}</td>
       <td style="padding:10px 12px"><a href="${esc(t.thread_url)}" target="_blank" style="color:#0091ae;font-weight:600;font-size:14px;text-decoration:none">${esc(t.title)}</a></td>
       <td style="padding:10px 12px;font-size:13px;color:#33475b">${esc(t.subreddit)}</td>
       <td style="padding:10px 12px;font-size:13px;color:#33475b;white-space:nowrap">${t.upvotes} ▲ · ${t.num_comments} 💬</td>
-      <td style="padding:10px 12px;font-size:13px;color:#33475b">${t.primary_keyword ? esc(t.primary_keyword) : "—"}</td>
-      <td style="padding:10px 12px;font-size:13px;color:#33475b">${secondary}</td>
+      <td style="padding:10px 12px;font-size:13px;color:#33475b">${t.topic_summary ? esc(t.topic_summary) : "—"}</td>
+      <td style="padding:10px 12px;font-size:13px;color:#33475b">${t.most_related_brand ? esc(t.most_related_brand) : "—"}</td>
     </tr>`;
   }).join("");
 
@@ -88,8 +86,8 @@ function renderTable(brandName: string, weekOf: string, threads: Thread[]): stri
       <th style="padding:10px 12px;color:#fff;font-size:12px;text-align:left">Thread</th>
       <th style="padding:10px 12px;color:#fff;font-size:12px;text-align:left">Subreddit</th>
       <th style="padding:10px 12px;color:#fff;font-size:12px;text-align:left">Activity</th>
-      <th style="padding:10px 12px;color:#fff;font-size:12px;text-align:left">Primary Keyword</th>
-      <th style="padding:10px 12px;color:#fff;font-size:12px;text-align:left">Secondary Keywords</th>
+      <th style="padding:10px 12px;color:#fff;font-size:12px;text-align:left">Summary</th>
+      <th style="padding:10px 12px;color:#fff;font-size:12px;text-align:left">Most Related Brand</th>
     </tr></thead>
     <tbody>${rows}</tbody>
   </table>
@@ -292,14 +290,14 @@ Deno.serve(async (req: Request) => {
 
       // Manual table: fixed column layout, word-wrapped title/action cells, row height
       // grows to fit the wrapped title. Colors match the approved sample design.
-      const numW = 16, threadW = 170, subredditW = 65, activityW = 80, primaryW = 85, secondaryW = 90;
+      const numW = 16, threadW = 170, subredditW = 65, activityW = 80, summaryW = 110, brandW = 65;
       const cols = [
         { w: numW, label: "#" },
         { w: threadW, label: "Thread (click to open)" },
         { w: subredditW, label: "Subreddit" },
         { w: activityW, label: "Activity" },
-        { w: primaryW, label: "Primary Keyword" },
-        { w: secondaryW, label: "Secondary Keywords" },
+        { w: summaryW, label: "Summary" },
+        { w: brandW, label: "Most Related Brand" },
       ];
       const tableW = cols.reduce((s, c) => s + c.w, 0);
       let y = 165;
@@ -318,9 +316,8 @@ Deno.serve(async (req: Request) => {
       doc.setFont("helvetica", "normal");
       list.forEach((t, i) => {
         const titleLines = doc.splitTextToSize(t.title, threadW - 12);
-        const secondaryText = t.secondary_keywords?.length ? t.secondary_keywords.join(", ") : "—";
-        const secondaryLines = doc.splitTextToSize(secondaryText, secondaryW - 6);
-        const rowH = Math.max(28, titleLines.length * 10 + rowPad * 2, secondaryLines.length * 9 + rowPad * 2);
+        const summaryLines = doc.splitTextToSize(t.topic_summary ?? "—", summaryW - 6);
+        const rowH = Math.max(28, titleLines.length * 10 + rowPad * 2, summaryLines.length * 9 + rowPad * 2);
 
         if (y + rowH > H - 60) { doc.addPage(); y = 40; drawHeader(); }
 
@@ -340,8 +337,8 @@ Deno.serve(async (req: Request) => {
         doc.text(`${t.upvotes} up`, x, y + rowPad + 8);
         doc.text(`${t.num_comments} comments`, x, y + rowPad + 18); x += activityW;
 
-        doc.text(t.primary_keyword ?? "—", x, y + rowPad + 8, { maxWidth: primaryW - 6 }); x += primaryW;
-        doc.text(secondaryLines, x, y + rowPad + 8);
+        doc.text(summaryLines, x, y + rowPad + 8); x += summaryW;
+        doc.text(t.most_related_brand ?? "—", x, y + rowPad + 8, { maxWidth: brandW - 6 });
 
         y += rowH;
       });
