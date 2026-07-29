@@ -30,15 +30,27 @@ connector's `call-actor` / `get-actor-run` / `get-actor-output` tools:
    Also compute `{week_of}` = the Monday of the current week, `YYYY-MM-DD`, used for every
    brand below.
 
-2. For EACH brand in that array, infer its product category from the site (e.g. hot tubs,
-   bathtubs, shower doors), then call the Apify actor `trudax/reddit-scraper-lite` with input:
+2. Group brands by product category BEFORE searching — brands in the same category (e.g. Vita
+   Spa, American Whirlpool, and California Cooperage are all "hot tubs") should search Reddit
+   TOGETHER, once, rather than one search per brand name. This matters:
+   - A brand-name-scoped search (`"Vita Spa hot tubs"`) biases results toward threads that
+     already mention that one brand, and misses the single most valuable category: general
+     buying-advice threads where NONE of our brands are mentioned yet (pure opportunity —
+     nobody's recommending us there).
+   - A category-level search (`"hot tubs"`, `"best hot tub brands"`, `"hot tub buying advice"`)
+     surfaces the real, unbiased mix: threads naming any of our brands, threads naming
+     competitors, and threads naming nobody — then the SAME real thread list gets classified
+     once per brand in that category group (see step 3), so every brand's row is judged fairly
+     against the identical evidence.
+
+   For each category group, call the Apify actor `trudax/reddit-scraper-lite` ONCE with input:
    ```json
    {
-     "searches": ["{brand_name} {product_category}"],
+     "searches": ["{product_category}", "best {product_category} brands", "{product_category} buying advice"],
      "type": "posts",
      "sort": "relevance",
-     "maxItems": 12,
-     "maxPostCount": 12,
+     "maxItems": 15,
+     "maxPostCount": 15,
      "maxComments": 0
    }
    ```
@@ -50,17 +62,27 @@ connector's `call-actor` / `get-actor-run` / `get-actor-output` tools:
    - `upvotes`/`num_comments` if the actor exposes them for that field name, else 0 (never
      guess a number)
 
-   If the actor run `FAILED`/`TIMED-OUT`/`ABORTED`, or returns zero items, leave that brand's
-   `reddit_threads` empty for this week rather than inventing threads — do not fall back to
-   WebSearch or fabricate results to compensate.
+   If the actor run `FAILED`/`TIMED-OUT`/`ABORTED`, or returns zero items, leave every brand in
+   that category group's `reddit_threads` empty for this week rather than inventing threads —
+   do not fall back to WebSearch or fabricate results to compensate.
 
-3. For each real thread returned, judge and record:
-   - `brand_mentioned` (true if the brand name appears in the title)
-   - `sentiment`: "Positive"|"Neutral"|"Negative" — how the brand (or category, if unmentioned)
-     is discussed
+3. For EACH brand in the category group, classify the SAME real thread list against that
+   specific brand — this produces one row per (brand, thread) pair, so the same thread can
+   appear under Vita Spa with `brand_mentioned: true` and under American Whirlpool with
+   `brand_mentioned: false` if only Vita Spa is actually named in it. For each thread, judge:
+   - `brand_mentioned` — **true only if this specific brand's name literally appears** in the
+     title/body; **false if it doesn't**, even if a competitor or a different one of our own
+     brands is named instead. This is the single field your team should scan first: "Yes" means
+     defend/amplify an existing mention; "No" means a live opportunity to introduce the brand
+     where nobody has yet.
+   - `competitors_mentioned` — array of any OTHER brand names (ours or competitors') that do
+     appear, so it's clear who's already in the conversation if this brand isn't.
+   - `sentiment`: "Positive"|"Neutral"|"Negative" — how this brand (or the category, if
+     unmentioned) is discussed
    - `opportunity`: "HIGH" (buying-advice thread where this brand should be recommended but
-     isn't), "MED — amplify" (positive brand mention worth boosting), "MED — support"
-     (complaint/issue about the brand worth responding to), or "LOW" (general discussion, low
+     isn't — `brand_mentioned: false`), "MED — amplify" (positive mention of this brand worth
+     boosting — `brand_mentioned: true`), "MED — support" (complaint/issue about this brand
+     worth responding to — `brand_mentioned: true`), or "LOW" (general discussion, low
      relevance)
 
 4. For any thread scored `opportunity` = "HIGH" or "MED — amplify" or "MED — support" (i.e.
