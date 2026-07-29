@@ -86,9 +86,18 @@ connector's `call-actor` / `get-actor-run` / `get-actor-output` tools:
    - `upvotes`/`num_comments` (from `includeMediaLinks: true` in Pass B; else 0 — never guess a
      number)
 
-   If both passes `FAILED`/`TIMED-OUT`/`ABORTED`, or return zero items combined, leave every
-   brand in that category group's `reddit_threads` empty for this week rather than inventing
-   threads — do not fall back to WebSearch or fabricate results to compensate.
+   **Rate-limit resilience:** Reddit occasionally rate-limits this actor mid-crawl (status
+   message like "Experiencing problems, N failed requests") — a single subreddit stalling
+   doesn't mean the crawl failed, it means Reddit is throttling that request. If a run is stuck
+   at the same page count with no progress for ~2 minutes, abort it (`abort-actor-run`,
+   `gracefully: true`) and use whatever items it already collected rather than waiting
+   indefinitely or treating it as a hard failure — a partial real result is still real data.
+   If it retried and still got zero items after aborting, only THEN treat that one subreddit as
+   failed for this run (other subreddits/passes in the same category group still count).
+
+   If both passes `FAILED`/`TIMED-OUT`/`ABORTED` with zero items collected, leave every brand in
+   that category group's `reddit_threads` empty for this week rather than inventing threads —
+   do not fall back to WebSearch or fabricate results to compensate.
 
 3. For EACH brand in the category group, classify the SAME real thread list against that
    specific brand — this produces one row per (brand, thread) pair, so the same thread can
