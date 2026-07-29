@@ -48,6 +48,7 @@ interface Thread {
   brand_id: string; thread_url: string; subreddit: string; title: string; upvotes: number;
   num_comments: number; sentiment: string | null; opportunity: string | null;
   brand_mentioned: boolean; cited_by_ai_count: number;
+  primary_keyword: string | null; secondary_keywords: string[] | null;
 }
 
 function esc(s: string): string {
@@ -66,22 +67,29 @@ function renderIntro(brandName: string, weekOf: string, count: number, feedbackC
 
 function renderTable(brandName: string, weekOf: string, threads: Thread[]): string {
   const rows = threads.map((t, i) => {
+    const secondary = t.secondary_keywords?.length
+      ? esc(t.secondary_keywords.join(", "))
+      : "—";
     return `<tr style="background:${i % 2 ? "#f6f8fa" : "#ffffff"}">
       <td style="padding:10px 12px;font-size:14px;color:#5a646e">${i + 1}</td>
       <td style="padding:10px 12px"><a href="${esc(t.thread_url)}" target="_blank" style="color:#0091ae;font-weight:600;font-size:14px;text-decoration:none">${esc(t.title)}</a></td>
       <td style="padding:10px 12px;font-size:13px;color:#33475b">${esc(t.subreddit)}</td>
       <td style="padding:10px 12px;font-size:13px;color:#33475b;white-space:nowrap">${t.upvotes} ▲ · ${t.num_comments} 💬</td>
+      <td style="padding:10px 12px;font-size:13px;color:#33475b">${t.primary_keyword ? esc(t.primary_keyword) : "—"}</td>
+      <td style="padding:10px 12px;font-size:13px;color:#33475b">${secondary}</td>
     </tr>`;
   }).join("");
 
   return `${MARKER}
-<div style="font-family:'Lexend Deca',Helvetica,Arial,sans-serif;max-width:900px;margin:0 auto">
+<div style="font-family:'Lexend Deca',Helvetica,Arial,sans-serif;max-width:1100px;margin:0 auto">
   <table style="border-collapse:collapse;width:100%;border:1px solid #e2e8f0">
     <thead><tr style="background:#0f2542">
       <th style="padding:10px 12px;color:#fff;font-size:12px;text-align:left">#</th>
       <th style="padding:10px 12px;color:#fff;font-size:12px;text-align:left">Thread</th>
       <th style="padding:10px 12px;color:#fff;font-size:12px;text-align:left">Subreddit</th>
       <th style="padding:10px 12px;color:#fff;font-size:12px;text-align:left">Activity</th>
+      <th style="padding:10px 12px;color:#fff;font-size:12px;text-align:left">Primary Keyword</th>
+      <th style="padding:10px 12px;color:#fff;font-size:12px;text-align:left">Secondary Keywords</th>
     </tr></thead>
     <tbody>${rows}</tbody>
   </table>
@@ -272,12 +280,14 @@ Deno.serve(async (req: Request) => {
 
       // Manual table: fixed column layout, word-wrapped title/action cells, row height
       // grows to fit the wrapped title. Colors match the approved sample design.
-      const numW = 18, threadW = 260, subredditW = 90, activityW = 110;
+      const numW = 16, threadW = 170, subredditW = 65, activityW = 80, primaryW = 85, secondaryW = 90;
       const cols = [
         { w: numW, label: "#" },
         { w: threadW, label: "Thread (click to open)" },
         { w: subredditW, label: "Subreddit" },
         { w: activityW, label: "Activity" },
+        { w: primaryW, label: "Primary Keyword" },
+        { w: secondaryW, label: "Secondary Keywords" },
       ];
       const tableW = cols.reduce((s, c) => s + c.w, 0);
       let y = 165;
@@ -286,7 +296,7 @@ Deno.serve(async (req: Request) => {
       const drawHeader = () => {
         doc.setFillColor(15, 37, 66);
         doc.rect(M, y, tableW, 22, "F");
-        doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(8);
+        doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(7);
         let x = M + 6;
         for (const c of cols) { doc.text(c.label, x, y + 14); x += c.w; }
         y += 22;
@@ -296,14 +306,16 @@ Deno.serve(async (req: Request) => {
       doc.setFont("helvetica", "normal");
       list.forEach((t, i) => {
         const titleLines = doc.splitTextToSize(t.title, threadW - 12);
-        const rowH = Math.max(28, titleLines.length * 10 + rowPad * 2);
+        const secondaryText = t.secondary_keywords?.length ? t.secondary_keywords.join(", ") : "—";
+        const secondaryLines = doc.splitTextToSize(secondaryText, secondaryW - 6);
+        const rowH = Math.max(28, titleLines.length * 10 + rowPad * 2, secondaryLines.length * 9 + rowPad * 2);
 
         if (y + rowH > H - 60) { doc.addPage(); y = 40; drawHeader(); }
 
         if (i % 2 === 1) { doc.setFillColor(246, 248, 250); doc.rect(M, y, tableW, rowH, "F"); }
 
         let x = M + 6;
-        doc.setFontSize(8.5); doc.setTextColor(30, 41, 59);
+        doc.setFontSize(8); doc.setTextColor(30, 41, 59);
         doc.text(String(i + 1), x, y + rowPad + 8); x += numW;
 
         doc.setTextColor(0, 145, 174); doc.setFont("helvetica", "bold");
@@ -314,7 +326,10 @@ Deno.serve(async (req: Request) => {
         doc.setTextColor(30, 41, 59);
         doc.text(t.subreddit, x, y + rowPad + 8, { maxWidth: subredditW - 6 }); x += subredditW;
         doc.text(`${t.upvotes} up`, x, y + rowPad + 8);
-        doc.text(`${t.num_comments} comments`, x, y + rowPad + 18);
+        doc.text(`${t.num_comments} comments`, x, y + rowPad + 18); x += activityW;
+
+        doc.text(t.primary_keyword ?? "—", x, y + rowPad + 8, { maxWidth: primaryW - 6 }); x += primaryW;
+        doc.text(secondaryLines, x, y + rowPad + 8);
 
         y += rowH;
       });
