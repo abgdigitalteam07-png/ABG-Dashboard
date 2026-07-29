@@ -2,7 +2,9 @@
 
 Paste this into Claude Desktop as a new Routine. **Do not give it a schedule** — leave it
 manual/"Run now" only, so it never runs unless you explicitly trigger it. This researches
-Reddit only (no site audit, no scores) for the same 4 brands as the main SEO/AEO/GEO routine.
+Reddit only (no site audit, no scores) for the same brands as the main SEO/AEO/GEO routine's
+Group 1 (currently Vita Spa, American Whirlpool, Bootz, Swan, and California Cooperage —
+whatever is actually in the `aeo_routine_groups` table at run time, since step 1 reads it live).
 
 This uses your own Claude Desktop access via the Supabase MCP connector — it does NOT touch
 the app's billed Anthropic API key, so it works even while that key is out of credits.
@@ -12,8 +14,8 @@ the app's billed Anthropic API key, so it works even while that key is out of cr
 Using the Supabase MCP connector against project ref `ffxhonryhaadyudpopvv`:
 
 1. Run: `SELECT brands FROM aeo_routine_groups WHERE group_name = 'group_1';`
-   Use the `brands` array (each item has `id`, `name`, `site_url`) as your worklist — same 4
-   brands (Vita Spa, American Whirlpool, Bootz, Swan) as the full SEO/AEO/GEO routine.
+   Use the `brands` array (each item has `id`, `name`, `site_url`) as your worklist — the same
+   brands the full SEO/AEO/GEO routine uses for Group 1.
 
    Also compute `{week_of}` = the Monday of the current week, `YYYY-MM-DD`, used for every
    brand below.

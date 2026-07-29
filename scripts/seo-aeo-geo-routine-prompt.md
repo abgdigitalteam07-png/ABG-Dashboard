@@ -144,4 +144,4 @@ Then create a second Claude Desktop Routine with this same prompt, just changing
 Brands not yet assigned to any group: abg-home-services, abg-hospitality, accessible-home-store,
 aker, amazing-shower-door, american-bath-group, aquarius, aquatic, briggs-bath, clarion,
 coastal-shower-doors, comfort-designs, dreamline, florestone, hamilton, imi, laurel-mountain,
-maax, maidstone, neptune, rbs, vintage-ca, maax-sauna, california-cooperage.
+maax, maidstone, neptune, rbs, vintage-ca, maax-sauna.
