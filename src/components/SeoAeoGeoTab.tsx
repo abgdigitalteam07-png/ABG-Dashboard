@@ -501,7 +501,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
             <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
               <div style={{ flex: 1 }}>
                 <h2>Reddit Threads</h2>
-                <p className="aeo-sub">Real threads and recommended topics for engaging with this brand's category on Reddit — one of the highest-leverage ways to improve AEO/GEO visibility, since AI answer engines increasingly cite Reddit directly. Rows with a live thread link to the real discussion; topic ideas not yet matched to a specific thread link to a live Reddit search instead of a fabricated URL.</p>
+                <p className="aeo-sub">Real threads and recommended topics for engaging with this brand's category on Reddit — one of the highest-leverage ways to improve AEO/GEO visibility, since AI answer engines increasingly cite Reddit directly. "Cited by AI" threads were actually cited by an AI engine while answering a tracked prompt (the strongest AEO signal, matching how HubSpot surfaces Reddit); "Reddit search" threads were found via keyword search and haven't been proven cited yet. Topic ideas not yet matched to a specific thread link to a live Reddit search instead of a fabricated URL.</p>
               </div>
               <button
                 onClick={handleScanReddit}
@@ -526,7 +526,11 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
                             <span style={{ color: "var(--aeo-accent)" }}>{isOpen ? "▾" : "▸"} </span>
                             {t.title}
                           </td>
-                          <td><Pill tone="good">Live thread</Pill></td>
+                          <td>
+                            <Pill tone={t.discovery_source === "citation" ? "high" : "good"}>
+                              {t.discovery_source === "citation" ? "Cited by AI" : "Reddit search"}
+                            </Pill>
+                          </td>
                           <td>{t.subreddit}</td>
                           <td>{t.opportunity && <Pill tone={opportunityTone(t.opportunity)}>{t.opportunity}</Pill>}</td>
                           <td>{t.sentiment && <Pill tone={sentimentTone(t.sentiment)}>{t.sentiment}</Pill>}</td>

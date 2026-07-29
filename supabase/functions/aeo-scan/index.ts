@@ -388,6 +388,9 @@ Reply ONLY with this exact JSON shape (every signal array item is one row — Si
     // 3-5 (prompts, Reddit, recommendations) are skipped for a "quick" scan —
     // it's the site audit only, so it finishes in a fraction of the time.
     let category: string | undefined;
+    // Real Reddit citations surfaced while answering tracked prompts (populated only
+    // for "full" scans, below) — used by step 4 to discover threads the HubSpot way.
+    const redditCitations = new Map<string, { title: string; brandMentioned: boolean }>();
     if (scanType === "reddit") {
       // Standalone Reddit refresh: reuse whatever category this brand's tracked
       // prompts already settled on (if any) instead of running the full prompts
@@ -433,31 +436,39 @@ Reply ONLY with this exact JSON shape (every signal array item is one row — Si
     const domainFreq = new Map<string, { freq: number; brandMentioned: boolean }>();
     // All prompts run concurrently — the scan runs in the background, but faster is better.
     const results = await Promise.all((prompts ?? []).map(async (p) => {
-      const answerRaw = await claude(
+      const { text: answerRaw, citations } = await claudeWithCitations(
         anthropicKey,
-        `Answer the user's question using web search, as a consumer AI assistant would. Then append a JSON block: {"brand_mentioned": bool (is "${brandName}" in your answer), "competitors_mentioned": string[], "cited_urls": [{"url": "...", "domain": "..."}]}`,
+        `Answer the user's question using web search, as a consumer AI assistant would. Then append a JSON block: {"brand_mentioned": bool (is "${brandName}" in your answer), "competitors_mentioned": string[]}`,
         p.prompt,
-        true,
+        3,
       );
       apiCalls++;
-      let meta = { brand_mentioned: false, competitors_mentioned: [] as string[], cited_urls: [] as { url: string; domain: string }[] };
+      let meta = { brand_mentioned: false, competitors_mentioned: [] as string[] };
       try { meta = { ...meta, ...extractJson(answerRaw) }; } catch { /* keep defaults */ }
+      const cited_urls = citations.flatMap(c => {
+        try { return [{ url: c.url, domain: new URL(c.url).hostname.replace(/^www\./, "") }]; }
+        catch { return []; } // malformed URL from a search result — skip rather than crash the scan
+      });
       await supabase.from("aeo_prompt_results").upsert({
         prompt_id: p.id, brand_id: brandId, week_of: weekOf, engine: "claude",
         answer_text: answerRaw.slice(0, 8000),
         brand_mentioned: meta.brand_mentioned,
         competitors_mentioned: meta.competitors_mentioned,
-        cited_urls: meta.cited_urls,
+        cited_urls,
       }, { onConflict: "prompt_id,week_of,engine" });
-      return meta;
+      return { ...meta, cited_urls, citations };
     }));
-    for (const meta of results) {
-      if (meta.brand_mentioned) mentions++;
-      for (const c of meta.cited_urls) {
+    for (const r of results) {
+      if (r.brand_mentioned) mentions++;
+      for (const c of r.cited_urls) {
         const e = domainFreq.get(c.domain) ?? { freq: 0, brandMentioned: false };
         e.freq++;
-        e.brandMentioned ||= meta.brand_mentioned;
+        e.brandMentioned ||= r.brand_mentioned;
         domainFreq.set(c.domain, e);
+      }
+      for (const c of r.citations) {
+        if (!c.url.includes("reddit.com") || redditCitations.has(c.url)) continue;
+        redditCitations.set(c.url, { title: c.title || c.url, brandMentioned: r.brand_mentioned });
       }
     }
 
@@ -484,10 +495,29 @@ Reply ONLY with this exact JSON shape (every signal array item is one row — Si
     // "full" and standalone "reddit" scans.
     if (scanType === "full" || scanType === "reddit") {
     try {
+      // Citation-discovered threads first — this is the HubSpot-equivalent signal:
+      // a real AI answer engine actually cited this Reddit thread while answering a
+      // tracked prompt, proving AEO relevance (not just keyword overlap).
+      const citationPosts: (RedditPost & { discoverySource: "citation" | "search" })[] = [];
+      for (const [url, c] of redditCitations) {
+        const subMatch = url.match(/reddit\.com\/r\/([^/]+)/i);
+        citationPosts.push({
+          thread_url: url, subreddit: subMatch ? `r/${subMatch[1]}` : "r/unknown",
+          title: c.title, upvotes: 0, num_comments: 0, posted_at: null,
+          discoverySource: "citation",
+        });
+      }
+
       // "reddit" scans are awaited synchronously (see bottom of file) instead of
       // backgrounded via EdgeRuntime.waitUntil, so this must stay well under the
       // platform's ~150s request-kill ceiling — trim Apify's wait window here.
-      const redditPosts = await searchRedditViaApify(brandName, category, scanType === "reddit" ? 100_000 : 240_000);
+      const searchPosts = await searchRedditViaApify(brandName, category, scanType === "reddit" ? 100_000 : 240_000);
+      const seenUrls = new Set(citationPosts.map(p => p.thread_url));
+      const redditPosts = [
+        ...citationPosts,
+        ...searchPosts.filter(p => !seenUrls.has(p.thread_url)).map(p => ({ ...p, discoverySource: "search" as const })),
+      ];
+
       if (redditPosts.length) {
         const classifyText = await claude(
           anthropicKey,
@@ -509,6 +539,7 @@ Reply ONLY with this exact JSON shape (every signal array item is one row — Si
             upvotes: p.upvotes,
             num_comments: p.num_comments,
             posted_at: p.posted_at,
+            discovery_source: p.discoverySource,
             brand_mentioned: cl.brand_mentioned ?? false,
             competitors_mentioned: cl.competitors_mentioned ?? [],
             sentiment: ["Positive", "Neutral", "Negative"].includes(cl.sentiment ?? "") ? cl.sentiment : "Neutral",
