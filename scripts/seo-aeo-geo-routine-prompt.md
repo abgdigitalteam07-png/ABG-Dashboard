@@ -96,18 +96,23 @@ Using the Supabase MCP connector against project ref `ffxhonryhaadyudpopvv`:
      "MED — amplify" (positive brand mention worth boosting), "MED — support" (complaint/issue
      about the brand worth responding to), or "LOW" (general discussion, low relevance)
 
-   For any thread scored `opportunity` = "HIGH" or "MED — amplify" or "MED — support" (i.e. every
-   opportunity level except "LOW"), also draft, matching HubSpot's own AEO recommendation format:
-   - `suggested_reply`: a genuinely helpful, non-promotional, Reddit-norms-appropriate reply (2-4
-     sentences) that a real person from the brand could post — answer the actual question first,
-     mention the brand naturally only where relevant, never sound like an ad. Skip this for "LOW"
-     opportunity threads (not worth engaging).
+   For EVERY thread, regardless of opportunity level, draft `primary_keyword` and
+   `secondary_keywords` — these describe the topic itself, so even a "LOW" thread is still a
+   useful topic/content signal, not just the high-value engagement targets:
    - `primary_keyword`: the single main search phrase this thread is most relevant to (e.g. "modern
      whirlpool hot tub brands") — one phrase, not a list.
    - `secondary_keywords`: 3-6 related phrases (brand terms, product category terms, buyer-intent
      phrases) describing what the thread is about — not SEO keywords to stuff into the reply.
-   Set `suggested_reply`, `primary_keyword`, and `secondary_keywords` all to NULL for "LOW"
-   opportunity threads.
+
+   Additionally, for any thread scored `opportunity` = "HIGH" or "MED — amplify" or "MED —
+   support" (i.e. every opportunity level except "LOW"), also draft, matching HubSpot's own AEO
+   recommendation format:
+   - `suggested_reply`: a genuinely helpful, non-promotional, Reddit-norms-appropriate reply (2-4
+     sentences) that a real person from the brand could post — answer the actual question first,
+     mention the brand naturally only where relevant, never sound like an ad. Skip this for "LOW"
+     opportunity threads (not worth engaging).
+   Set `suggested_reply` to NULL for "LOW" opportunity threads (but still fill in
+   `primary_keyword`/`secondary_keywords` for them).
 
    Write each one via the Supabase MCP connector:
    INSERT INTO reddit_threads (brand_id, week_of, thread_url, subreddit, title, upvotes, num_comments, brand_mentioned, sentiment, opportunity, suggested_reply, primary_keyword, secondary_keywords, discovery_source)

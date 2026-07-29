@@ -118,17 +118,23 @@ connector's `call-actor` / `get-actor-run` / `get-actor-output` tools:
      worth responding to — `brand_mentioned: true`), or "LOW" (general discussion, low
      relevance)
 
-4. For any thread scored `opportunity` = "HIGH" or "MED — amplify" or "MED — support" (i.e.
-   every level except "LOW"), also draft, matching HubSpot's own AEO recommendation format:
-   - `suggested_reply`: a genuinely helpful, non-promotional, Reddit-norms-appropriate reply
-     (2-4 sentences) a real person from the brand could post — answer the actual question
-     first, mention the brand naturally only where relevant, never sound like an ad.
+4. For EVERY thread, regardless of opportunity level, draft `primary_keyword` and
+   `secondary_keywords` — these describe the topic itself (e.g. "hot tub water chemistry
+   troubleshooting"), so even a "LOW" thread is still a useful topic/content signal, not just
+   the high-value engagement targets:
    - `primary_keyword`: the single main search phrase this thread is most relevant to (e.g.
      "modern whirlpool hot tub brands") — one phrase, not a list.
    - `secondary_keywords`: 3-6 related phrases (brand terms, product category terms,
      buyer-intent phrases) describing what the thread is about.
-   Set `suggested_reply`, `primary_keyword`, and `secondary_keywords` all to NULL for "LOW"
-   opportunity threads.
+
+   Additionally, for any thread scored `opportunity` = "HIGH" or "MED — amplify" or
+   "MED — support" (i.e. every level except "LOW"), also draft, matching HubSpot's own AEO
+   recommendation format:
+   - `suggested_reply`: a genuinely helpful, non-promotional, Reddit-norms-appropriate reply
+     (2-4 sentences) a real person from the brand could post — answer the actual question
+     first, mention the brand naturally only where relevant, never sound like an ad.
+   Set `suggested_reply` to NULL for "LOW" opportunity threads (but still fill in
+   `primary_keyword`/`secondary_keywords` for them).
 
 5. Write each thread via the Supabase MCP connector (substitute `{brand_id}` from that brand's
    entry in the array):
