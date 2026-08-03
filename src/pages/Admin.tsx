@@ -1104,10 +1104,10 @@ export default function Admin() {
             <CardContent className="pt-4 pb-4">
               <div className="flex flex-wrap gap-4 text-sm">
                 {[
-                  { label: "Resend.com API Key", status: "pending", note: "Add RESEND_API_KEY to Supabase Edge Function secrets" },
-                  { label: "email_schedules table", status: "ready", note: "Migration created — run: supabase db push" },
-                  { label: "send-scheduled-report Edge Function", status: "ready", note: "Deploy: supabase functions deploy send-scheduled-report" },
-                  { label: "pg_cron job", status: "pending", note: "Enable in Supabase Dashboard → Database → Extensions → pg_cron, then run the SQL below" },
+                  { label: "Gmail sender credentials", status: "pending", note: "Add GMAIL_USER and GMAIL_APP_PASSWORD to Supabase Edge Function secrets — reports send via Gmail SMTP" },
+                  { label: "email_schedules table", status: "ready", note: "Migrations applied to the live project" },
+                  { label: "send-scheduled-report Edge Function", status: "ready", note: "Deployed and matches the code in this repo" },
+                  { label: "pg_cron job", status: "ready", note: "Scheduled — runs hourly, checks which schedules are due" },
                 ].map(({ label, status, note }) => (
                   <div key={label} className="flex items-start gap-2 min-w-[220px] flex-1">
                     <span className={`mt-0.5 h-2 w-2 rounded-full flex-shrink-0 ${status === "ready" ? "bg-emerald-500" : "bg-amber-500"}`} />
@@ -1119,18 +1119,16 @@ export default function Admin() {
                 ))}
               </div>
               <details className="mt-3">
-                <summary className="text-xs font-semibold text-muted-foreground cursor-pointer hover:text-foreground">pg_cron SQL — run once in Supabase SQL Editor</summary>
-                <pre className="mt-2 rounded bg-muted px-3 py-2 text-xs overflow-x-auto text-foreground">{`select cron.schedule(
-  'send-scheduled-reports',
-  '0 * * * *',  -- every hour on the hour (UTC)
-  $$
-    select net.http_post(
-      url := 'https://ffxhonryhaadyudpopvv.supabase.co/functions/v1/send-scheduled-report',
-      headers := '{"Authorization":"Bearer <SERVICE_ROLE_KEY>","Content-Type":"application/json"}'::jsonb,
-      body := '{}'::jsonb
-    )
-  $$
-);`}</pre>
+                <summary className="text-xs font-semibold text-muted-foreground cursor-pointer hover:text-foreground">Set the Gmail secrets — run once from your terminal</summary>
+                <pre className="mt-2 rounded bg-muted px-3 py-2 text-xs overflow-x-auto text-foreground">{`supabase secrets set GMAIL_USER=your-address@gmail.com --project-ref ffxhonryhaadyudpopvv
+supabase secrets set GMAIL_APP_PASSWORD=your-16-char-app-password --project-ref ffxhonryhaadyudpopvv`}</pre>
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  Use a Gmail{" "}
+                  <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" className="underline">
+                    App Password
+                  </a>
+                  , not your regular password. Until these are set, the hourly cron job runs but any due email send will fail.
+                </p>
               </details>
             </CardContent>
           </Card>
