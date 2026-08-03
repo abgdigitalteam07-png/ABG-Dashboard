@@ -124,8 +124,6 @@ const Index = () => {
     { id: "hubspot",      label: "Emails",         disabled: !activeBrands.some(b => b.hasHubSpot), tooltip: "No HubSpot data for this brand." },
     { id: "hubspot-crm",  label: "HubSpot CRM",    disabled: !activeBrands.some(b => b.hasHubSpot), tooltip: "No HubSpot data for this brand." },
     { id: "summary",      label: "Summary Report", disabled: !activeBrands.some(b => b.hasGA4 || b.hasGSC || b.hasHubSpot), tooltip: "No data sources linked for this brand." },
-    // Admin-only: hidden entirely (not just disabled) for non-admins.
-    ...(isAdmin ? [{ id: "seo-aeo", label: "SEO & AEO & GEO" }] : []),
   ];
 
   const tabs = allTabs.filter(t => canView(t.id));
