@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { AIRecommendations } from "./AIRecommendations";
 import { MultiBrandLineChart } from "./MultiBrandLineChart";
 import { mergeRateSeries, sumKpi, recomputeRateKpi } from "@/lib/mergeBrandSeries";
+import { sequentialMap } from "@/lib/sequentialFetch";
 
 interface HubSpotTabProps {
   brand: Brand;
@@ -273,12 +274,10 @@ export function HubSpotTab({ brand, brands, dateFrom, dateTo }: HubSpotTabProps)
     let cancelled = false;
     setMultiLoading(true);
 
-    Promise.all(
-      eligible.map((b) =>
-        fetchHubSpotData(b, dateFrom, dateTo)
-          .then((res) => ({ brand: b, data: res }))
-          .catch(() => ({ brand: b, data: null })),
-      ),
+    sequentialMap(eligible, (b) =>
+      fetchHubSpotData(b, dateFrom, dateTo)
+        .then((res) => ({ brand: b, data: res }))
+        .catch(() => ({ brand: b, data: null })),
     ).then((results) => {
       if (cancelled) return;
       setMultiData(results.filter((r) => r.data));

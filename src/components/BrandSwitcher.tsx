@@ -15,6 +15,11 @@ interface BrandSwitcherProps {
   onBrandModeChange?: (mode: "single" | "multi") => void;
 }
 
+// hubspotAccount undefined + hasHubSpot = the primary ("ABG") HubSpot portal.
+// hubspotAccount === "secondary" = the MAAX Sauna / Vita Spa / American Whirlpool portal.
+const ABG_HUBSPOT_BRAND_IDS = brands.filter((b) => b.hasHubSpot && b.hubspotAccount !== "secondary").map((b) => b.id);
+const MAAX_HUBSPOT_BRAND_IDS = brands.filter((b) => b.hubspotAccount === "secondary").map((b) => b.id);
+
 const SOCIAL_MEDIA_BRANDS = new Set([
   "Laurel Mountain",
   "ABG Home Services",
@@ -208,6 +213,23 @@ export function BrandSwitcher({
                 onClick={() => setViewMode("multi")}
               >
                 Multiple Brands
+              </button>
+            </div>
+          )}
+          {viewMode === "multi" && (
+            <div className="flex flex-wrap items-center gap-1.5 border-b px-3 py-2">
+              <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Quick select:</span>
+              <button
+                className="rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent hover:bg-accent/20"
+                onClick={() => setPendingIds(new Set(ABG_HUBSPOT_BRAND_IDS))}
+              >
+                ABG brands (HubSpot 1)
+              </button>
+              <button
+                className="rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-xs font-medium text-accent hover:bg-accent/20"
+                onClick={() => setPendingIds(new Set(MAAX_HUBSPOT_BRAND_IDS))}
+              >
+                MAAX brands (HubSpot 2)
               </button>
             </div>
           )}

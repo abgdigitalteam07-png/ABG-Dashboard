@@ -15,6 +15,7 @@ import { CRMChatPanel } from "./CRMChatPanel";
 import { DealerFeedbackSection } from "./DealerFeedbackSection";
 import { MultiBrandLineChart } from "./MultiBrandLineChart";
 import { mergeCountSeries, sumKpi } from "@/lib/mergeBrandSeries";
+import { sequentialMap } from "@/lib/sequentialFetch";
 
 
 interface HubSpotCRMTabProps {
@@ -142,12 +143,10 @@ export function HubSpotCRMTab({ brand, brands, dateFrom, dateTo, userEmail = "" 
     let cancelled = false;
     setMultiLoading(true);
 
-    Promise.all(
-      eligible.map((b) =>
-        fetchHubSpotData(b, dateFrom, dateTo)
-          .then((res) => ({ brand: b, data: res }))
-          .catch(() => ({ brand: b, data: null })),
-      ),
+    sequentialMap(eligible, (b) =>
+      fetchHubSpotData(b, dateFrom, dateTo)
+        .then((res) => ({ brand: b, data: res }))
+        .catch(() => ({ brand: b, data: null })),
     ).then((results) => {
       if (cancelled) return;
       setMultiData(results.filter((r) => r.data));
