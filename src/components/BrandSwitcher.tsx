@@ -234,14 +234,6 @@ export function BrandSwitcher({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
-            {viewMode === "multi" && (
-              <button
-                className="flex-shrink-0 text-xs font-medium text-accent hover:underline"
-                onClick={() => setPendingIds(new Set(filtered.map((b) => b.id)))}
-              >
-                Select all
-              </button>
-            )}
           </div>
           {/* Icon legend */}
           <div className="flex items-center gap-3 border-b px-3 py-1.5 bg-muted/40 flex-wrap">
