@@ -438,7 +438,12 @@ export default function Admin() {
       return [...prev, { user_id: userId, tab_id: tabId, can_view: true, show_insights: true, [field]: value }];
     });
     await supabase.from("user_tab_permissions").upsert(
-      { user_id: userId, tab_id: tabId, [field]: value, updated_at: new Date().toISOString() },
+      {
+        user_id: userId,
+        tab_id: tabId,
+        ...(field === "can_view" ? { can_view: value } : { show_insights: value }),
+        updated_at: new Date().toISOString(),
+      },
       { onConflict: "user_id,tab_id" }
     );
     setPermSaving(null);

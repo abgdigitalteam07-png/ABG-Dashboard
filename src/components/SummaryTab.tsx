@@ -509,7 +509,7 @@ export function SummaryTab({ brand, brands, dateFrom, dateTo, showInsights = tru
       const curr = gsc?.topLandingPages ?? [];
       const prior = gscPrior?.topLandingPages ?? [];
       if (!curr.length || !prior.length) return [];
-      const priorMap = new Map(prior.map((p: any) => [p.page, p]));
+      const priorMap = new Map<string, any>(prior.map((p: any) => [p.page, p] as [string, any]));
       return curr.map((c: any) => {
         const p = priorMap.get(c.page);
         if (!p) return null;

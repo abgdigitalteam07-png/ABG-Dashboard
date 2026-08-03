@@ -311,6 +311,12 @@ export function BrandSwitcher({
               <div className="flex items-center justify-between gap-2 border-t px-3 py-2">
                 <span className="flex items-center gap-2 text-xs text-muted-foreground">
                   {pendingIds.size} selected
+                  <button
+                    className="font-medium text-accent underline-offset-2 hover:underline"
+                    onClick={() => setPendingIds(new Set(filtered.map((b) => b.id)))}
+                  >
+                    Select all{search ? ` (${filtered.length})` : ""}
+                  </button>
                   {pendingIds.size > 0 && (
                     <button
                       className="font-medium text-accent underline-offset-2 hover:underline"
