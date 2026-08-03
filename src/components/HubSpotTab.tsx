@@ -22,11 +22,35 @@ import {
 import { EmailPreviewModal } from "@/components/EmailPreviewModal";
 import { Button } from "@/components/ui/button";
 import { AIRecommendations } from "./AIRecommendations";
+import { MultiBrandLineChart } from "./MultiBrandLineChart";
+import { mergeRateSeries, sumKpi, recomputeRateKpi } from "@/lib/mergeBrandSeries";
 
 interface HubSpotTabProps {
   brand: Brand;
+  brands?: Brand[];
   dateFrom: Date;
   dateTo: Date;
+}
+
+/* ── Bucket a brand's emails by week into raw opens/delivered/clicks counts (for multi-brand rate merging) ── */
+function bucketEmailCounts(emails: any[], dateFrom: Date, dateTo: Date): { date: string; opens: number; delivered: number; clicks: number }[] {
+  const buckets: Record<string, { opens: number; delivered: number; clicks: number }> = {};
+  for (const email of emails || []) {
+    if (!email.publishDate) continue;
+    const date = parseISO(email.publishDate);
+    const key = format(startOfWeek(date, { weekStartsOn: 1 }), "yyyy-MM-dd");
+    if (!buckets[key]) buckets[key] = { opens: 0, delivered: 0, clicks: 0 };
+    buckets[key].opens += email.opens || 0;
+    buckets[key].delivered += email.delivered || 0;
+    buckets[key].clicks += email.clicks || 0;
+  }
+  const slots: string[] = [];
+  let cursor = startOfWeek(dateFrom, { weekStartsOn: 1 });
+  while (isBefore(cursor, dateTo) || isEqual(cursor, dateTo)) {
+    slots.push(format(cursor, "yyyy-MM-dd"));
+    cursor = addWeeks(cursor, 1);
+  }
+  return slots.map((date) => ({ date, ...(buckets[date] || { opens: 0, delivered: 0, clicks: 0 }) }));
 }
 
 function fmt(n: number): string {
@@ -199,11 +223,15 @@ function EmailNameLink({ email, onClick }: { email: any; onClick: (email: any) =
 
 const PAGE_SIZE = 10;
 
-export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
+export function HubSpotTab({ brand, brands, dateFrom, dateTo }: HubSpotTabProps) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const showLoader = useFirstLoad(loading);
+
+  const isMulti = !!brands && brands.length > 1;
+  const [multiData, setMultiData] = useState<{ brand: Brand; data: any }[]>([]);
+  const [multiLoading, setMultiLoading] = useState(false);
   const [chartType, setChartType] = useState<ChartType>("area");
   const [granularity, setGranularity] = useState<Granularity>("week");
   const [previewEmail, setPreviewEmail] = useState<any>(null);
@@ -237,6 +265,79 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
       });
     return () => { cancelled = true; };
   }, [brand.id, dateFrom.getTime(), dateTo.getTime()]);
+
+  useEffect(() => {
+    if (!isMulti) { setMultiData([]); return; }
+    const eligible = brands!.filter((b) => b.hasHubSpot);
+    if (!eligible.length) { setMultiData([]); return; }
+    let cancelled = false;
+    setMultiLoading(true);
+
+    Promise.all(
+      eligible.map((b) =>
+        fetchHubSpotData(b, dateFrom, dateTo)
+          .then((res) => ({ brand: b, data: res }))
+          .catch(() => ({ brand: b, data: null })),
+      ),
+    ).then((results) => {
+      if (cancelled) return;
+      setMultiData(results.filter((r) => r.data));
+      setMultiLoading(false);
+    });
+
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMulti, brands?.map((b) => b.id).join(","), dateFrom.getTime(), dateTo.getTime()]);
+
+  const multiRateData = useMemo(() => {
+    if (!isMulti) return { openRate: [], ctr: [] };
+    const buckets = multiData.map(({ brand: b, data: bd }) => ({
+      brand: b,
+      counts: bucketEmailCounts(bd.emails || [], dateFrom, dateTo),
+    }));
+    return {
+      openRate: mergeRateSeries(
+        buckets.map(({ brand: b, counts }) => ({
+          brand: b,
+          numerator: counts.map((c) => ({ date: c.date, value: c.opens })),
+          denominator: counts.map((c) => ({ date: c.date, value: c.delivered })),
+        })),
+      ),
+      ctr: mergeRateSeries(
+        buckets.map(({ brand: b, counts }) => ({
+          brand: b,
+          numerator: counts.map((c) => ({ date: c.date, value: c.clicks })),
+          denominator: counts.map((c) => ({ date: c.date, value: c.opens })),
+        })),
+      ),
+    };
+  }, [isMulti, multiData, dateFrom, dateTo]);
+
+  const multiKpi = useMemo(() => {
+    if (!isMulti) return null;
+    const totalSent = sumKpi(multiData.map((x) => x.data.totalEmailsSent || 0));
+    const totalDelivered = sumKpi(multiData.map((x) => x.data.totalDelivered || 0));
+    const totalOpens = sumKpi(multiData.map((x) => x.data.totalOpens || 0));
+    const totalClicks = sumKpi(multiData.map((x) => x.data.totalClicks || 0));
+    const totalBounce = sumKpi(multiData.map((x) => x.data.totalBounce || 0));
+    const totalUnsub = sumKpi(multiData.map((x) => x.data.totalUnsub || 0));
+    const totalHardBounce = sumKpi(multiData.map((x) => x.data.totalHardBounce || 0));
+    const totalSoftBounce = sumKpi(multiData.map((x) => x.data.totalSoftBounce || 0));
+    const spamReports = sumKpi(multiData.map((x) => x.data.spamReports || 0));
+    const totalEmails = sumKpi(multiData.map((x) => x.data.totalEmails || 0));
+    return {
+      totalSent, totalDelivered, totalOpens, totalClicks, totalBounce, totalUnsub,
+      totalHardBounce, totalSoftBounce, spamReports, totalEmails,
+      deliveredRate: recomputeRateKpi(totalDelivered, totalSent),
+      openRate: recomputeRateKpi(totalOpens, totalDelivered),
+      clickRate: recomputeRateKpi(totalClicks, totalOpens),
+      bounceRate: recomputeRateKpi(totalBounce, totalSent),
+      unsubscribeRate: recomputeRateKpi(totalUnsub, totalDelivered),
+      hardBounceRate: recomputeRateKpi(totalHardBounce, totalSent),
+      softBounceRate: recomputeRateKpi(totalSoftBounce, totalSent),
+      spamRate: recomputeRateKpi(spamReports, totalDelivered),
+    };
+  }, [isMulti, multiData]);
 
   const d = useMemo(() => {
     if (!data) return null;
@@ -353,8 +454,63 @@ export function HubSpotTab({ brand, dateFrom, dateTo }: HubSpotTabProps) {
     );
   }
 
-  if (showLoader) {
+  if (showLoader || (isMulti && multiLoading)) {
     return <WaterFillLoader fullScreen={false} message="Loading emails…" />;
+  }
+
+  if (isMulti) {
+    if (!multiData.length) {
+      return (
+        <div className="flex flex-col items-center justify-center py-24 text-center">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted">
+            <Mail className="h-7 w-7 text-muted-foreground" />
+          </div>
+          <p className="mt-4 text-sm font-medium text-foreground">None of the selected brands have HubSpot email data.</p>
+        </div>
+      );
+    }
+    const k = multiKpi!;
+    const multiBrandsWithData = multiData.map((x) => x.brand);
+    return (
+      <div className="space-y-8 p-6">
+        <section className="space-y-5">
+          <SectionHeader icon={Mail} label="Email Funnel" color="bg-orange-500" />
+          <div className="grid grid-cols-2 gap-3 md:flex md:items-center md:gap-0">
+            <div className="md:flex-1"><FunnelCard label="Sent" value={fmt(k.totalSent)} sub={`${k.totalEmails} emails`} /></div>
+            <HArrow />
+            <div className="md:flex-1"><FunnelCard label="Delivered" value={fmt(k.totalDelivered)} /></div>
+            <HArrow />
+            <div className="md:flex-1"><FunnelCard label="Opens" value={fmt(k.totalOpens)} /></div>
+            <HArrow />
+            <div className="md:flex-1"><FunnelCard label="Clicks" value={fmt(k.totalClicks)} /></div>
+          </div>
+          <VArrow />
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <FunnelCard label="Delivered Ratio" value={`${k.deliveredRate.toFixed(1)}%`} />
+            <FunnelCard label="Open Ratio" value={`${k.openRate.toFixed(1)}%`} />
+            <FunnelCard label="Click Ratio" value={`${k.clickRate.toFixed(1)}%`} />
+            <FunnelCard label="Bounce Ratio" value={`${k.bounceRate.toFixed(1)}%`} variant="negative" />
+          </div>
+          <VArrow />
+          <div className="grid grid-cols-2 gap-3">
+            <FunnelCard label="Bounce" value={fmt(k.totalBounce)} sub={`${k.bounceRate.toFixed(1)}%`} variant="negative" />
+            <FunnelCard label="Unsubscribed" value={fmt(k.totalUnsub)} sub={`${k.unsubscribeRate.toFixed(1)}%`} variant="negative" />
+          </div>
+        </section>
+
+        <section className="space-y-5">
+          <SectionHeader icon={BarChart2} label="Performance Over Time" color="bg-blue-600" />
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+            <ChartCard title="Open Rate" subtitle="By brand, plus combined Total (recomputed from summed opens/delivered)">
+              <MultiBrandLineChart data={multiRateData.openRate} brands={multiBrandsWithData} valueFormatter={(v) => `${v.toFixed(1)}%`} />
+            </ChartCard>
+            <ChartCard title="Click-through Rate" subtitle="By brand, plus combined Total (recomputed from summed clicks/opens)">
+              <MultiBrandLineChart data={multiRateData.ctr} brands={multiBrandsWithData} valueFormatter={(v) => `${v.toFixed(1)}%`} />
+            </ChartCard>
+          </div>
+        </section>
+      </div>
+    );
   }
 
   if (!d) return null;

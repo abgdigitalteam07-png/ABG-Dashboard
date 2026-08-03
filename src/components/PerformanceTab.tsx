@@ -18,9 +18,12 @@ import { TrafficAcquisitionTable } from "./TrafficAcquisitionTable";
 import { AIRecommendations } from "./AIRecommendations";
 import { MetricTooltip, METRIC_DEFINITIONS } from "./MetricTooltip";
 import { format } from "date-fns";
+import { MultiBrandLineChart } from "./MultiBrandLineChart";
+import { mergeCountSeries, sumKpi, recomputeRateKpi } from "@/lib/mergeBrandSeries";
 
 interface PerformanceTabProps {
   brand: Brand;
+  brands?: Brand[];
   dateFrom: Date;
   dateTo: Date;
 }
@@ -131,11 +134,16 @@ function ChartTooltip({ active, payload, label }: any) {
   );
 }
 
-export function PerformanceTab({ brand, dateFrom, dateTo }: PerformanceTabProps) {
+export function PerformanceTab({ brand, brands, dateFrom, dateTo }: PerformanceTabProps) {
   const [ga4, setGa4] = useState<any>(null);
   const [gsc, setGsc] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const showLoader = useFirstLoad(loading);
+
+  const isMulti = !!brands && brands.length > 1;
+  const [multiGa4, setMultiGa4] = useState<{ brand: Brand; data: any }[]>([]);
+  const [multiGsc, setMultiGsc] = useState<{ brand: Brand; data: any }[]>([]);
+  const [multiLoading, setMultiLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -157,6 +165,94 @@ export function PerformanceTab({ brand, dateFrom, dateTo }: PerformanceTabProps)
     return () => { cancelled = true; };
   }, [brand.id, dateFrom.getTime(), dateTo.getTime()]);
 
+  useEffect(() => {
+    if (!isMulti) {
+      setMultiGa4([]);
+      setMultiGsc([]);
+      return;
+    }
+    let cancelled = false;
+    setMultiLoading(true);
+
+    Promise.all(
+      brands!.map(async (b) => ({
+        brand: b,
+        ga4: b.hasGA4 ? await fetchGA4Data(b, dateFrom, dateTo) : null,
+        gsc: b.hasGSC ? await fetchGSCData(b, dateFrom, dateTo) : null,
+      })),
+    ).then((results) => {
+      if (cancelled) return;
+      setMultiGa4(results.filter((r) => r.ga4).map((r) => ({ brand: r.brand, data: r.ga4 })));
+      setMultiGsc(results.filter((r) => r.gsc).map((r) => ({ brand: r.brand, data: r.gsc })));
+      setMultiLoading(false);
+    });
+
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMulti, brands?.map((b) => b.id).join(","), dateFrom.getTime(), dateTo.getTime()]);
+
+  const multiSessionsData = useMemo(() => {
+    if (!isMulti) return [];
+    return mergeCountSeries(
+      multiGa4.map(({ brand: b, data }) => ({
+        brand: b,
+        data: (data.sessionsOverTime || []).map((d: any) => ({ date: d.date, value: d.value })),
+      })),
+    );
+  }, [isMulti, multiGa4]);
+
+  const multiClicksData = useMemo(() => {
+    if (!isMulti) return [];
+    return mergeCountSeries(
+      multiGsc.map(({ brand: b, data }) => ({
+        brand: b,
+        data: (data.clicksImpressionsOverTime || []).map((d: any) => ({ date: d.date, value: d.clicks })),
+      })),
+    );
+  }, [isMulti, multiGsc]);
+
+  const multiImpressionsData = useMemo(() => {
+    if (!isMulti) return [];
+    return mergeCountSeries(
+      multiGsc.map(({ brand: b, data }) => ({
+        brand: b,
+        data: (data.clicksImpressionsOverTime || []).map((d: any) => ({ date: d.date, value: d.impressions })),
+      })),
+    );
+  }, [isMulti, multiGsc]);
+
+  const multiPositionData = useMemo(() => {
+    if (!isMulti) return [];
+    return mergeCountSeries(
+      multiGsc.map(({ brand: b, data }) => ({
+        brand: b,
+        data: (data.clicksImpressionsOverTime || [])
+          .filter((d: any) => d.position > 0)
+          .map((d: any) => ({ date: d.date, value: d.position })),
+      })),
+    );
+  }, [isMulti, multiGsc]);
+
+  const multiKpi = useMemo(() => {
+    if (!isMulti) return null;
+    const ga4Sessions = sumKpi(multiGa4.map((x) => x.data.sessions || 0));
+    const ga4Organic = sumKpi(multiGa4.map((x) => x.data.organicSessions || 0));
+    const ga4PageViews = sumKpi(multiGa4.map((x) => x.data.pageViews || 0));
+    const ga4ActiveUsers = sumKpi(multiGa4.map((x) => x.data.activeUsers1Day || 0));
+    const gscClicks = sumKpi(multiGsc.map((x) => x.data.totalClicks || 0));
+    const gscImpressions = sumKpi(multiGsc.map((x) => x.data.totalImpressions || 0));
+    const avgCTR = recomputeRateKpi(gscClicks, gscImpressions);
+    const weightedPos = multiGsc.reduce(
+      (sum, x) => sum + (x.data.averagePosition || 0) * (x.data.totalImpressions || 0),
+      0,
+    );
+    const avgPosition = gscImpressions > 0 ? weightedPos / gscImpressions : 0;
+    return { ga4Sessions, ga4Organic, ga4PageViews, ga4ActiveUsers, gscClicks, gscImpressions, avgCTR, avgPosition };
+  }, [isMulti, multiGa4, multiGsc]);
+
+  const showGA4 = isMulti ? brands!.some((b) => b.hasGA4) : brand.hasGA4;
+  const showGSC = isMulti ? brands!.some((b) => b.hasGSC) : brand.hasGSC;
+
   const topPagesTotals = useMemo(() => {
     if (!ga4?.topPages?.length) return null;
     const pages = ga4.topPages;
@@ -177,7 +273,7 @@ export function PerformanceTab({ brand, dateFrom, dateTo }: PerformanceTabProps)
     };
   }, [gsc]);
 
-  if (!brand.hasGA4 && !brand.hasGSC) {
+  if (!showGA4 && !showGSC) {
     return (
       <div className="flex flex-col items-center justify-center py-24 text-center">
         <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted">
@@ -193,7 +289,7 @@ export function PerformanceTab({ brand, dateFrom, dateTo }: PerformanceTabProps)
     );
   }
 
-  if (showLoader) {
+  if (showLoader || (isMulti && multiLoading)) {
     return <WaterFillLoader fullScreen={false} message="Loading analytics…" />;
   }
 
@@ -204,24 +300,32 @@ export function PerformanceTab({ brand, dateFrom, dateTo }: PerformanceTabProps)
     <div className="space-y-8 p-6">
 
       {/* ── Google Analytics ── */}
-      {brand.hasGA4 && (
+      {showGA4 && (
         <section className="space-y-5">
           <SectionHeader icon={Activity} label="Google Analytics" color="bg-blue-600" />
 
           {/* KPI grid */}
           <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-            <StatCard loading={loading} title="Sessions" value={fmt(ga4?.sessions)} delta={ga4?.sessionsDelta}
+            <StatCard loading={loading} title="Sessions" value={fmt(isMulti ? multiKpi?.ga4Sessions : ga4?.sessions)} delta={isMulti ? undefined : ga4?.sessionsDelta}
               icon={Users} iconBg="bg-blue-50" iconColor="text-blue-600" tooltip={METRIC_DEFINITIONS["Sessions"]} />
-            <StatCard loading={loading} title="Organic Sessions" value={fmt(ga4?.organicSessions)} delta={ga4?.organicSessionsDelta}
+            <StatCard loading={loading} title="Organic Sessions" value={fmt(isMulti ? multiKpi?.ga4Organic : ga4?.organicSessions)} delta={isMulti ? undefined : ga4?.organicSessionsDelta}
               icon={TrendingUp} iconBg="bg-indigo-50" iconColor="text-indigo-600" tooltip={METRIC_DEFINITIONS["Organic Sessions"]} />
-            <StatCard loading={loading} title="Page Views" value={fmt(ga4?.pageViews)} delta={ga4?.pageViewsDelta}
+            <StatCard loading={loading} title="Page Views" value={fmt(isMulti ? multiKpi?.ga4PageViews : ga4?.pageViews)} delta={isMulti ? undefined : ga4?.pageViewsDelta}
               icon={Eye} iconBg="bg-violet-50" iconColor="text-violet-600" tooltip={METRIC_DEFINITIONS["Page Views"]} />
-            <StatCard loading={loading} title="1-Day Active Users" value={fmt(ga4?.activeUsers1Day)} delta={ga4?.activeUsers1DayDelta}
+            <StatCard loading={loading} title="1-Day Active Users" value={fmt(isMulti ? multiKpi?.ga4ActiveUsers : ga4?.activeUsers1Day)} delta={isMulti ? undefined : ga4?.activeUsers1DayDelta}
               icon={Activity} iconBg="bg-sky-50" iconColor="text-sky-600" tooltip={METRIC_DEFINITIONS["1-Day Active Users"]} />
           </div>
 
           {/* Charts */}
-          {!loading && ga4 && (
+          {isMulti && (
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+              <ChartCard title="Sessions Over Time" subtitle="Daily visit volume by brand, plus combined Total">
+                <MultiBrandLineChart data={multiSessionsData} brands={brands!} valueFormatter={fmt} />
+              </ChartCard>
+            </div>
+          )}
+
+          {!isMulti && !loading && ga4 && (
             <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
               <ChartCard title="Sessions Over Time" subtitle="Daily visit volume">
                 <ResponsiveContainer width="100%" height={240}>
@@ -318,22 +422,33 @@ export function PerformanceTab({ brand, dateFrom, dateTo }: PerformanceTabProps)
       )}
 
       {/* ── Search Console ── */}
-      {brand.hasGSC && !loading && gsc && (gsc.totalClicks > 0 || gsc.totalImpressions > 0) && (
+      {showGSC && (isMulti ? multiGsc.length > 0 : (!loading && gsc && (gsc.totalClicks > 0 || gsc.totalImpressions > 0))) && (
         <section className="space-y-5">
           <SectionHeader icon={Search} label="Google Search Console" color="bg-violet-600" />
 
           <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-            <StatCard loading={loading} title="Total Clicks" value={fmt(gsc?.totalClicks)} delta={gsc?.totalClicksDelta}
+            <StatCard loading={loading} title="Total Clicks" value={fmt(isMulti ? multiKpi?.gscClicks : gsc?.totalClicks)} delta={isMulti ? undefined : gsc?.totalClicksDelta}
               icon={MousePointer} iconBg="bg-violet-50" iconColor="text-violet-600" tooltip={METRIC_DEFINITIONS["Total Clicks"]} />
-            <StatCard loading={loading} title="Impressions" value={fmt(gsc?.totalImpressions)} delta={gsc?.totalImpressionsDelta}
+            <StatCard loading={loading} title="Impressions" value={fmt(isMulti ? multiKpi?.gscImpressions : gsc?.totalImpressions)} delta={isMulti ? undefined : gsc?.totalImpressionsDelta}
               icon={Globe} iconBg="bg-purple-50" iconColor="text-purple-600" tooltip={METRIC_DEFINITIONS["Impressions"]} />
-            <StatCard loading={loading} title="Avg CTR" value={gsc ? `${gsc.averageCTR}%` : "—"} delta={gsc?.averageCTRDelta}
+            <StatCard loading={loading} title="Avg CTR" value={isMulti ? `${multiKpi?.avgCTR.toFixed(1)}%` : gsc ? `${gsc.averageCTR}%` : "—"} delta={isMulti ? undefined : gsc?.averageCTRDelta}
               icon={Percent} iconBg="bg-fuchsia-50" iconColor="text-fuchsia-600" tooltip={METRIC_DEFINITIONS["Avg CTR"]} />
-            <StatCard loading={loading} title="Avg Position" value={gsc ? gsc.averagePosition.toFixed(1) : "—"} delta={gsc?.averagePositionDelta}
+            <StatCard loading={loading} title="Avg Position" value={isMulti ? multiKpi?.avgPosition.toFixed(1) : gsc ? gsc.averagePosition.toFixed(1) : "—"} delta={isMulti ? undefined : gsc?.averagePositionDelta}
               icon={BarChart2} iconBg="bg-pink-50" iconColor="text-pink-600" tooltip={METRIC_DEFINITIONS["Avg Position"]} />
           </div>
 
-          {!loading && gsc && (
+          {isMulti && (
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+              <ChartCard title="Clicks Over Time" subtitle="Search clicks by brand, plus combined Total">
+                <MultiBrandLineChart data={multiClicksData} brands={brands!} valueFormatter={fmt} />
+              </ChartCard>
+              <ChartCard title="Impressions Over Time" subtitle="Search impressions by brand, plus combined Total">
+                <MultiBrandLineChart data={multiImpressionsData} brands={brands!} valueFormatter={fmt} />
+              </ChartCard>
+            </div>
+          )}
+
+          {!isMulti && !loading && gsc && (
             <ChartCard title="Clicks & Impressions Over Time" subtitle="Search visibility trend">
               <ResponsiveContainer width="100%" height={240}>
                 <LineChart data={gsc.clicksImpressionsOverTime} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
@@ -353,7 +468,33 @@ export function PerformanceTab({ brand, dateFrom, dateTo }: PerformanceTabProps)
           )}
 
           {/* Position trend */}
-          {!loading && (() => {
+          {isMulti && multiPositionData.length > 0 && (() => {
+            const values: number[] = [];
+            for (const row of multiPositionData) {
+              for (const b of brands!) {
+                const v = Number(row[b.name]);
+                if (v > 0) values.push(v);
+              }
+            }
+            if (!values.length) return null;
+            const minPos = Math.max(1, Math.floor(Math.min(...values)) - 2);
+            const maxPos = Math.ceil(Math.max(...values)) + 2;
+            return (
+              <ChartCard title="Average Position Over Time" subtitle="Lower number = better ranking (position 1 = top of Google). No combined Total — averaging positions across brands isn't meaningful.">
+                <MultiBrandLineChart
+                  data={multiPositionData}
+                  brands={brands!}
+                  showTotal={false}
+                  reversedYAxis
+                  yDomain={[minPos, maxPos]}
+                  yTickFormatter={(v) => `#${v}`}
+                  valueFormatter={(v) => `Position #${v}`}
+                />
+              </ChartCard>
+            );
+          })()}
+
+          {!isMulti && !loading && (() => {
             const posData = (gsc?.clicksImpressionsOverTime || []).filter((d: any) => d.position > 0);
             if (!posData.length) return null;
             const positions = posData.map((d: any) => d.position);

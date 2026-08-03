@@ -1,13 +1,18 @@
-import { useState, useMemo } from "react";
-import { Search, ChevronDown, BarChart3, Globe } from "lucide-react";
+import { useState, useMemo, useEffect } from "react";
+import { Search, ChevronDown, BarChart3, Globe, X } from "lucide-react";
 import { brands, Brand } from "@/lib/brands";
 import { cn } from "@/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface BrandSwitcherProps {
   selectedBrand: Brand;
   onSelect: (brand: Brand) => void;
+  brandMode?: "single" | "multi";
+  multiBrands?: Brand[];
+  onSelectMultiple?: (brands: Brand[]) => void;
+  onBrandModeChange?: (mode: "single" | "multi") => void;
 }
 
 const SOCIAL_MEDIA_BRANDS = new Set([
@@ -121,23 +126,106 @@ function IntegrationIcons({ brand }: { brand: Brand }) {
   );
 }
 
-export function BrandSwitcher({ selectedBrand, onSelect }: BrandSwitcherProps) {
+export function BrandSwitcher({
+  selectedBrand,
+  onSelect,
+  brandMode = "single",
+  multiBrands = [],
+  onSelectMultiple,
+  onBrandModeChange,
+}: BrandSwitcherProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [viewMode, setViewMode] = useState<"single" | "multi">(brandMode);
+  const [pendingIds, setPendingIds] = useState<Set<string>>(new Set(multiBrands.map((b) => b.id)));
+
+  useEffect(() => {
+    if (open) {
+      setViewMode(brandMode);
+      setPendingIds(new Set(multiBrands.map((b) => b.id)));
+    }
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const filtered = useMemo(() => brands.filter((b) => b.name.toLowerCase().includes(search.toLowerCase())), [search]);
+  const sortedFiltered = useMemo(() => {
+    return [...filtered].sort((a, b) => {
+      const aSel = pendingIds.has(a.id) ? 0 : 1;
+      const bSel = pendingIds.has(b.id) ? 0 : 1;
+      return aSel - bSel;
+    });
+  }, [filtered, pendingIds]);
+  const pendingBrands = useMemo(() => brands.filter((b) => pendingIds.has(b.id)), [pendingIds]);
+  const isMultiEnabled = brandMode === "multi" && multiBrands.length > 1;
+
+  const togglePending = (id: string) => {
+    setPendingIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const applyMultiSelection = () => {
+    const selected = brands.filter((b) => pendingIds.has(b.id));
+    onSelectMultiple?.(selected);
+    onBrandModeChange?.("multi");
+    setOpen(false);
+    setSearch("");
+  };
 
   return (
     <TooltipProvider delayDuration={200}>
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <button className="flex items-center gap-2 rounded-md bg-primary-foreground/10 px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary-foreground/20 transition-colors">
-            <BrandLogo brand={selectedBrand} size="sm" />
-            <span>{selectedBrand.name}</span>
+            {isMultiEnabled ? (
+              <span className="h-5 w-5 rounded-sm bg-accent flex items-center justify-center text-[10px] font-bold text-accent-foreground flex-shrink-0">
+                {multiBrands.length}
+              </span>
+            ) : (
+              <BrandLogo brand={selectedBrand} size="sm" />
+            )}
+            <span>{isMultiEnabled ? `${multiBrands.length} Brands` : selectedBrand.name}</span>
             <ChevronDown className="h-3.5 w-3.5 opacity-70" />
           </button>
         </PopoverTrigger>
         <PopoverContent className="w-80 p-0" align="start">
+          {onSelectMultiple && onBrandModeChange && (
+            <div className="flex items-center gap-1 border-b px-2 py-1.5">
+              <button
+                className={`flex-1 rounded-sm px-2 py-1 text-xs font-medium transition-colors ${
+                  viewMode === "single" ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted/50"
+                }`}
+                onClick={() => setViewMode("single")}
+              >
+                Single Brand
+              </button>
+              <button
+                className={`flex-1 rounded-sm px-2 py-1 text-xs font-medium transition-colors ${
+                  viewMode === "multi" ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted/50"
+                }`}
+                onClick={() => setViewMode("multi")}
+              >
+                Multiple Brands
+              </button>
+            </div>
+          )}
+          {viewMode === "multi" && pendingBrands.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 border-b px-3 py-2">
+              {pendingBrands.map((b) => (
+                <span
+                  key={b.id}
+                  className="flex items-center gap-1 rounded-full bg-accent/15 px-2 py-0.5 text-xs font-medium text-accent"
+                >
+                  {b.name}
+                  <button onClick={() => togglePending(b.id)} className="hover:text-accent/70">
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
           <div className="flex items-center gap-2 border-b px-3 py-2">
             <Search className="h-3.5 w-3.5 text-muted-foreground" />
             <input
@@ -163,27 +251,77 @@ export function BrandSwitcher({ selectedBrand, onSelect }: BrandSwitcherProps) {
               <MetaIcon className="h-3 w-3" /> Meta
             </span>
           </div>
-          <div className="max-h-64 overflow-y-auto p-1">
-            {filtered.map((brand) => (
-              <button
-                key={brand.id}
-                className={`flex w-full items-center justify-between rounded-sm px-2 py-1.5 text-sm transition-colors hover:bg-muted ${
-                  brand.id === selectedBrand.id ? "bg-muted font-medium" : ""
-                }`}
-                onClick={() => {
-                  onSelect(brand);
-                  setOpen(false);
-                  setSearch("");
-                }}
-              >
-                <span className="flex items-center gap-2">
-                  <BrandLogoDropdown brand={brand} />
-                  {brand.name}
+          {viewMode === "single" ? (
+            <div className="max-h-64 overflow-y-auto p-1">
+              {filtered.map((brand) => (
+                <button
+                  key={brand.id}
+                  className={`flex w-full items-center justify-between rounded-sm px-2 py-1.5 text-sm transition-colors hover:bg-muted ${
+                    brand.id === selectedBrand.id ? "bg-muted font-medium" : ""
+                  }`}
+                  onClick={() => {
+                    onSelect(brand);
+                    onBrandModeChange?.("single");
+                    setOpen(false);
+                    setSearch("");
+                  }}
+                >
+                  <span className="flex items-center gap-2">
+                    <BrandLogoDropdown brand={brand} />
+                    {brand.name}
+                  </span>
+                  <IntegrationIcons brand={brand} />
+                </button>
+              ))}
+            </div>
+          ) : (
+            <>
+              <div className="max-h-56 overflow-y-auto p-1">
+                {sortedFiltered.map((brand) => {
+                  const checked = pendingIds.has(brand.id);
+                  return (
+                    <label
+                      key={brand.id}
+                      className={`flex w-full cursor-pointer items-center justify-between rounded-sm px-2 py-1.5 text-sm transition-colors hover:bg-accent/10 ${
+                        checked ? "bg-accent/5" : ""
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={() => togglePending(brand.id)}
+                          className="data-[state=checked]:bg-accent data-[state=checked]:border-accent data-[state=checked]:text-accent-foreground"
+                        />
+                        <BrandLogoDropdown brand={brand} />
+                        {brand.name}
+                      </span>
+                      <IntegrationIcons brand={brand} />
+                    </label>
+                  );
+                })}
+              </div>
+              <div className="flex items-center justify-between gap-2 border-t px-3 py-2">
+                <span className="flex items-center gap-2 text-xs text-muted-foreground">
+                  {pendingIds.size} selected
+                  {pendingIds.size > 0 && (
+                    <button
+                      className="font-medium text-accent underline-offset-2 hover:underline"
+                      onClick={() => setPendingIds(new Set())}
+                    >
+                      Clear all
+                    </button>
+                  )}
                 </span>
-                <IntegrationIcons brand={brand} />
-              </button>
-            ))}
-          </div>
+                <button
+                  className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-foreground transition-colors hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={pendingIds.size < 2}
+                  onClick={applyMultiSelection}
+                >
+                  Apply ({pendingIds.size})
+                </button>
+              </div>
+            </>
+          )}
         </PopoverContent>
       </Popover>
     </TooltipProvider>

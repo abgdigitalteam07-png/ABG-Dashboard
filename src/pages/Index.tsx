@@ -28,6 +28,22 @@ const Index = () => {
     localStorage.setItem(brandKey(userEmail), brand.name);
     localStorage.setItem("abg_last_brand", brand.name);
   };
+
+  const [brandMode, setBrandMode] = useState<"single" | "multi">(() => {
+    return (localStorage.getItem("abg_brand_mode") as "single" | "multi") || "single";
+  });
+  const [multiBrands, setMultiBrandsState] = useState(() => {
+    const ids = (localStorage.getItem("abg_multi_brands") || "").split(",").filter(Boolean);
+    return brands.filter(b => ids.includes(b.id));
+  });
+  const setMultiBrands = (list: typeof multiBrands) => {
+    setMultiBrandsState(list);
+    localStorage.setItem("abg_multi_brands", list.map(b => b.id).join(","));
+  };
+  const handleBrandModeChange = (mode: "single" | "multi") => {
+    setBrandMode(mode);
+    localStorage.setItem("abg_brand_mode", mode);
+  };
   const [tabPerms, setTabPerms] = useState<Record<string, TabPerm>>({});
   const [isAdmin, setIsAdmin] = useState(false);
   const welcomeShown = useRef(false);
@@ -93,18 +109,21 @@ const Index = () => {
     "Maidstone", "Laurel Mountain", "Bootz", "Vintage Tub",
   ];
 
-  const hasSocialMedia = socialMediaBrandNames.includes(selectedBrand.name);
-  const hasLinkedIn = linkedinBrandNames.includes(selectedBrand.name);
+  const isMultiMode = brandMode === "multi" && multiBrands.length > 1;
+  const activeBrands = isMultiMode ? multiBrands : [selectedBrand];
+
+  const hasSocialMedia = activeBrands.some(b => socialMediaBrandNames.includes(b.name));
+  const hasLinkedIn = activeBrands.some(b => linkedinBrandNames.includes(b.name));
 
   const canView = (tabId: string) => tabPerms[tabId]?.can_view !== false;
 
   const allTabs = [
     { id: "readme",       label: "Read Me" },
-    { id: "performance",  label: "Google Analytics & Search Console", disabled: !selectedBrand.hasGA4 && !selectedBrand.hasGSC, tooltip: "No GA4/GSC property linked for this brand." },
+    { id: "performance",  label: "Google Analytics & Search Console", disabled: !activeBrands.some(b => b.hasGA4 || b.hasGSC), tooltip: "No GA4/GSC property linked for this brand." },
     { id: "social",       label: "Social Media",   disabled: !hasSocialMedia && !hasLinkedIn, tooltip: "No social media data for this brand." },
-    { id: "hubspot",      label: "Emails",         disabled: !selectedBrand.hasHubSpot, tooltip: "No HubSpot data for this brand." },
-    { id: "hubspot-crm",  label: "HubSpot CRM",    disabled: !selectedBrand.hasHubSpot, tooltip: "No HubSpot data for this brand." },
-    { id: "summary",      label: "Summary Report", disabled: !selectedBrand.hasGA4 && !selectedBrand.hasGSC && !selectedBrand.hasHubSpot, tooltip: "No data sources linked for this brand." },
+    { id: "hubspot",      label: "Emails",         disabled: !activeBrands.some(b => b.hasHubSpot), tooltip: "No HubSpot data for this brand." },
+    { id: "hubspot-crm",  label: "HubSpot CRM",    disabled: !activeBrands.some(b => b.hasHubSpot), tooltip: "No HubSpot data for this brand." },
+    { id: "summary",      label: "Summary Report", disabled: !activeBrands.some(b => b.hasGA4 || b.hasGSC || b.hasHubSpot), tooltip: "No data sources linked for this brand." },
     // Admin-only: hidden entirely (not just disabled) for non-admins.
     ...(isAdmin ? [{ id: "seo-aeo", label: "SEO & AEO & GEO" }] : []),
   ];
@@ -113,7 +132,7 @@ const Index = () => {
   const showInsights = tabPerms["summary"]?.show_insights !== false;
 
   const effectiveTab =
-    activeTab === "performance" && !selectedBrand.hasGA4 && !selectedBrand.hasGSC ? "hubspot-crm" : activeTab;
+    activeTab === "performance" && !activeBrands.some(b => b.hasGA4 || b.hasGSC) ? "hubspot-crm" : activeTab;
 
   // Silent page_view logging
   const lastLogRef = useRef("");
@@ -140,6 +159,10 @@ const Index = () => {
         <DashboardHeader
           selectedBrand={selectedBrand}
           onBrandChange={setSelectedBrand}
+          brandMode={brandMode}
+          multiBrands={multiBrands}
+          onSelectMultiple={setMultiBrands}
+          onBrandModeChange={handleBrandModeChange}
           dateFrom={dateFrom}
           dateTo={dateTo}
           onDateChange={handleDateChange}
@@ -150,15 +173,15 @@ const Index = () => {
 
       <main className="mx-auto max-w-[1400px]">
         <div className="px-2 pt-2">
-          <h1 className="px-3 md:px-4 pt-3 md:pt-4 text-sm md:text-lg font-semibold text-foreground">{selectedBrand.name} {effectiveTab === "hubspot" ? "Emails" : effectiveTab === "hubspot-crm" ? "HubSpot CRM" : effectiveTab === "summary" ? "Summary" : effectiveTab === "seo-aeo" ? "SEO & AEO & GEO" : ""} Performance Overview</h1>
+          <h1 className="px-3 md:px-4 pt-3 md:pt-4 text-sm md:text-lg font-semibold text-foreground">{isMultiMode ? `${multiBrands.length} Brands` : selectedBrand.name} {effectiveTab === "hubspot" ? "Emails" : effectiveTab === "hubspot-crm" ? "HubSpot CRM" : effectiveTab === "summary" ? "Summary" : effectiveTab === "seo-aeo" ? "SEO & AEO & GEO" : ""} Performance Overview</h1>
         </div>
 
-        {effectiveTab === "performance" && <PerformanceTab key={selectedBrand.id} brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />}
-        {effectiveTab === "social" && <SocialMediaTab key={selectedBrand.id} brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />}
-        {effectiveTab === "hubspot" && <HubSpotTab key={selectedBrand.id} brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />}
-        {effectiveTab === "hubspot-crm" && <HubSpotCRMTab key={selectedBrand.id} brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} userEmail={userEmail} />}
+        {effectiveTab === "performance" && <PerformanceTab key={isMultiMode ? multiBrands.map(b => b.id).join(",") : selectedBrand.id} brand={isMultiMode ? multiBrands[0] : selectedBrand} brands={isMultiMode ? multiBrands : undefined} dateFrom={dateFrom} dateTo={dateTo} />}
+        {effectiveTab === "social" && <SocialMediaTab key={isMultiMode ? multiBrands.map(b => b.id).join(",") : selectedBrand.id} brand={isMultiMode ? multiBrands[0] : selectedBrand} brands={isMultiMode ? multiBrands : undefined} dateFrom={dateFrom} dateTo={dateTo} />}
+        {effectiveTab === "hubspot" && <HubSpotTab key={isMultiMode ? multiBrands.map(b => b.id).join(",") : selectedBrand.id} brand={isMultiMode ? multiBrands[0] : selectedBrand} brands={isMultiMode ? multiBrands : undefined} dateFrom={dateFrom} dateTo={dateTo} />}
+        {effectiveTab === "hubspot-crm" && <HubSpotCRMTab key={isMultiMode ? multiBrands.map(b => b.id).join(",") : selectedBrand.id} brand={isMultiMode ? multiBrands[0] : selectedBrand} brands={isMultiMode ? multiBrands : undefined} dateFrom={dateFrom} dateTo={dateTo} userEmail={userEmail} />}
         {effectiveTab === "readme" && <ReadMeTab key={selectedBrand.id} brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} />}
-        {effectiveTab === "summary" && <SummaryTab key={selectedBrand.id} brand={selectedBrand} dateFrom={dateFrom} dateTo={dateTo} showInsights={showInsights} />}
+        {effectiveTab === "summary" && <SummaryTab key={isMultiMode ? multiBrands.map(b => b.id).join(",") : selectedBrand.id} brand={isMultiMode ? multiBrands[0] : selectedBrand} brands={isMultiMode ? multiBrands : undefined} dateFrom={dateFrom} dateTo={dateTo} showInsights={showInsights} />}
         {effectiveTab === "seo-aeo" && isAdmin && <SeoAeoGeoTab key={selectedBrand.id} brand={selectedBrand} />}
       </main>
     </div>

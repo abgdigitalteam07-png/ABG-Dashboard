@@ -19,9 +19,12 @@ import { Badge } from "@/components/ui/badge";
 import { AIRecommendations } from "./AIRecommendations";
 import { format, parseISO, startOfWeek, startOfMonth, startOfDay, startOfQuarter,
   addDays, addWeeks, addMonths, isBefore, isEqual } from "date-fns";
+import { MultiBrandLineChart } from "./MultiBrandLineChart";
+import { mergeCountSeries, sumKpi } from "@/lib/mergeBrandSeries";
 
 interface SocialMediaTabProps {
   brand: Brand;
+  brands?: Brand[];
   dateFrom: Date;
   dateTo: Date;
 }
@@ -411,12 +414,16 @@ const linkedinBrandNames = [
   "Maidstone", "Laurel Mountain", "Bootz", "Vintage Tub",
 ];
 
-export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps) {
+export function SocialMediaTab({ brand, brands, dateFrom, dateTo }: SocialMediaTabProps) {
   const [data, setData] = useState<any>(null);
   const [linkedinData, setLinkedinData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const showLoader = useFirstLoad(loading);
+
+  const isMulti = !!brands && brands.length > 1;
+  const [multiData, setMultiData] = useState<{ brand: Brand; data: any }[]>([]);
+  const [multiLoading, setMultiLoading] = useState(false);
   const [platformFilter, setPlatformFilter] = useState<"all" | "facebook" | "instagram" | "linkedin">("all");
   const [sortKey, setSortKey] = useState<string>("publishedAt");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
@@ -487,6 +494,64 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
   }, [brand.name, dateFrom.getTime(), dateTo.getTime(), platformFilter, hasSocialMedia, hasLinkedIn]);
 
   useEffect(() => { setCurrentPage(1); }, [brand.name]);
+
+  useEffect(() => {
+    if (!isMulti) { setMultiData([]); return; }
+    const eligible = brands!.filter((b) => socialMediaBrandNames.includes(b.name));
+    if (!eligible.length) { setMultiData([]); return; }
+    let cancelled = false;
+    setMultiLoading(true);
+
+    Promise.all(
+      eligible.map((b) =>
+        callFunction("social-media-data", {
+          brandName: b.name,
+          startDate: formatDateStr(dateFrom),
+          endDate: formatDateStr(dateTo),
+          platform: "all",
+        }).then((res: any) => ({ brand: b, data: res?.error ? null : res })),
+      ),
+    ).then((results) => {
+      if (cancelled) return;
+      setMultiData(results.filter((r) => r.data));
+      setMultiLoading(false);
+    });
+
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMulti, brands?.map((b) => b.id).join(","), dateFrom.getTime(), dateTo.getTime()]);
+
+  const multiReachData = useMemo(() => {
+    if (!isMulti) return [];
+    return mergeCountSeries(
+      multiData.map(({ brand: b, data: d }) => ({
+        brand: b,
+        data: (d.dailyTrends || []).map((day: any) => ({ date: day.date, value: day.reach || 0 })),
+      })),
+    );
+  }, [isMulti, multiData]);
+
+  const multiFollowerData = useMemo(() => {
+    if (!isMulti) return [];
+    return mergeCountSeries(
+      multiData.map(({ brand: b, data: d }) => ({
+        brand: b,
+        data: (d.followerTrend || []).map((day: any) => ({ date: day.date, value: day.newFans || 0 })),
+      })),
+    );
+  }, [isMulti, multiData]);
+
+  const multiKpi = useMemo(() => {
+    if (!isMulti) return null;
+    const totalFollowersSum = sumKpi(multiData.map((x) => (x.data.overview.totalFollowers.facebook || 0) + (x.data.overview.totalFollowers.instagram || 0)));
+    const totalReach = sumKpi(multiData.map((x) => x.data.overview.totalReach || 0));
+    const totalImpressions = sumKpi(multiData.map((x) => x.data.overview.totalImpressions || 0));
+    const profileVisits = sumKpi(multiData.map((x) => x.data.overview.profileVisits || 0));
+    const websiteClicks = sumKpi(multiData.map((x) => x.data.overview.websiteClicks || 0));
+    const weightedEngRate = multiData.reduce((sum, x) => sum + (x.data.overview.engagementRate || 0) * (x.data.overview.totalImpressions || 0), 0);
+    const engagementRate = totalImpressions > 0 ? weightedEngRate / totalImpressions : 0;
+    return { totalFollowersSum, totalReach, totalImpressions, profileVisits, websiteClicks, engagementRate };
+  }, [isMulti, multiData]);
 
   useEffect(() => {
     if (!exportMenuOpen) return;
@@ -574,7 +639,7 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
     </TableHead>
   );
 
-  if (!hasSocialMedia) {
+  if (!isMulti && !hasSocialMedia) {
     return (
       <div className="flex flex-col items-center justify-center py-24 text-center">
         <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted">
@@ -590,14 +655,53 @@ export function SocialMediaTab({ brand, dateFrom, dateTo }: SocialMediaTabProps)
     );
   }
 
-  if (showLoader) {
+  if (showLoader || (isMulti && multiLoading)) {
     return <WaterFillLoader fullScreen={false} message="Loading social media…" />;
   }
 
-  if (error) {
+  if (error && !isMulti) {
     return (
       <div className="flex flex-col items-center justify-center py-24 text-center">
         <p className="text-sm font-medium text-destructive">{error}</p>
+      </div>
+    );
+  }
+
+  if (isMulti) {
+    if (!multiData.length) {
+      return (
+        <div className="flex flex-col items-center justify-center py-24 text-center">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted">
+            <Share2 className="h-7 w-7 text-muted-foreground" />
+          </div>
+          <p className="mt-4 text-sm font-medium text-foreground">None of the selected brands have social media data.</p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-8 p-6">
+        <section className="space-y-5">
+          <SectionHeader icon={BarChart2} label="Overview" color="bg-pink-600" />
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
+            <StatCard title="Total Followers" value={formatNumber(multiKpi!.totalFollowersSum)} icon={Users} iconBg="bg-blue-50" iconColor="text-blue-600" />
+            <StatCard title="Total Reach" value={formatNumber(multiKpi!.totalReach)} icon={Eye} iconBg="bg-violet-50" iconColor="text-violet-600" />
+            <StatCard title="Impressions" value={formatNumber(multiKpi!.totalImpressions)} icon={Activity} iconBg="bg-indigo-50" iconColor="text-indigo-600" />
+            <StatCard title="Engagement Rate" value={`${multiKpi!.engagementRate.toFixed(1)}%`} icon={TrendingUp} iconBg="bg-emerald-50" iconColor="text-emerald-600" />
+            <StatCard title="Profile Visits" value={formatNumber(multiKpi!.profileVisits)} icon={Users} iconBg="bg-sky-50" iconColor="text-sky-600" />
+            <StatCard title="Website Clicks" value={formatNumber(multiKpi!.websiteClicks)} icon={MousePointer} iconBg="bg-orange-50" iconColor="text-orange-600" />
+          </div>
+        </section>
+
+        <ChartCard title="Reach Over Time" subtitle="Daily reach by brand, plus combined Total">
+          <MultiBrandLineChart data={multiReachData} brands={multiData.map((x) => x.brand)} valueFormatter={formatNumber} />
+        </ChartCard>
+
+        {multiFollowerData.length > 0 && (
+          <ChartCard title="New Followers per Day" subtitle="Daily page fan additions by brand, plus combined Total">
+            <MultiBrandLineChart data={multiFollowerData} brands={multiData.map((x) => x.brand)} valueFormatter={formatNumber} />
+          </ChartCard>
+        )}
       </div>
     );
   }

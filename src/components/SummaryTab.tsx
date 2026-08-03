@@ -35,9 +35,12 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import { MultiBrandLineChart } from "@/components/MultiBrandLineChart";
+import { mergeCountSeries, sumKpi, recomputeRateKpi } from "@/lib/mergeBrandSeries";
 
 interface SummaryTabProps {
   brand: Brand;
+  brands?: Brand[];
   dateFrom: Date;
   dateTo: Date;
   showInsights?: boolean;
@@ -203,7 +206,7 @@ function ChartTooltip({ active, payload, label }: any) {
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export function SummaryTab({ brand, dateFrom, dateTo, showInsights = true }: SummaryTabProps) {
+export function SummaryTab({ brand, brands, dateFrom, dateTo, showInsights = true }: SummaryTabProps) {
   const [ga4, setGa4]             = useState<any>(null);
   const [gsc, setGsc]             = useState<any>(null);
   const [gscPrior, setGscPrior]   = useState<any>(null);
@@ -213,6 +216,76 @@ export function SummaryTab({ brand, dateFrom, dateTo, showInsights = true }: Sum
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
   const showLoader = useFirstLoad(loading);
+
+  const isMulti = !!brands && brands.length > 1;
+  const [multiGa4, setMultiGa4] = useState<{ brand: Brand; data: any }[]>([]);
+  const [multiGsc, setMultiGsc] = useState<{ brand: Brand; data: any }[]>([]);
+  const [multiLoading, setMultiLoading] = useState(false);
+
+  useEffect(() => {
+    if (!isMulti) { setMultiGa4([]); setMultiGsc([]); return; }
+    let cancelled = false;
+    setMultiLoading(true);
+
+    Promise.all(
+      brands!.map(async (b) => ({
+        brand: b,
+        ga4: b.hasGA4 ? await fetchGA4Data(b, dateFrom, dateTo) : null,
+        gsc: b.hasGSC ? await fetchGSCData(b, dateFrom, dateTo) : null,
+      })),
+    ).then((results) => {
+      if (cancelled) return;
+      setMultiGa4(results.filter((r) => r.ga4).map((r) => ({ brand: r.brand, data: r.ga4 })));
+      setMultiGsc(results.filter((r) => r.gsc).map((r) => ({ brand: r.brand, data: r.gsc })));
+      setMultiLoading(false);
+    });
+
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMulti, brands?.map((b) => b.id).join(","), dateFrom.getTime(), dateTo.getTime()]);
+
+  const multiSessionsData = useMemo(() => {
+    if (!isMulti) return [];
+    return mergeCountSeries(
+      multiGa4.map(({ brand: b, data: d }) => ({
+        brand: b,
+        data: (d.sessionsOverTime || []).map((x: any) => ({ date: x.date, value: x.value })),
+      })),
+    );
+  }, [isMulti, multiGa4]);
+
+  const multiClicksData = useMemo(() => {
+    if (!isMulti) return [];
+    return mergeCountSeries(
+      multiGsc.map(({ brand: b, data: d }) => ({
+        brand: b,
+        data: (d.clicksImpressionsOverTime || []).map((x: any) => ({ date: x.date, value: x.clicks })),
+      })),
+    );
+  }, [isMulti, multiGsc]);
+
+  const multiImpressionsData = useMemo(() => {
+    if (!isMulti) return [];
+    return mergeCountSeries(
+      multiGsc.map(({ brand: b, data: d }) => ({
+        brand: b,
+        data: (d.clicksImpressionsOverTime || []).map((x: any) => ({ date: x.date, value: x.impressions })),
+      })),
+    );
+  }, [isMulti, multiGsc]);
+
+  const multiKpi = useMemo(() => {
+    if (!isMulti) return null;
+    const sessions = sumKpi(multiGa4.map((x) => x.data.sessions || 0));
+    const pageViews = sumKpi(multiGa4.map((x) => x.data.pageViews || 0));
+    const organicSessions = sumKpi(multiGa4.map((x) => x.data.organicSessions || 0));
+    const totalClicks = sumKpi(multiGsc.map((x) => x.data.totalClicks || 0));
+    const totalImpressions = sumKpi(multiGsc.map((x) => x.data.totalImpressions || 0));
+    const averageCTR = recomputeRateKpi(totalClicks, totalImpressions);
+    const weightedPos = multiGsc.reduce((sum, x) => sum + (x.data.averagePosition || 0) * (x.data.totalImpressions || 0), 0);
+    const averagePosition = totalImpressions > 0 ? weightedPos / totalImpressions : 0;
+    return { sessions, pageViews, organicSessions, totalClicks, totalImpressions, averageCTR, averagePosition };
+  }, [isMulti, multiGa4, multiGsc]);
 
   // ── Email schedule state ───────────────────────────────────────────────────
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
@@ -315,12 +388,52 @@ export function SummaryTab({ brand, dateFrom, dateTo, showInsights = true }: Sum
     }
     setSendingNow(true);
     try {
+      // Build the PDF for the period selected in the dialog — not necessarily
+      // the same range the main dashboard is currently showing.
+      const days        = schedForm.date_range_days;
+      const pdfDateTo   = new Date();
+      const pdfDateFrom = new Date(pdfDateTo.getTime() - days * 24 * 60 * 60 * 1000);
+
+      const [pdfGa4, pdfGsc, pdfChannels] = await Promise.all([
+        brand.hasGA4 ? fetchGA4Data(brand, pdfDateFrom, pdfDateTo) : Promise.resolve(null),
+        brand.hasGSC ? fetchGSCData(brand, pdfDateFrom, pdfDateTo) : Promise.resolve(null),
+        brand.hasGA4 && brand.ga4PropertyIds?.length
+          ? supabase.functions
+              .invoke("ga4-channel-data", {
+                body: {
+                  propertyIds: brand.ga4PropertyIds,
+                  startDate: pdfDateFrom.toISOString().split("T")[0],
+                  endDate:   pdfDateTo.toISOString().split("T")[0],
+                },
+              })
+              .then(({ data }) => data?.channels ?? [])
+              .catch(() => [])
+          : Promise.resolve([]),
+      ]);
+
+      // Same raster resolution + format as "Download Report" — pixel-identical
+      // colors. Uploading to Storage (rather than emailing the bytes directly)
+      // sidesteps the Edge Function's ~2MB resource ceiling entirely.
+      const { pdf, filename } = await buildReportPdf(pdfDateFrom, pdfDateTo, pdfGa4, pdfGsc, pdfChannels);
+      const pdfBlob = pdf.output("blob") as Blob;
+
+      const storagePath = `${brand.id}/${crypto.randomUUID()}.pdf`;
+      const { error: uploadError } = await supabase.storage
+        .from("report-pdfs")
+        .upload(storagePath, pdfBlob, { contentType: "application/pdf" });
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage.from("report-pdfs").getPublicUrl(storagePath);
+      const downloadUrl = `${publicUrl}?download=${encodeURIComponent(filename)}`;
+
       const { error } = await supabase.functions.invoke("send-test-email", {
         body: {
           recipients: recipientsList,
           brand_id: brand.id,
           brand_name: brand.name,
-          date_range_days: schedForm.date_range_days,
+          date_range_days: days,
+          pdf_url: downloadUrl,
+          pdf_filename: filename,
         },
       });
       if (error) throw error;
@@ -481,124 +594,142 @@ export function SummaryTab({ brand, dateFrom, dateTo, showInsights = true }: Sum
   const reportRef  = useRef<HTMLDivElement>(null);
   const [exporting, setExporting] = useState(false);
 
+  async function buildReportPdf(
+    pdfDateFrom: Date,
+    pdfDateTo: Date,
+    pdfGa4: any,
+    pdfGsc: any,
+    pdfChannels: any[],
+    opts?: { scale?: number; imageFormat?: "PNG" | "JPEG"; jpegQuality?: number }
+  ) {
+    const rasterScale  = opts?.scale ?? 2;
+    const imageFormat  = opts?.imageFormat ?? "PNG";
+    const jpegQuality  = opts?.jpegQuality ?? 0.8;
+    const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+      import("html2canvas"),
+      import("jspdf"),
+    ]);
+
+    // Off-screen container — must be position:absolute (not fixed) so
+    // offsetHeight reflects real content height, not viewport height.
+    const container = document.createElement("div");
+    container.style.cssText = [
+      "position:absolute",
+      "top:0",
+      "left:-9999px",
+      "width:794px",
+      "background:#fff",
+      "z-index:-1",
+      "overflow:visible",
+    ].join(";");
+    document.body.appendChild(container);
+
+    const root = ReactDOM.createRoot(container);
+    root.render(
+      <SummaryPrintView
+        brand={brand}
+        dateFrom={pdfDateFrom}
+        dateTo={pdfDateTo}
+        ga4={pdfGa4}
+        gsc={pdfGsc}
+        channels={pdfChannels}
+        recommendations={[]}
+      />
+    );
+
+    // Wait for React + Recharts SVGs to paint
+    await new Promise(r => setTimeout(r, 1500));
+
+    const el = container.firstElementChild as HTMLElement;
+    const scale = rasterScale;
+    const elW = el.offsetWidth;
+    const elH = el.offsetHeight;
+
+    // Collect safe break Y-positions from data-pb markers BEFORE capturing.
+    // These are the Gap() divs between sections — always safe to cut here.
+    const pbEls = Array.from(el.querySelectorAll("[data-pb]")) as HTMLElement[];
+    // Convert DOM px → canvas px (scale=2). Use the mid-point of each gap.
+    const safeBreaks: number[] = pbEls.map(
+      (e) => Math.round((e.offsetTop + e.offsetHeight / 2) * scale)
+    );
+    // Always include start and end
+    safeBreaks.unshift(0);
+    safeBreaks.push(elH * scale);
+
+    const canvas = await html2canvas(el, {
+      scale,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: "#ffffff",
+      logging: false,
+      width: elW,
+      height: elH,
+      windowWidth: elW,
+      windowHeight: elH,
+      scrollX: 0,
+      scrollY: 0,
+    });
+
+    root.unmount();
+    document.body.removeChild(container);
+
+    // A4: 210 × 297 mm. canvas.width = elW * scale.
+    const pdf     = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+    const pageWmm = 210;
+    const pageHmm = 297;
+    const pxPerMm = canvas.width / pageWmm;
+    const pageHpx = Math.round(pageHmm * pxPerMm);
+
+    // For each page boundary, pick the nearest safe break that doesn't
+    // overshoot the page limit — guarantees cuts always land between sections.
+    function pickBreak(fromY: number): number {
+      const target = fromY + pageHpx;
+      if (target >= canvas.height) return canvas.height;
+      // Find safe break points between fromY and target
+      const candidates = safeBreaks.filter(b => b > fromY && b <= target);
+      // Pick the one closest to (but not past) target
+      return candidates.length > 0
+        ? candidates[candidates.length - 1]
+        : target; // fallback: hard cut at A4 boundary
+    }
+
+    let srcY = 0;
+    let page = 0;
+
+    while (srcY < canvas.height) {
+      const breakY = pickBreak(srcY);
+      const sliceH = breakY - srcY;
+      if (sliceH <= 0) break;
+
+      const slice = document.createElement("canvas");
+      slice.width  = canvas.width;
+      slice.height = sliceH;
+      const ctx = slice.getContext("2d")!;
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, slice.width, slice.height);
+      ctx.drawImage(canvas, 0, srcY, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+
+      if (page > 0) pdf.addPage();
+      const sliceDataUrl = imageFormat === "JPEG"
+        ? slice.toDataURL("image/jpeg", jpegQuality)
+        : slice.toDataURL("image/png");
+      pdf.addImage(sliceDataUrl, imageFormat, 0, 0, pageWmm, sliceH / pxPerMm);
+
+      srcY = breakY;
+      page++;
+    }
+
+    const safeName = brand.name.replace(/[^a-zA-Z0-9]/g, "_");
+    const from     = format(pdfDateFrom, "yyyy-MM-dd");
+    const to       = format(pdfDateTo,   "yyyy-MM-dd");
+    return { pdf, filename: `${safeName}_${from}_${to}.pdf` };
+  }
+
   async function handleDownloadPDF() {
     setExporting(true);
     try {
-      const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
-        import("html2canvas"),
-        import("jspdf"),
-      ]);
-
-      // Off-screen container — must be position:absolute (not fixed) so
-      // offsetHeight reflects real content height, not viewport height.
-      const container = document.createElement("div");
-      container.style.cssText = [
-        "position:absolute",
-        "top:0",
-        "left:-9999px",
-        "width:794px",
-        "background:#fff",
-        "z-index:-1",
-        "overflow:visible",
-      ].join(";");
-      document.body.appendChild(container);
-
-      const root = ReactDOM.createRoot(container);
-      root.render(
-        <SummaryPrintView
-          brand={brand}
-          dateFrom={dateFrom}
-          dateTo={dateTo}
-          ga4={ga4}
-          gsc={gsc}
-          channels={channels}
-          recommendations={[]}
-        />
-      );
-
-      // Wait for React + Recharts SVGs to paint
-      await new Promise(r => setTimeout(r, 1500));
-
-      const el = container.firstElementChild as HTMLElement;
-      const scale = 2;
-      const elW = el.offsetWidth;
-      const elH = el.offsetHeight;
-
-      // Collect safe break Y-positions from data-pb markers BEFORE capturing.
-      // These are the Gap() divs between sections — always safe to cut here.
-      const pbEls = Array.from(el.querySelectorAll("[data-pb]")) as HTMLElement[];
-      // Convert DOM px → canvas px (scale=2). Use the mid-point of each gap.
-      const safeBreaks: number[] = pbEls.map(
-        (e) => Math.round((e.offsetTop + e.offsetHeight / 2) * scale)
-      );
-      // Always include start and end
-      safeBreaks.unshift(0);
-      safeBreaks.push(elH * scale);
-
-      const canvas = await html2canvas(el, {
-        scale,
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: "#ffffff",
-        logging: false,
-        width: elW,
-        height: elH,
-        windowWidth: elW,
-        windowHeight: elH,
-        scrollX: 0,
-        scrollY: 0,
-      });
-
-      root.unmount();
-      document.body.removeChild(container);
-
-      // A4: 210 × 297 mm. canvas.width = elW * scale.
-      const pdf     = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-      const pageWmm = 210;
-      const pageHmm = 297;
-      const pxPerMm = canvas.width / pageWmm;
-      const pageHpx = Math.round(pageHmm * pxPerMm);
-
-      // For each page boundary, pick the nearest safe break that doesn't
-      // overshoot the page limit — guarantees cuts always land between sections.
-      function pickBreak(fromY: number): number {
-        const target = fromY + pageHpx;
-        if (target >= canvas.height) return canvas.height;
-        // Find safe break points between fromY and target
-        const candidates = safeBreaks.filter(b => b > fromY && b <= target);
-        // Pick the one closest to (but not past) target
-        return candidates.length > 0
-          ? candidates[candidates.length - 1]
-          : target; // fallback: hard cut at A4 boundary
-      }
-
-      let srcY = 0;
-      let page = 0;
-
-      while (srcY < canvas.height) {
-        const breakY = pickBreak(srcY);
-        const sliceH = breakY - srcY;
-        if (sliceH <= 0) break;
-
-        const slice = document.createElement("canvas");
-        slice.width  = canvas.width;
-        slice.height = sliceH;
-        const ctx = slice.getContext("2d")!;
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, slice.width, slice.height);
-        ctx.drawImage(canvas, 0, srcY, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
-
-        if (page > 0) pdf.addPage();
-        pdf.addImage(slice.toDataURL("image/png"), "PNG", 0, 0, pageWmm, sliceH / pxPerMm);
-
-        srcY = breakY;
-        page++;
-      }
-
-      const safeName = brand.name.replace(/[^a-zA-Z0-9]/g, "_");
-      const from     = format(dateFrom, "yyyy-MM-dd");
-      const to       = format(dateTo,   "yyyy-MM-dd");
-      pdf.save(`${safeName}_${from}_${to}.pdf`);
+      const { pdf, filename } = await buildReportPdf(dateFrom, dateTo, ga4, gsc, channels);
+      pdf.save(filename);
     } catch (err) {
       console.error("PDF export failed:", err);
     } finally {
@@ -606,7 +737,69 @@ export function SummaryTab({ brand, dateFrom, dateTo, showInsights = true }: Sum
     }
   }
 
-  if (showLoader) return <WaterFillLoader fullScreen={false} message="Building report…" />;
+  if (showLoader || (isMulti && multiLoading)) return <WaterFillLoader fullScreen={false} message="Building report…" />;
+
+  if (isMulti) {
+    if (!multiGa4.length && !multiGsc.length) {
+      return (
+        <div className="flex flex-col items-center justify-center py-24 text-center">
+          <p className="text-sm font-medium text-foreground">None of the selected brands have GA4/GSC data.</p>
+        </div>
+      );
+    }
+    const k = multiKpi!;
+    const gaBrands = multiGa4.map((x) => x.brand);
+    const gscBrands = multiGsc.map((x) => x.brand);
+    return (
+      <div className="p-6 space-y-8 max-w-[1400px] bg-background">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-brand-red mb-1">Performance Report Brief</p>
+          <h1 className="text-3xl font-black text-foreground leading-tight">{brands!.length} Brands</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {format(dateFrom, "MMM d")} – {format(dateTo, "MMM d, yyyy")}
+          </p>
+        </div>
+
+        <div>
+          <SectionHeader label="Overview" />
+          <div className="flex flex-wrap border border-border rounded-lg overflow-hidden">
+            <KpiTile label="Sessions" value={fmt(k.sessions)} />
+            <KpiTile label="Organic Sessions" value={fmt(k.organicSessions)} />
+            <KpiTile label="Page Views" value={fmt(k.pageViews)} />
+            <KpiTile label="Impressions" value={fmt(k.totalImpressions)} />
+            <KpiTile label="Clicks" value={fmt(k.totalClicks)} />
+            <KpiTile label="Avg CTR" value={fmtPct(k.averageCTR)} />
+          </div>
+        </div>
+
+        {gaBrands.length > 0 && (
+          <div>
+            <SectionHeader label="Sessions Over Time" source="Google Analytics" />
+            <div className="rounded-lg border border-border p-4">
+              <MultiBrandLineChart data={multiSessionsData} brands={gaBrands} valueFormatter={fmt} />
+            </div>
+          </div>
+        )}
+
+        {gscBrands.length > 0 && (
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+            <div>
+              <SectionHeader label="Clicks Over Time" source="Search Console" />
+              <div className="rounded-lg border border-border p-4">
+                <MultiBrandLineChart data={multiClicksData} brands={gscBrands} valueFormatter={fmt} />
+              </div>
+            </div>
+            <div>
+              <SectionHeader label="Impressions Over Time" source="Search Console" />
+              <div className="rounded-lg border border-border p-4">
+                <MultiBrandLineChart data={multiImpressionsData} brands={gscBrands} valueFormatter={fmt} />
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div ref={reportRef} className="p-6 space-y-8 max-w-[1400px] bg-background">

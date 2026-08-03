@@ -13,10 +13,13 @@ import { AIRecommendations } from "./AIRecommendations";
 import { CRMComparisonSection } from "./CRMComparisonTab";
 import { CRMChatPanel } from "./CRMChatPanel";
 import { DealerFeedbackSection } from "./DealerFeedbackSection";
+import { MultiBrandLineChart } from "./MultiBrandLineChart";
+import { mergeCountSeries, sumKpi } from "@/lib/mergeBrandSeries";
 
 
 interface HubSpotCRMTabProps {
   brand: Brand;
+  brands?: Brand[];
   dateFrom: Date;
   dateTo: Date;
   userEmail?: string;
@@ -119,7 +122,7 @@ interface SecondaryStats {
   timeSeries?: Record<string, number>;
 }
 
-export function HubSpotCRMTab({ brand, dateFrom, dateTo, userEmail = "" }: HubSpotCRMTabProps) {
+export function HubSpotCRMTab({ brand, brands, dateFrom, dateTo, userEmail = "" }: HubSpotCRMTabProps) {
   const isSecondaryBrand = SECONDARY_BRAND_NAMES.has(brand.name) || brand.hubspotAccount === "secondary";
 
   const [data, setData] = useState<any>(null);
@@ -127,6 +130,52 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo, userEmail = "" }: HubSp
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const showLoader = useFirstLoad(loading);
+
+  const isMulti = !!brands && brands.length > 1;
+  const [multiData, setMultiData] = useState<{ brand: Brand; data: any }[]>([]);
+  const [multiLoading, setMultiLoading] = useState(false);
+
+  useEffect(() => {
+    if (!isMulti) { setMultiData([]); return; }
+    const eligible = brands!.filter((b) => b.hasHubSpot);
+    if (!eligible.length) { setMultiData([]); return; }
+    let cancelled = false;
+    setMultiLoading(true);
+
+    Promise.all(
+      eligible.map((b) =>
+        fetchHubSpotData(b, dateFrom, dateTo)
+          .then((res) => ({ brand: b, data: res }))
+          .catch(() => ({ brand: b, data: null })),
+      ),
+    ).then((results) => {
+      if (cancelled) return;
+      setMultiData(results.filter((r) => r.data));
+      setMultiLoading(false);
+    });
+
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMulti, brands?.map((b) => b.id).join(","), dateFrom.getTime(), dateTo.getTime()]);
+
+  const multiContactsData = useMemo(() => {
+    if (!isMulti) return [];
+    return mergeCountSeries(
+      multiData.map(({ brand: b, data: bd }) => ({
+        brand: b,
+        data: (bd.contactsOverTime || []).map((d: any) => ({ date: d.date, value: d.total || 0 })),
+      })),
+    );
+  }, [isMulti, multiData]);
+
+  const multiKpi = useMemo(() => {
+    if (!isMulti) return null;
+    return {
+      totalContacts: sumKpi(multiData.map((x) => x.data.totalContacts || 0)),
+      dealerAssignedTotal: sumKpi(multiData.map((x) => x.data.dealerAssignedTotal || 0)),
+      dealerUnassignedTotal: sumKpi(multiData.map((x) => x.data.dealerUnassignedTotal || 0)),
+    };
+  }, [isMulti, multiData]);
 
   // Sub-tab toggle: "overview" = existing CRM content, "lists" = HubSpot Lists view.
   // Only exposed for primary-account brands.
@@ -254,8 +303,50 @@ export function HubSpotCRMTab({ brand, dateFrom, dateTo, userEmail = "" }: HubSp
   const axisStyle = { fontSize: 11, fill: "hsl(var(--muted-foreground))" };
   const gridColor = "hsl(var(--border))";
 
-  if (loading) {
+  if (loading || (isMulti && multiLoading)) {
     return <WaterFillLoader fullScreen={false} message="Loading CRM data…" />;
+  }
+
+  if (isMulti) {
+    if (!multiData.length) {
+      return (
+        <div className="flex flex-col items-center justify-center py-24 text-center">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted">
+            <Users className="h-7 w-7 text-muted-foreground" />
+          </div>
+          <p className="mt-4 text-sm font-medium text-foreground">None of the selected brands have HubSpot CRM data.</p>
+        </div>
+      );
+    }
+    const k = multiKpi!;
+    return (
+      <div className="space-y-8 p-6">
+        <section>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="rounded-2xl border border-border bg-card p-5">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Contacts Created</p>
+              <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">{k.totalContacts.toLocaleString()}</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">Combined total across selected brands</p>
+            </div>
+            <div className="rounded-2xl border border-border bg-card p-5">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Assigned to Dealer</p>
+              <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">{k.dealerAssignedTotal.toLocaleString()}</p>
+            </div>
+            <div className="rounded-2xl border border-border bg-card p-5">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Not Assigned</p>
+              <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">{k.dealerUnassignedTotal.toLocaleString()}</p>
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-5">
+          <SectionHeader icon={Users} label="Contact Analytics" color="bg-emerald-600" />
+          <ChartCard title="Contacts Created Over Time" subtitle="By brand, plus combined Total">
+            <MultiBrandLineChart data={multiContactsData} brands={multiData.map((x) => x.brand)} />
+          </ChartCard>
+        </section>
+      </div>
+    );
   }
 
   if (!data) return null;

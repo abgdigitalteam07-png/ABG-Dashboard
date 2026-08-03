@@ -10,6 +10,10 @@ const ABG_LOGO_URL =
 interface DashboardHeaderProps {
   selectedBrand: Brand;
   onBrandChange: (brand: Brand) => void;
+  brandMode?: "single" | "multi";
+  multiBrands?: Brand[];
+  onSelectMultiple?: (brands: Brand[]) => void;
+  onBrandModeChange?: (mode: "single" | "multi") => void;
   dateFrom: Date;
   dateTo: Date;
   onDateChange: (from: Date, to: Date) => void;
@@ -19,6 +23,10 @@ interface DashboardHeaderProps {
 export function DashboardHeader({
   selectedBrand,
   onBrandChange,
+  brandMode,
+  multiBrands,
+  onSelectMultiple,
+  onBrandModeChange,
   dateFrom,
   dateTo,
   onDateChange,
@@ -43,7 +51,14 @@ export function DashboardHeader({
             </span>
           </button>
           <div className="h-6 w-px bg-primary-foreground/20" />
-          <BrandSwitcher selectedBrand={selectedBrand} onSelect={onBrandChange} />
+          <BrandSwitcher
+            selectedBrand={selectedBrand}
+            onSelect={onBrandChange}
+            brandMode={brandMode}
+            multiBrands={multiBrands}
+            onSelectMultiple={onSelectMultiple}
+            onBrandModeChange={onBrandModeChange}
+          />
         </div>
 
         {/* Center logo + title */}
@@ -88,7 +103,14 @@ export function DashboardHeader({
             Read Me
           </button>
           <span className="h-4 w-px bg-primary-foreground/20" />
-          <BrandSwitcher selectedBrand={selectedBrand} onSelect={onBrandChange} />
+          <BrandSwitcher
+            selectedBrand={selectedBrand}
+            onSelect={onBrandChange}
+            brandMode={brandMode}
+            multiBrands={multiBrands}
+            onSelectMultiple={onSelectMultiple}
+            onBrandModeChange={onBrandModeChange}
+          />
         </div>
         <div className="flex items-center gap-2">
           <DateRangePicker from={dateFrom} to={dateTo} onChange={onDateChange} />
@@ -122,7 +144,14 @@ export function DashboardHeader({
             Read Me
           </button>
           <span className="h-4 w-px bg-primary-foreground/20" />
-          <BrandSwitcher selectedBrand={selectedBrand} onSelect={onBrandChange} />
+          <BrandSwitcher
+            selectedBrand={selectedBrand}
+            onSelect={onBrandChange}
+            brandMode={brandMode}
+            multiBrands={multiBrands}
+            onSelectMultiple={onSelectMultiple}
+            onBrandModeChange={onBrandModeChange}
+          />
         </div>
         <div className="flex items-center gap-2">
           <DateRangePicker from={dateFrom} to={dateTo} onChange={onDateChange} />
