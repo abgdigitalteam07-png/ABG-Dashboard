@@ -38,6 +38,48 @@ export type Database = {
         }
         Relationships: []
       }
+      email_schedules: {
+        Row: {
+          brand_id: string
+          brand_name: string
+          created_at: string
+          date_range_days: number
+          day_of_week: number
+          id: string
+          is_active: boolean
+          last_sent_at: string | null
+          recipients: string[]
+          send_hour_utc: number
+          updated_at: string
+        }
+        Insert: {
+          brand_id: string
+          brand_name: string
+          created_at?: string
+          date_range_days?: number
+          day_of_week?: number
+          id?: string
+          is_active?: boolean
+          last_sent_at?: string | null
+          recipients?: string[]
+          send_hour_utc?: number
+          updated_at?: string
+        }
+        Update: {
+          brand_id?: string
+          brand_name?: string
+          created_at?: string
+          date_range_days?: number
+          day_of_week?: number
+          id?: string
+          is_active?: boolean
+          last_sent_at?: string | null
+          recipients?: string[]
+          send_hour_utc?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       user_activity_log: {
         Row: {
           action: string
@@ -140,6 +182,36 @@ export type Database = {
           is_active?: boolean
           last_login_at?: string | null
           role?: string
+        }
+        Relationships: []
+      }
+      user_tab_permissions: {
+        Row: {
+          can_view: boolean
+          created_at: string
+          id: string
+          show_insights: boolean
+          tab_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          can_view?: boolean
+          created_at?: string
+          id?: string
+          show_insights?: boolean
+          tab_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          can_view?: boolean
+          created_at?: string
+          id?: string
+          show_insights?: boolean
+          tab_id?: string
+          updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }
