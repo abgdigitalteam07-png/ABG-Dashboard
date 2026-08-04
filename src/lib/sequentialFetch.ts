@@ -7,10 +7,15 @@
  * function silently returns zeroed-out stats instead of erroring. Fetching
  * serially avoids that entirely — slower, but the numbers are correct.
  */
-export async function sequentialMap<T, R>(items: T[], fn: (item: T) => Promise<R>): Promise<R[]> {
+export async function sequentialMap<T, R>(
+  items: T[],
+  fn: (item: T) => Promise<R>,
+  onItemDone?: (done: number, total: number) => void,
+): Promise<R[]> {
   const results: R[] = [];
   for (const item of items) {
     results.push(await fn(item));
+    onItemDone?.(results.length, items.length);
   }
   return results;
 }

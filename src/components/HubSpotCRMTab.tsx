@@ -135,6 +135,7 @@ export function HubSpotCRMTab({ brand, brands, dateFrom, dateTo, userEmail = "" 
   const isMulti = !!brands && brands.length > 1;
   const [multiData, setMultiData] = useState<{ brand: Brand; data: any }[]>([]);
   const [multiLoading, setMultiLoading] = useState(false);
+  const [multiProgress, setMultiProgress] = useState({ done: 0, total: 0 });
 
   useEffect(() => {
     if (!isMulti) { setMultiData([]); return; }
@@ -142,11 +143,15 @@ export function HubSpotCRMTab({ brand, brands, dateFrom, dateTo, userEmail = "" 
     if (!eligible.length) { setMultiData([]); return; }
     let cancelled = false;
     setMultiLoading(true);
+    setMultiProgress({ done: 0, total: eligible.length });
 
-    sequentialMap(eligible, (b) =>
-      withRetry(() => fetchHubSpotData(b, dateFrom, dateTo))
-        .then((res) => ({ brand: b, data: res }))
-        .catch(() => ({ brand: b, data: null })),
+    sequentialMap(
+      eligible,
+      (b) =>
+        withRetry(() => fetchHubSpotData(b, dateFrom, dateTo))
+          .then((res) => ({ brand: b, data: res }))
+          .catch(() => ({ brand: b, data: null })),
+      (done, total) => { if (!cancelled) setMultiProgress({ done, total }); },
     ).then((results) => {
       if (cancelled) return;
       setMultiData(results.filter((r) => r.data));
@@ -303,7 +308,16 @@ export function HubSpotCRMTab({ brand, brands, dateFrom, dateTo, userEmail = "" 
   const gridColor = "hsl(var(--border))";
 
   if (loading || (isMulti && multiLoading)) {
-    return <WaterFillLoader fullScreen={false} message="Loading CRM data…" />;
+    return (
+      <WaterFillLoader
+        fullScreen={false}
+        message={
+          isMulti && multiProgress.total > 0
+            ? `Loading CRM data… (${multiProgress.done} of ${multiProgress.total} brands)`
+            : "Loading CRM data…"
+        }
+      />
+    );
   }
 
   if (isMulti) {

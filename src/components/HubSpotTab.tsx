@@ -233,6 +233,7 @@ export function HubSpotTab({ brand, brands, dateFrom, dateTo }: HubSpotTabProps)
   const isMulti = !!brands && brands.length > 1;
   const [multiData, setMultiData] = useState<{ brand: Brand; data: any }[]>([]);
   const [multiLoading, setMultiLoading] = useState(false);
+  const [multiProgress, setMultiProgress] = useState({ done: 0, total: 0 });
   const [chartType, setChartType] = useState<ChartType>("area");
   const [granularity, setGranularity] = useState<Granularity>("week");
   const [previewEmail, setPreviewEmail] = useState<any>(null);
@@ -273,11 +274,15 @@ export function HubSpotTab({ brand, brands, dateFrom, dateTo }: HubSpotTabProps)
     if (!eligible.length) { setMultiData([]); return; }
     let cancelled = false;
     setMultiLoading(true);
+    setMultiProgress({ done: 0, total: eligible.length });
 
-    sequentialMap(eligible, (b) =>
-      withRetry(() => fetchHubSpotData(b, dateFrom, dateTo))
-        .then((res) => ({ brand: b, data: res }))
-        .catch(() => ({ brand: b, data: null })),
+    sequentialMap(
+      eligible,
+      (b) =>
+        withRetry(() => fetchHubSpotData(b, dateFrom, dateTo))
+          .then((res) => ({ brand: b, data: res }))
+          .catch(() => ({ brand: b, data: null })),
+      (done, total) => { if (!cancelled) setMultiProgress({ done, total }); },
     ).then((results) => {
       if (cancelled) return;
       setMultiData(results.filter((r) => r.data));

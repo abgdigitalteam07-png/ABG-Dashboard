@@ -30,6 +30,7 @@ export function mergeCountSeries(perBrand: CountSeriesInput[]): MergedRow[] {
     }
   }
 
+  dateOrder.sort();
   const rows = dateOrder.map((date) => byDate.get(date)!);
   for (const { brand } of perBrand) {
     for (const row of rows) {
@@ -72,6 +73,7 @@ export function mergeRateSeries(perBrand: RateSeriesInput[]): MergedRow[] {
     }
   }
 
+  dateOrder.sort();
   return dateOrder.map((date) => {
     const nums = numByDate.get(date)!;
     const denoms = denomByDate.get(date)!;
