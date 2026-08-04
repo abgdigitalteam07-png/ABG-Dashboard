@@ -5,7 +5,7 @@ import { WaterFillLoader } from "@/components/WaterFillLoader";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
-import { fetchHubSpotData, callFunction } from "@/lib/api-client";
+import { fetchHubSpotData, callFunction, isHubSpotResponseEmpty } from "@/lib/api-client";
 import { Brand } from "@/lib/brands";
 import { Users, TrendingUp, UserCheck, UserX, RefreshCw, FolderOpen, List as ListIcon } from "lucide-react";
 import { ContactCharts } from "@/components/ContactCharts";
@@ -148,7 +148,7 @@ export function HubSpotCRMTab({ brand, brands, dateFrom, dateTo, userEmail = "" 
     sequentialMap(
       eligible,
       (b) =>
-        withRetry(() => fetchHubSpotData(b, dateFrom, dateTo))
+        withRetry(() => fetchHubSpotData(b, dateFrom, dateTo), { isBad: isHubSpotResponseEmpty })
           .then((res) => ({ brand: b, data: res }))
           .catch(() => ({ brand: b, data: null })),
       (done, total) => { if (!cancelled) setMultiProgress({ done, total }); },

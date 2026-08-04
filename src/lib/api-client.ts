@@ -73,4 +73,17 @@ export async function fetchHubSpotData(brand: Brand, dateFrom: Date, dateTo: Dat
   return data;
 }
 
+/**
+ * The hubspot-data function returns HTTP 200 with every stat zeroed when its
+ * internal HubSpot API calls get rate-limited, instead of surfacing an error —
+ * so a normal try/catch never catches this failure mode. It's implausible for
+ * a real, active brand to have zero contacts across its ENTIRE HubSpot
+ * history, so treat an all-zero response as a signal to retry.
+ */
+export function isHubSpotResponseEmpty(data: any): boolean {
+  if (!data) return true;
+  return !data.totalContacts && !data.totalContactsAllTime && !data.totalEmailsSent
+    && !data.totalOpens && !data.totalDelivered;
+}
+
 export { callFunction, FUNCTIONS_URL, ANON_KEY };

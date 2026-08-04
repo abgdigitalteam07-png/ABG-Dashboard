@@ -5,7 +5,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, AreaChart, Area, Legend,
 } from "recharts";
-import { fetchHubSpotData } from "@/lib/api-client";
+import { fetchHubSpotData, isHubSpotResponseEmpty } from "@/lib/api-client";
 import { Brand } from "@/lib/brands";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter,
@@ -279,7 +279,7 @@ export function HubSpotTab({ brand, brands, dateFrom, dateTo }: HubSpotTabProps)
     sequentialMap(
       eligible,
       (b) =>
-        withRetry(() => fetchHubSpotData(b, dateFrom, dateTo))
+        withRetry(() => fetchHubSpotData(b, dateFrom, dateTo), { isBad: isHubSpotResponseEmpty })
           .then((res) => ({ brand: b, data: res }))
           .catch(() => ({ brand: b, data: null })),
       (done, total) => { if (!cancelled) setMultiProgress({ done, total }); },
