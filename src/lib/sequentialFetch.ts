@@ -14,3 +14,21 @@ export async function sequentialMap<T, R>(items: T[], fn: (item: T) => Promise<R
   }
   return results;
 }
+
+/**
+ * Retries a single async call once (by default) before giving up. A lone
+ * transient network/timeout blip during a long serial multi-brand fetch
+ * would otherwise silently drop that brand's numbers from the total.
+ */
+export async function withRetry<R>(fn: () => Promise<R>, retries = 1): Promise<R> {
+  let attempt = 0;
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (attempt >= retries) throw err;
+      attempt++;
+    }
+  }
+}

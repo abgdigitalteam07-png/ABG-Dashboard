@@ -15,7 +15,7 @@ import { CRMChatPanel } from "./CRMChatPanel";
 import { DealerFeedbackSection } from "./DealerFeedbackSection";
 import { MultiBrandLineChart } from "./MultiBrandLineChart";
 import { mergeCountSeries, sumKpi } from "@/lib/mergeBrandSeries";
-import { sequentialMap } from "@/lib/sequentialFetch";
+import { sequentialMap, withRetry } from "@/lib/sequentialFetch";
 
 
 interface HubSpotCRMTabProps {
@@ -144,7 +144,7 @@ export function HubSpotCRMTab({ brand, brands, dateFrom, dateTo, userEmail = "" 
     setMultiLoading(true);
 
     sequentialMap(eligible, (b) =>
-      fetchHubSpotData(b, dateFrom, dateTo)
+      withRetry(() => fetchHubSpotData(b, dateFrom, dateTo))
         .then((res) => ({ brand: b, data: res }))
         .catch(() => ({ brand: b, data: null })),
     ).then((results) => {
@@ -318,23 +318,32 @@ export function HubSpotCRMTab({ brand, brands, dateFrom, dateTo, userEmail = "" 
       );
     }
     const k = multiKpi!;
+    // "Assigned to Dealer" / "Not Assigned" only apply to the secondary (MAAX-portal)
+    // brands — same as single-brand mode, which only shows these for isSecondaryBrand.
+    const allSecondary = multiData.every(
+      ({ brand: b }) => SECONDARY_BRAND_NAMES.has(b.name) || b.hubspotAccount === "secondary",
+    );
     return (
       <div className="space-y-8 p-6">
         <section>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className={`grid grid-cols-1 gap-4 ${allSecondary ? "sm:grid-cols-3" : ""}`}>
             <div className="rounded-2xl border border-border bg-card p-5">
               <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Contacts Created</p>
               <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">{k.totalContacts.toLocaleString()}</p>
               <p className="mt-0.5 text-[11px] text-muted-foreground">Combined total across selected brands</p>
             </div>
-            <div className="rounded-2xl border border-border bg-card p-5">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Assigned to Dealer</p>
-              <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">{k.dealerAssignedTotal.toLocaleString()}</p>
-            </div>
-            <div className="rounded-2xl border border-border bg-card p-5">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Not Assigned</p>
-              <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">{k.dealerUnassignedTotal.toLocaleString()}</p>
-            </div>
+            {allSecondary && (
+              <>
+                <div className="rounded-2xl border border-border bg-card p-5">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Assigned to Dealer</p>
+                  <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">{k.dealerAssignedTotal.toLocaleString()}</p>
+                </div>
+                <div className="rounded-2xl border border-border bg-card p-5">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Not Assigned</p>
+                  <p className="mt-2 text-3xl font-bold tabular-nums text-foreground">{k.dealerUnassignedTotal.toLocaleString()}</p>
+                </div>
+              </>
+            )}
           </div>
         </section>
 
