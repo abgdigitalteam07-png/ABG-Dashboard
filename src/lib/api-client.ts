@@ -74,6 +74,32 @@ export async function fetchHubSpotData(brand: Brand, dateFrom: Date, dateTo: Dat
 }
 
 /**
+ * Batch mode — fetches HubSpot data for several primary/ABG-account brands in
+ * one call. The edge function fetches the account-wide email list once and
+ * shares it across every requested brand instead of the N-separate-calls
+ * pattern fetchHubSpotData uses, so this is dramatically faster and far less
+ * likely to trip HubSpot's account-wide rate limit for large selections.
+ * Only supports brands in the primary account — callers should route
+ * secondary (MAAX-portal) brands through fetchHubSpotData instead.
+ */
+export async function fetchHubSpotDataBatch(
+  brands: Brand[],
+  dateFrom: Date,
+  dateTo: Date,
+): Promise<Record<string, any>> {
+  if (!brands.length) return {};
+
+  const data = await callFunction("hubspot-data", {
+    brandNames: brands.map((b) => b.name),
+    startDate: formatDate(dateFrom),
+    endDate: formatDate(dateTo),
+    _t: Date.now(),
+  });
+  if (data?.error) throw new Error(data.error);
+  return data.brands || {};
+}
+
+/**
  * The hubspot-data function returns HTTP 200 with every stat zeroed when its
  * internal HubSpot API calls get rate-limited, instead of surfacing an error —
  * so a normal try/catch never catches this failure mode. It's implausible for

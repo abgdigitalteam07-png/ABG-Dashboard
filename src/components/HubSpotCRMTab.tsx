@@ -5,7 +5,7 @@ import { WaterFillLoader } from "@/components/WaterFillLoader";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
-import { fetchHubSpotData, callFunction, isHubSpotResponseEmpty } from "@/lib/api-client";
+import { fetchHubSpotData, fetchHubSpotDataBatch, callFunction, isHubSpotResponseEmpty } from "@/lib/api-client";
 import { Brand } from "@/lib/brands";
 import { Users, TrendingUp, UserCheck, UserX, RefreshCw, FolderOpen, List as ListIcon } from "lucide-react";
 import { ContactCharts } from "@/components/ContactCharts";
@@ -141,20 +141,29 @@ export function HubSpotCRMTab({ brand, brands, dateFrom, dateTo, userEmail = "" 
     if (!isMulti) { setMultiData([]); return; }
     const eligible = brands!.filter((b) => b.hasHubSpot);
     if (!eligible.length) { setMultiData([]); return; }
+    const primaryBrands = eligible.filter((b) => b.hubspotAccount !== "secondary");
+    const secondaryBrands = eligible.filter((b) => b.hubspotAccount === "secondary");
     let cancelled = false;
     setMultiLoading(true);
-    setMultiProgress({ done: 0, total: eligible.length });
+    setMultiProgress({ done: 0, total: secondaryBrands.length });
 
-    sequentialMap(
-      eligible,
-      (b) =>
-        withRetry(() => fetchHubSpotData(b, dateFrom, dateTo), { isBad: isHubSpotResponseEmpty })
-          .then((res) => ({ brand: b, data: res }))
-          .catch(() => ({ brand: b, data: null })),
-      (done, total) => { if (!cancelled) setMultiProgress({ done, total }); },
-    ).then((results) => {
+    Promise.all([
+      primaryBrands.length
+        ? withRetry(() => fetchHubSpotDataBatch(primaryBrands, dateFrom, dateTo))
+            .then((byName) => primaryBrands.map((b) => ({ brand: b, data: byName[b.name] || null })))
+            .catch(() => primaryBrands.map((b) => ({ brand: b, data: null })))
+        : Promise.resolve([]),
+      sequentialMap(
+        secondaryBrands,
+        (b) =>
+          withRetry(() => fetchHubSpotData(b, dateFrom, dateTo), { isBad: isHubSpotResponseEmpty })
+            .then((res) => ({ brand: b, data: res }))
+            .catch(() => ({ brand: b, data: null })),
+        (done, total) => { if (!cancelled) setMultiProgress({ done, total }); },
+      ),
+    ]).then(([primaryResults, secondaryResults]) => {
       if (cancelled) return;
-      setMultiData(results.filter((r) => r.data));
+      setMultiData([...primaryResults, ...secondaryResults].filter((r) => r.data));
       setMultiLoading(false);
     });
 
@@ -313,7 +322,7 @@ export function HubSpotCRMTab({ brand, brands, dateFrom, dateTo, userEmail = "" 
         fullScreen={false}
         message={
           isMulti && multiProgress.total > 0
-            ? `Loading CRM data… (${multiProgress.done} of ${multiProgress.total} brands)`
+            ? `Loading CRM data… (${multiProgress.done} of ${multiProgress.total} secondary brands)`
             : "Loading CRM data…"
         }
       />

@@ -5,7 +5,8 @@ const corsHeaders = {
 };
 
 interface HubSpotRequest {
-  brandName: string;
+  brandName?: string;
+  brandNames?: string[]; // batch mode — primary/ABG-account brands only, see handleBatchRequest
   startDate: string;
   endDate: string;
   debug?: boolean;
@@ -387,6 +388,429 @@ function pctChange(current: number, previous: number): number | null {
   return parseFloat((((current - previous) / previous) * 100).toFixed(2));
 }
 
+// ─── batch mode (primary/ABG-account brands only) ───
+// Fetches the account-wide email list ONCE and shares it across every requested
+// brand, instead of the single-brand endpoint's pattern of re-fetching that same
+// full list once per brand. Contacts are still fetched one search per brand (same
+// cost/behavior as the single-brand path) — the email fetch is the dominant
+// redundant cost this exists to eliminate. Deliberately self-contained (does not
+// touch or share mutable state with the single-brandName handler below) so the
+// existing single-brand behavior is guaranteed unaffected.
+
+function lifecycleStagesTemplate() {
+  return [
+    { stage: "subscriber", label: "Subscriber", count: 0 },
+    { stage: "lead", label: "Lead", count: 0 },
+    { stage: "marketingqualifiedlead", label: "MQL", count: 0 },
+    { stage: "salesqualifiedlead", label: "SQL", count: 0 },
+    { stage: "opportunity", label: "Opportunity", count: 0 },
+    { stage: "customer", label: "Customer", count: 0 },
+  ];
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function handleBatchRequest(
+  brandNames: string[],
+  startDate: string,
+  endDate: string,
+  corsHeaders: Record<string, string>,
+): Promise<Response> {
+  try {
+    for (const name of brandNames) {
+      if (SECONDARY_BRANDS.has(name) || !BRAND_TO_BU[name]) {
+        return new Response(
+          JSON.stringify({ error: `Batch mode only supports primary-account brands; "${name}" is not eligible.` }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+    }
+
+    const token = Deno.env.get("HUBSPOT_ACCESS_TOKEN");
+    if (!token) throw new Error("HUBSPOT_ACCESS_TOKEN not configured");
+
+    const startMs = new Date(startDate + "T00:00:00Z").getTime();
+    const endMs = new Date(endDate + "T23:59:59Z").getTime();
+    const { prevStart, prevEnd } = getPreviousPeriod(startDate, endDate);
+    const profileProperty = "account_type";
+
+    console.log(`[batch] Fetching HubSpot data for ${brandNames.length} brands: ${brandNames.join(", ")}`);
+
+    // The single biggest win: fetched once, reused by every brand below.
+    const allRawEmails = await fetchAllEmails(token);
+    console.log(`[batch] Total emails fetched once (shared): ${allRawEmails.length}`);
+
+    // State-code helpers duplicated from the single-brand handler on purpose —
+    // see the file-level note above about not sharing mutable/closure state.
+    const STATE_FULL_NAMES: Record<string, string> = {
+      AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California",
+      CO: "Colorado", CT: "Connecticut", DE: "Delaware", FL: "Florida", GA: "Georgia",
+      HI: "Hawaii", ID: "Idaho", IL: "Illinois", IN: "Indiana", IA: "Iowa",
+      KS: "Kansas", KY: "Kentucky", LA: "Louisiana", ME: "Maine", MD: "Maryland",
+      MA: "Massachusetts", MI: "Michigan", MN: "Minnesota", MS: "Mississippi", MO: "Missouri",
+      MT: "Montana", NE: "Nebraska", NV: "Nevada", NH: "New Hampshire", NJ: "New Jersey",
+      NM: "New Mexico", NY: "New York", NC: "North Carolina", ND: "North Dakota", OH: "Ohio",
+      OK: "Oklahoma", OR: "Oregon", PA: "Pennsylvania", RI: "Rhode Island", SC: "South Carolina",
+      SD: "South Dakota", TN: "Tennessee", TX: "Texas", UT: "Utah", VT: "Vermont",
+      VA: "Virginia", WA: "Washington", WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming",
+      DC: "District of Columbia",
+    };
+    const STATE_NAME_TO_CODE: Record<string, string> = {};
+    for (const [code, name] of Object.entries(STATE_FULL_NAMES)) STATE_NAME_TO_CODE[name.toLowerCase()] = code;
+    const STATE_CODE_SET = new Set(Object.keys(STATE_FULL_NAMES));
+
+    function normalizeStateCode(...values: Array<string | null | undefined>): string {
+      for (const value of values) {
+        const trimmed = (value || "").trim();
+        if (!trimmed) continue;
+        const upper = trimmed.toUpperCase();
+        if (STATE_CODE_SET.has(upper)) return upper;
+        const mapped = STATE_NAME_TO_CODE[trimmed.toLowerCase()];
+        if (mapped) return mapped;
+      }
+      return "";
+    }
+
+    const brands: Record<string, any> = {};
+
+    for (const brandName of brandNames) {
+      const buIds = BRAND_TO_BU[brandName];
+      const brandBuId = buIds ? buIds[0] : null;
+
+      // ── Contacts — same per-brand cost/logic as the single-brand primary path,
+      // wrapped in a retry: an all-zero result (both totalContacts AND the
+      // all-time total) almost certainly means a rate-limited HubSpot response
+      // partway through this brand's searches, not genuine zero activity.
+      let totalContacts = 0;
+      let totalContactsAllTime = 0;
+      let stateCounts: Record<string, number> = {};
+      let unknownStateCount = 0;
+      let contactsByDate: Record<string, { total: number; hubspot: number; salesforce: number; import: number }> = {};
+      let jobTitleCounts: Record<string, number> = {};
+      let industryCounts: Record<string, number> = {};
+      let lifecycleStages = lifecycleStagesTemplate();
+      let lifecycleStagesAllTime = lifecycleStagesTemplate();
+
+      const countContactAnalytics = (props: Record<string, any>) => {
+        const createDate = props.createdate;
+        if (createDate) {
+          const dateKey = new Date(createDate).toISOString().split("T")[0];
+          if (!contactsByDate[dateKey]) contactsByDate[dateKey] = { total: 0, hubspot: 0, salesforce: 0, import: 0 };
+          contactsByDate[dateKey].total++;
+          const objSource = (props.hs_object_source || "").toUpperCase();
+          const objSourceDetail = (props.hs_object_source_detail_1 || "").toLowerCase();
+          const analyticsSource = (props.hs_analytics_source || "").toUpperCase();
+          const analyticsSourceData = (props.hs_analytics_source_data_1 || "").toLowerCase();
+          const isSalesforce =
+            (objSource === "INTEGRATION" && objSourceDetail.includes("salesforce")) ||
+            (analyticsSource === "OFFLINE" && analyticsSourceData.includes("salesforce"));
+          const isImport = objSource === "IMPORT";
+          if (isSalesforce) contactsByDate[dateKey].salesforce++;
+          else if (isImport) contactsByDate[dateKey].import++;
+          else contactsByDate[dateKey].hubspot++;
+        }
+        const title = (props.jobtitle || "").trim() || "Not specified";
+        jobTitleCounts[title] = (jobTitleCounts[title] || 0) + 1;
+        const profileValue = (props[profileProperty] || "").trim() || "Not specified";
+        industryCounts[profileValue] = (industryCounts[profileValue] || 0) + 1;
+      };
+
+      const buFilters: any[] = [];
+      if (brandBuId && brandBuId !== "0") {
+        buFilters.push({ propertyName: "hs_all_assigned_business_unit_ids", operator: "CONTAINS_TOKEN", value: brandBuId });
+      }
+      const dateFilters = [
+        { propertyName: "createdate", operator: "GTE", value: String(startMs) },
+        { propertyName: "createdate", operator: "LTE", value: String(endMs) },
+      ];
+      const baseFilters = [...buFilters, ...dateFilters];
+      const allTimeFilters = [...buFilters];
+
+      const CONTACTS_RETRIES = 2;
+      for (let attempt = 0; attempt <= CONTACTS_RETRIES; attempt++) {
+        totalContacts = 0;
+        totalContactsAllTime = 0;
+        stateCounts = {};
+        unknownStateCount = 0;
+        contactsByDate = {};
+        jobTitleCounts = {};
+        industryCounts = {};
+        lifecycleStages = lifecycleStagesTemplate();
+        lifecycleStagesAllTime = lifecycleStagesTemplate();
+        // Tracks whether any fetch below hit an exception — a nonzero-but-truncated
+        // totalContacts (a page request failed mid-pagination and the loop bailed out
+        // with only partial results) needs a retry just as much as an all-zero one.
+        let contactsFetchOk = true;
+
+        try {
+          let after: string | undefined;
+          while (true) {
+            const searchBody: any = {
+              filterGroups: baseFilters.length > 0 ? [{ filters: baseFilters }] : [],
+              properties: [
+                "createdate", "lifecyclestage", "hs_object_source", "hs_object_source_detail_1",
+                "hs_analytics_source", "hs_analytics_source_data_1", "jobtitle", profileProperty,
+                "ip_state", "ip_state_code", "state", "hs_state",
+              ],
+              sorts: [{ propertyName: "createdate", direction: "ASCENDING" }],
+              limit: 100,
+            };
+            if (after) searchBody.after = after;
+            const res = await hubspotPost("/crm/v3/objects/contacts/search", token, searchBody);
+            for (const contact of (res.results || [])) {
+              const props = contact.properties || {};
+              totalContacts++;
+              countContactAnalytics(props);
+              const stage = (props.lifecyclestage || "").toLowerCase().trim();
+              const match = lifecycleStages.find((ls) => ls.stage === stage);
+              if (match) match.count++;
+              const stateCode = normalizeStateCode(props.ip_state_code, props.ip_state, props.state, props.hs_state);
+              if (stateCode) stateCounts[stateCode] = (stateCounts[stateCode] || 0) + 1;
+              else unknownStateCount++;
+            }
+            if (res.paging?.next?.after) after = res.paging.next.after;
+            else break;
+          }
+        } catch (e) {
+          contactsFetchOk = false;
+          console.error(`[batch] ${brandName} contacts fetch error (attempt ${attempt}):`, e);
+        }
+
+        try {
+          const totalRes = await hubspotPost("/crm/v3/objects/contacts/search", token, {
+            filterGroups: buFilters.length > 0 ? [{ filters: buFilters }] : [],
+            properties: [],
+            limit: 1,
+          });
+          totalContactsAllTime = totalRes.total ?? 0;
+        } catch (e) {
+          contactsFetchOk = false;
+          console.error(`[batch] ${brandName} all-time total error (attempt ${attempt}):`, e);
+        }
+
+        try {
+          for (let i = 0; i < lifecycleStagesAllTime.length; i += 3) {
+            const batch = lifecycleStagesAllTime.slice(i, i + 3);
+            await Promise.all(batch.map(async (ls) => {
+              try {
+                const filters = [...allTimeFilters, { propertyName: "lifecyclestage", operator: "EQ", value: ls.stage }];
+                const res = await hubspotPost("/crm/v3/objects/contacts/search", token, {
+                  filterGroups: filters.length > 0 ? [{ filters }] : [],
+                  properties: [],
+                  limit: 1,
+                });
+                ls.count = res.total ?? 0;
+              } catch (e) {
+                console.error(`[batch] ${brandName} lifecycle EQ ${ls.stage} (attempt ${attempt}):`, e);
+              }
+            }));
+          }
+        } catch (e) {
+          console.error(`[batch] ${brandName} lifecycle EQ phase error (attempt ${attempt}):`, e);
+        }
+
+        const eqTotal = lifecycleStagesAllTime.reduce((s, l) => s + l.count, 0);
+        const subscriberEq = lifecycleStagesAllTime.find((l) => l.stage === "subscriber")?.count ?? 0;
+        const lowerFunnelEq = eqTotal - subscriberEq;
+        const needsPhaseB = eqTotal === 0 || (subscriberEq > 0 && lowerFunnelEq === 0);
+        if (needsPhaseB) {
+          lifecycleStagesAllTime = lifecycleStagesTemplate();
+          const stageCounts: Record<string, number> = {};
+          try {
+            let scanAfter: string | undefined;
+            let scanPage = 0;
+            while (scanPage < 100) {
+              const searchBody: any = {
+                filterGroups: allTimeFilters.length > 0 ? [{ filters: allTimeFilters }] : [],
+                properties: ["lifecyclestage"],
+                limit: 100,
+              };
+              if (scanAfter) searchBody.after = scanAfter;
+              const res = await hubspotPost("/crm/v3/objects/contacts/search", token, searchBody);
+              for (const c of (res.results || [])) {
+                const sv = (c.properties?.lifecyclestage || "").toLowerCase().trim();
+                if (sv) stageCounts[sv] = (stageCounts[sv] || 0) + 1;
+              }
+              if (res.paging?.next?.after) { scanAfter = res.paging.next.after; scanPage++; }
+              else break;
+            }
+            const valueAliases: Record<string, string> = {
+              subscriber: "subscriber", lead: "lead",
+              marketingqualifiedlead: "marketingqualifiedlead", mql: "marketingqualifiedlead",
+              "marketing qualified lead": "marketingqualifiedlead", "121857152": "marketingqualifiedlead",
+              salesqualifiedlead: "salesqualifiedlead", sql: "salesqualifiedlead", "sales qualified lead": "salesqualifiedlead",
+              opportunity: "opportunity", customer: "customer", evangelist: "customer", other: "lead",
+            };
+            for (const [rawStage, cnt] of Object.entries(stageCounts)) {
+              const canonical = valueAliases[rawStage] ?? valueAliases[rawStage.replace(/\s+/g, "")];
+              if (canonical) {
+                const def = lifecycleStagesAllTime.find((l) => l.stage === canonical);
+                if (def) def.count += cnt;
+              }
+            }
+          } catch (e) {
+            console.error(`[batch] ${brandName} lifecycle scan error (attempt ${attempt}):`, e);
+          }
+        }
+
+        const looksGood = contactsFetchOk && (totalContacts > 0 || totalContactsAllTime > 0);
+        if (looksGood || attempt === CONTACTS_RETRIES) break;
+        console.log(`[batch] ${brandName} contacts fetch incomplete (ok=${contactsFetchOk}, contacts=${totalContacts}) — retrying (attempt ${attempt + 1}/${CONTACTS_RETRIES})`);
+        await sleep(2500);
+      }
+
+      // ── Emails — reuse the shared allRawEmails fetched once above ──
+      let brandFilteredEmails: any[] = [];
+      for (const email of allRawEmails) {
+        const rawBuId = email.businessUnitId ?? email.properties?.businessUnitId ?? null;
+        const emailBuId = rawBuId !== null && rawBuId !== undefined ? String(rawBuId) : null;
+        if (buIds && emailBuId !== null && buIds.includes(emailBuId)) brandFilteredEmails.push(email);
+      }
+      if (brandFilteredEmails.length === 0) {
+        const nameToken = brandName.toLowerCase();
+        brandFilteredEmails = allRawEmails.filter((email: any) => {
+          const brandProp = (email.properties?.brand || email.brand || "").toLowerCase();
+          return brandProp.includes(nameToken);
+        });
+      }
+
+      const dateFilteredEmails = brandFilteredEmails.filter((email) => {
+        const d = extractPublishDate(email);
+        return d ? d >= startDate && d <= endDate : false;
+      });
+      const prevDateFilteredEmails = brandFilteredEmails.filter((email) => {
+        const d = extractPublishDate(email);
+        return d ? d >= prevStart && d <= prevEnd : false;
+      });
+
+      const current = await computeStats(dateFilteredEmails, token, brandName);
+      const prev = await computeStats(prevDateFilteredEmails, token, brandName);
+      const s = current.stats;
+      const p = prev.stats;
+
+      const openRate = s.totalDelivered > 0 ? parseFloat(((s.totalOpens / s.totalDelivered) * 100).toFixed(1)) : 0;
+      const clickRate = s.totalDelivered > 0 ? parseFloat(((s.totalClicks / s.totalDelivered) * 100).toFixed(1)) : 0;
+      const bounceRate = s.totalSent > 0 ? parseFloat(((s.totalBounce / s.totalSent) * 100).toFixed(2)) : 0;
+      const unsubscribeRate = s.totalSent > 0 ? parseFloat(((s.totalUnsub / s.totalSent) * 100).toFixed(2)) : 0;
+      const deliveredRate = s.totalSent > 0 ? parseFloat(((s.totalDelivered / s.totalSent) * 100).toFixed(1)) : 0;
+      const pendingRate = s.totalSent > 0 ? parseFloat(((s.totalPending / s.totalSent) * 100).toFixed(2)) : 0;
+      const hardBounceRate = s.totalSent > 0 ? parseFloat(((s.totalHardBounce / s.totalSent) * 100).toFixed(2)) : 0;
+      const softBounceRate = s.totalSent > 0 ? parseFloat(((s.totalSoftBounce / s.totalSent) * 100).toFixed(2)) : 0;
+      const spamRate = s.totalSent > 0 ? parseFloat(((s.totalSpam / s.totalSent) * 100).toFixed(2)) : 0;
+
+      const prevOpenRate = p.totalDelivered > 0 ? parseFloat(((p.totalOpens / p.totalDelivered) * 100).toFixed(1)) : 0;
+      const prevClickRate = p.totalDelivered > 0 ? parseFloat(((p.totalClicks / p.totalDelivered) * 100).toFixed(1)) : 0;
+      const prevBounceRate = p.totalSent > 0 ? parseFloat(((p.totalBounce / p.totalSent) * 100).toFixed(2)) : 0;
+      const prevUnsubscribeRate = p.totalSent > 0 ? parseFloat(((p.totalUnsub / p.totalSent) * 100).toFixed(2)) : 0;
+      const prevDeliveredRate = p.totalSent > 0 ? parseFloat(((p.totalDelivered / p.totalSent) * 100).toFixed(1)) : 0;
+      const prevHardBounceRate = p.totalSent > 0 ? parseFloat(((p.totalHardBounce / p.totalSent) * 100).toFixed(2)) : 0;
+      const prevSoftBounceRate = p.totalSent > 0 ? parseFloat(((p.totalSoftBounce / p.totalSent) * 100).toFixed(2)) : 0;
+      const prevSpamRate = p.totalSent > 0 ? parseFloat(((p.totalSpam / p.totalSent) * 100).toFixed(2)) : 0;
+
+      const healthScore = Math.min(
+        10,
+        Math.max(1, parseFloat((openRate / 5 + clickRate / 2 - bounceRate * 2 - unsubscribeRate * 5 + 2).toFixed(1))),
+      );
+
+      const deliveryOverTime = Object.entries(current.deliveryByDate)
+        .map(([date, count]) => ({ date, delivered: count }))
+        .sort((a, b) => a.date.localeCompare(b.date));
+
+      const stateDistribution: Record<string, number> = {};
+      const subcategoryDistribution: Record<string, number> = {};
+      for (const e of current.emails) {
+        const st = e.state || "PUBLISHED";
+        const sub = e.subcategory || "marketing_email";
+        stateDistribution[st] = (stateDistribution[st] || 0) + 1;
+        subcategoryDistribution[sub] = (subcategoryDistribution[sub] || 0) + 1;
+      }
+
+      brands[brandName] = {
+        totalContacts,
+        totalContactsAllTime,
+        healthScore,
+        openRate, openRateLabel: getBenchmarkLabel("openRate", openRate),
+        clickRate, clickRateLabel: getBenchmarkLabel("clickRate", clickRate),
+        bounceRate, hardBounceRate, softBounceRate, bounceRateLabel: getBenchmarkLabel("bounceRate", bounceRate),
+        unsubscribeRate, unsubscribeRateLabel: getBenchmarkLabel("unsubscribeRate", unsubscribeRate),
+        spamReports: s.totalSpam, spamRate,
+        totalEmailsSent: s.totalSent,
+        totalEmails: current.emails.length,
+        totalOpens: s.totalOpens,
+        totalClicks: s.totalClicks,
+        totalDelivered: s.totalDelivered,
+        totalBounce: s.totalBounce,
+        totalHardBounce: s.totalHardBounce,
+        totalSoftBounce: s.totalSoftBounce,
+        totalUnsub: s.totalUnsub,
+        totalPending: s.totalPending,
+        pendingRate, deliveredRate,
+        lifecycleStages: lifecycleStages.map((ls) => ({ stage: ls.label, count: ls.count, key: ls.stage })),
+        lifecycleStagesAllTime: lifecycleStagesAllTime.map((ls) => ({ stage: ls.label, count: ls.count, key: ls.stage })),
+        contactsOverTime: Object.entries(contactsByDate)
+          .map(([date, counts]) => ({ date, total: counts.total, hubspot: counts.hubspot, salesforce: counts.salesforce, import: counts.import }))
+          .sort((a, b) => a.date.localeCompare(b.date)),
+        jobTitles: [
+          ...Object.entries(jobTitleCounts).filter(([t]) => t !== "Not specified").sort(([, a], [, b]) => b - a).slice(0, 20).map(([title, count]) => ({ title, count })),
+          ...(jobTitleCounts["Not specified"] ? [{ title: "Not specified", count: jobTitleCounts["Not specified"] }] : []),
+        ],
+        contactIndustryDistribution: [
+          ...Object.entries(industryCounts).filter(([i]) => i !== "Not specified").sort(([, a], [, b]) => b - a).slice(0, 20).map(([industry, count]) => ({ industry, count })),
+          ...(industryCounts["Not specified"] ? [{ industry: "Not specified", count: industryCounts["Not specified"] }] : []),
+        ],
+        contactStateDistribution: Object.entries(stateCounts).sort(([, a], [, b]) => b - a).map(([state, count]) => ({ state, count })),
+        contactUnknownStateCount: unknownStateCount,
+        dealerWithDealStateDistribution: [],
+        dealerWithoutDealStateDistribution: [],
+        dealerAssignedTotal: 0,
+        dealerUnassignedTotal: 0,
+        dealerBreakdown: [],
+        emails: current.emails,
+        deliveryOverTime,
+        stateDistribution: Object.entries(stateDistribution).map(([name, value]) => ({ name, value })),
+        subcategoryDistribution: Object.entries(subcategoryDistribution).map(([name, value]) => ({ name, value })),
+        totalFetched: allRawEmails.length,
+        brandFilteredCount: brandFilteredEmails.length,
+        businessUnitId: null,
+        deltas: {
+          sent: pctChange(s.totalSent, p.totalSent),
+          delivered: pctChange(s.totalDelivered, p.totalDelivered),
+          opens: pctChange(s.totalOpens, p.totalOpens),
+          clicks: pctChange(s.totalClicks, p.totalClicks),
+          deliveredRate: pctChange(deliveredRate, prevDeliveredRate),
+          openRate: pctChange(openRate, prevOpenRate),
+          clickRate: pctChange(clickRate, prevClickRate),
+          bounce: pctChange(s.totalBounce, p.totalBounce),
+          unsubscribed: pctChange(s.totalUnsub, p.totalUnsub),
+          hardBounce: pctChange(s.totalHardBounce, p.totalHardBounce),
+          softBounce: pctChange(s.totalSoftBounce, p.totalSoftBounce),
+          spam: pctChange(s.totalSpam, p.totalSpam),
+          bounceRate: pctChange(bounceRate, prevBounceRate),
+          unsubscribeRate: pctChange(unsubscribeRate, prevUnsubscribeRate),
+          hardBounceRate: pctChange(hardBounceRate, prevHardBounceRate),
+          softBounceRate: pctChange(softBounceRate, prevSoftBounceRate),
+          spamRate: pctChange(spamRate, prevSpamRate),
+        },
+        prevPeriod: { start: prevStart, end: prevEnd },
+      };
+
+      console.log(`[batch] ${brandName}: contacts=${totalContacts} emailsSent=${s.totalSent}`);
+    }
+
+    return new Response(JSON.stringify({ brands }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (error) {
+    console.error("[batch] HubSpot batch proxy error:", error);
+    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+}
+
 // ─── main handler ───
 
 // Redeploy trigger: ip_state (full region name) + all-time lifecycle/job-title counts + import source tracking
@@ -397,6 +821,10 @@ Deno.serve(async (req) => {
 
   try {
     const body: HubSpotRequest = await req.json();
+
+    if (Array.isArray(body.brandNames) && body.brandNames.length > 0) {
+      return handleBatchRequest(body.brandNames, body.startDate, body.endDate, corsHeaders);
+    }
 
     const isSecondary = SECONDARY_BRANDS.has(body.brandName || "");
     const token = isSecondary
