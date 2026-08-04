@@ -118,7 +118,6 @@ const Index = () => {
   const canView = (tabId: string) => tabPerms[tabId]?.can_view !== false;
 
   const allTabs = [
-    { id: "readme",       label: "Read Me" },
     { id: "performance",  label: "Google Analytics & Search Console", disabled: !activeBrands.some(b => b.hasGA4 || b.hasGSC), tooltip: "No GA4/GSC property linked for this brand." },
     { id: "social",       label: "Social Media",   disabled: !hasSocialMedia && !hasLinkedIn, tooltip: "No social media data for this brand." },
     { id: "hubspot",      label: "Emails",         disabled: !activeBrands.some(b => b.hasHubSpot), tooltip: "No HubSpot data for this brand." },
