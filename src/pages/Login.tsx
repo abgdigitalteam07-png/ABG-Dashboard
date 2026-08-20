@@ -174,21 +174,23 @@ export default function Login() {
                 </Button>
               )}
 
-              <div className="flex items-start gap-2 p-3 mt-1 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-sm text-left">
-                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-                <span>
-                  Still nothing after a few minutes? Check your spam folder, or if your
-                  company uses Mimecast, check your{" "}
+              <div className="flex flex-col gap-3 p-3 mt-1 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-sm text-left">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                  <span>
+                    Still nothing after a few minutes? Check your spam folder, or if your
+                    company uses Mimecast, your sign-in email may be held there for review.
+                  </span>
+                </div>
+                <Button variant="outline" className="w-full bg-white" asChild>
                   <a
                     href="https://login-us.mimecast.com/m/portal/app/#/advanced/personal-on-hold"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="font-bold underline underline-offset-2 hover:opacity-80"
                   >
-                    held messages
+                    Check Mimecast held messages
                   </a>
-                  {" "}— emails from Supabase Auth are sometimes held there.
-                </span>
+                </Button>
               </div>
 
               <Button
