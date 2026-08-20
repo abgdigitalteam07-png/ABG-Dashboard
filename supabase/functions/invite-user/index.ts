@@ -5,18 +5,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const ALLOWED_DOMAINS = [
-  "americanbathgroup.com", "abghospitality.com", "accessiblehomestore.com",
-  "altrekproducts.com", "aquaticbath.com", "arizonashowerdoor.com",
-  "bootz.com", "clarionbathware.com", "clariontransportation.com",
-  "coastalind.com", "dreamline.com", "florestone.com", "imitoday.com",
-  "laurelmountainbath.com", "lmbath.com", "maax.com", "maaxspas.com",
-  "maidstonesupply.com", "mrsteam.com", "praxiscompanies.com",
-  "produitsneptune.com", "neptuneb.com", "salomfg.com", "swanstone.com",
-  "vintagetub.com", "vintagetub.ca", "bathcraft.onmicrosoft.com",
-  "bathcraft.com", "bathauthority.com", "americanstandard-bootz.com",
-];
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -60,7 +48,9 @@ Deno.serve(async (req) => {
     }
 
     const domain = email.split("@")[1]?.toLowerCase();
-    if (!ALLOWED_DOMAINS.includes(domain)) {
+    const { data: allowedDomainRows } = await supabaseAdmin.from("allowed_domains").select("domain");
+    const allowedDomains = (allowedDomainRows ?? []).map((r) => r.domain);
+    if (!allowedDomains.includes(domain)) {
       return new Response(JSON.stringify({ error: "Email domain not allowed" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }

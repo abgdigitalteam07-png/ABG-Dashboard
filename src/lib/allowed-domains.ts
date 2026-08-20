@@ -1,37 +1,17 @@
-export const ALLOWED_DOMAINS = [
-  "americanbathgroup.com",
-  "abghospitality.com",
-  "accessiblehomestore.com",
-  "altrekproducts.com",
-  "aquaticbath.com",
-  "arizonashowerdoor.com",
-  "bootz.com",
-  "clarionbathware.com",
-  "clariontransportation.com",
-  "coastalind.com",
-  "dreamline.com",
-  "florestone.com",
-  "imitoday.com",
-  "laurelmountainbath.com",
-  "lmbath.com",
-  "maax.com",
-  "maaxspas.com",
-  "maidstonesupply.com",
-  "mrsteam.com",
-  "praxiscompanies.com",
-  "produitsneptune.com",
-  "neptuneb.com",
-  "salomfg.com",
-  "swanstone.com",
-  "vintagetub.com",
-  "vintagetub.ca",
-  "bathcraft.onmicrosoft.com",
-  "bathcraft.com",
-  "bathauthority.com",
-  "americanstandard-bootz.com",
-];
+import { supabase } from "@/integrations/supabase/client";
 
-export function isAllowedDomain(email: string): boolean {
+export async function fetchAllowedDomains(): Promise<string[]> {
+  const { data, error } = await supabase.from("allowed_domains").select("domain").order("domain");
+  if (error) {
+    console.error("Failed to fetch allowed domains:", error);
+    return [];
+  }
+  return data.map((row) => row.domain);
+}
+
+export async function isAllowedDomain(email: string): Promise<boolean> {
   const domain = email.split("@")[1]?.toLowerCase();
-  return ALLOWED_DOMAINS.includes(domain);
+  if (!domain) return false;
+  const domains = await fetchAllowedDomains();
+  return domains.includes(domain);
 }

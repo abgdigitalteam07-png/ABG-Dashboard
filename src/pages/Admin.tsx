@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { ALLOWED_DOMAINS } from "@/lib/allowed-domains";
+import { fetchAllowedDomains } from "@/lib/allowed-domains";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -151,12 +151,18 @@ export default function Admin() {
   const [sortCol, setSortCol] = useState<string>("last_login_at");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
+  const [allowedDomains, setAllowedDomains] = useState<string[]>([]);
+  const [newDomain, setNewDomain] = useState("");
+  const [domainSaving, setDomainSaving] = useState(false);
+
   const fetchData = useCallback(async () => {
     const { data: profiles } = await supabase.from("user_profiles").select("*");
     if (profiles) setUsers(profiles as UserProfile[]);
 
     const { data: invites } = await supabase.from("user_invitations").select("*").eq("status", "pending");
     if (invites) setInvitations(invites as Invitation[]);
+
+    setAllowedDomains(await fetchAllowedDomains());
 
     const { data: logs } = await supabase
       .from("user_activity_log")
@@ -261,7 +267,7 @@ export default function Admin() {
       toast({ title: "Please fill in all fields", variant: "destructive" }); return;
     }
     const domain = trimmedEmail.split("@")[1];
-    if (!ALLOWED_DOMAINS.includes(domain)) {
+    if (!allowedDomains.includes(domain)) {
       toast({ title: "Email domain not allowed", description: "Only ABG employee domains are permitted.", variant: "destructive" }); return;
     }
     if (users.find((u) => u.email === trimmedEmail)) {
@@ -296,6 +302,33 @@ export default function Admin() {
     } finally {
       setInviting(false);
     }
+  };
+
+  const handleAddDomain = async () => {
+    const domain = newDomain.trim().toLowerCase().replace(/^@/, "");
+    if (!domain) return;
+    if (allowedDomains.includes(domain)) {
+      toast({ title: "Domain already allowed", variant: "destructive" }); return;
+    }
+    setDomainSaving(true);
+    const { data: { session } } = await supabase.auth.getSession();
+    const { error } = await supabase.from("allowed_domains").insert({ domain, created_by: session?.user.id });
+    setDomainSaving(false);
+    if (error) {
+      toast({ title: "Failed to add domain", description: error.message, variant: "destructive" }); return;
+    }
+    setNewDomain("");
+    setAllowedDomains((prev) => [...prev, domain].sort());
+    toast({ title: `${domain} added to allowed domains` });
+  };
+
+  const handleRemoveDomain = async (domain: string) => {
+    const { error } = await supabase.from("allowed_domains").delete().eq("domain", domain);
+    if (error) {
+      toast({ title: "Failed to remove domain", description: error.message, variant: "destructive" }); return;
+    }
+    setAllowedDomains((prev) => prev.filter((d) => d !== domain));
+    toast({ title: `${domain} removed from allowed domains` });
   };
 
   const handleDeactivate = async (user: UserProfile) => {
@@ -1093,6 +1126,50 @@ export default function Admin() {
                     </Table>
                   );
                 })()}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Mail className="h-4 w-4 text-primary" /> Allowed Email Domains
+                </CardTitle>
+                <p className="text-xs text-muted-foreground pt-1">
+                  Anyone signing in with one of these domains logs in directly, and their
+                  activity still shows up in Users &amp; Activity as usual. Domains not listed
+                  here can still sign in, but trigger an external-login notification and can't
+                  be invited from this panel.
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex gap-2 max-w-md">
+                  <Input
+                    placeholder="example.com"
+                    value={newDomain}
+                    onChange={(e) => setNewDomain(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleAddDomain()}
+                    disabled={domainSaving}
+                  />
+                  <Button onClick={handleAddDomain} disabled={domainSaving || !newDomain.trim()}>
+                    <Plus className="h-4 w-4 mr-1" /> Add
+                  </Button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {allowedDomains.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No allowed domains configured.</p>
+                  ) : allowedDomains.map((domain) => (
+                    <Badge key={domain} variant="outline" className="text-xs gap-1.5 pr-1">
+                      {domain}
+                      <button
+                        onClick={() => handleRemoveDomain(domain)}
+                        className="hover:text-destructive"
+                        title={`Remove ${domain}`}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
               </CardContent>
             </Card>
           </div>

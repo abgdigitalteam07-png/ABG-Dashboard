@@ -94,7 +94,7 @@ export function AuthGuard({ children }: AuthGuardProps) {
             if (error) console.error("Failed to upsert profile:", error);
           });
 
-          if (!isAllowedDomain(userEmail)) {
+          if (!(await isAllowedDomain(userEmail))) {
             void supabase.functions.invoke("notify-external-login", {
               body: { email: userEmail },
             });
