@@ -111,20 +111,20 @@ export default function Login() {
           "linear-gradient(135deg, hsl(210 100% 12%) 0%, hsl(217 91% 20%) 50%, hsl(210 100% 12%) 100%)",
       }}
     >
-      <Card className="w-full max-w-[420px] shadow-2xl border-0">
-        <CardContent className="p-8">
-          <div className="flex flex-col items-center gap-4 mb-6">
-            <div className="bg-primary rounded-xl p-4 w-full flex justify-center">
+      <Card className="w-full max-w-[560px] shadow-2xl border-0">
+        <CardContent className="p-12">
+          <div className="flex flex-col items-center gap-5 mb-8">
+            <div className="bg-primary rounded-xl p-6 w-full flex justify-center">
               <img
                 src={ABG_LOGO_URL}
-                className="w-[200px] h-auto"
+                className="w-[280px] h-auto"
                 alt="American Bath Group"
               />
             </div>
-            <h1 className="text-xl font-bold text-foreground text-center">
+            <h1 className="text-3xl font-bold text-foreground text-center">
               US Wholesale Digital Dashboard
             </h1>
-            <p className="text-sm text-muted-foreground text-center">
+            <p className="text-base text-muted-foreground text-center">
               Sign in with your email
             </p>
           </div>
@@ -208,7 +208,7 @@ export default function Login() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleLogin()}
-                className="h-12 text-base"
+                className="h-14 text-lg"
                 disabled={sending}
                 autoFocus
               />
@@ -223,7 +223,7 @@ export default function Login() {
               <Button
                 onClick={handleLogin}
                 disabled={sending}
-                className="w-full h-12 text-base font-semibold"
+                className="w-full h-14 text-lg font-semibold"
               >
                 {sending ? (
                   <span className="flex items-center gap-2">
