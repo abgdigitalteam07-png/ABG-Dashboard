@@ -20,10 +20,6 @@ export default function Login() {
   const location = useLocation();
   const deactivated = (location.state as any)?.deactivated;
   const sessionExpired = (location.state as any)?.sessionExpired;
-  // TEMPORARY (remove after magic-link testing): ?otp=1 routes even the
-  // hardcoded mali@americanbathgroup.com login through the real OTP email
-  // flow, so the defer-click confirm page fix can be tested end-to-end.
-  const forceOtp = new URLSearchParams(location.search).get("otp") === "1";
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -56,7 +52,7 @@ export default function Login() {
     setSending(true);
 
     try {
-      if (trimmed === "mali@americanbathgroup.com" && !forceOtp) {
+      if (trimmed === "mali@americanbathgroup.com") {
         const { data: res, error: fnError } = await supabase.functions.invoke("shared-login", {
           body: { email: trimmed },
         });
