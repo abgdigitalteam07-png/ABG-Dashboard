@@ -58,3 +58,9 @@ verify_jwt = false
 
 [functions.aeo-scan]
 verify_jwt = false
+
+[functions.send-scheduled-report]
+verify_jwt = false
+
+[functions.send-test-email]
+verify_jwt = false

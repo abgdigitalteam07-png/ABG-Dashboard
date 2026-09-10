@@ -45,6 +45,8 @@ export type Database = {
           created_at: string
           date_range_days: number
           day_of_week: number
+          ga4_property_ids: string[] | null
+          gsc_site_url: string | null
           id: string
           is_active: boolean
           last_sent_at: string | null
@@ -58,6 +60,8 @@ export type Database = {
           created_at?: string
           date_range_days?: number
           day_of_week?: number
+          ga4_property_ids?: string[] | null
+          gsc_site_url?: string | null
           id?: string
           is_active?: boolean
           last_sent_at?: string | null
@@ -71,6 +75,8 @@ export type Database = {
           created_at?: string
           date_range_days?: number
           day_of_week?: number
+          ga4_property_ids?: string[] | null
+          gsc_site_url?: string | null
           id?: string
           is_active?: boolean
           last_sent_at?: string | null

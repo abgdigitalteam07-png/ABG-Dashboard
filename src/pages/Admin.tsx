@@ -87,6 +87,8 @@ export default function Admin() {
     is_active: boolean;
     last_sent_at: string | null;
     created_at: string;
+    ga4_property_ids?: string[] | null;
+    gsc_site_url?: string | null;
   }
   const [schedules, setSchedules] = useState<EmailSchedule[]>([]);
   const [schedLoading, setSchedLoading] = useState(false);
@@ -506,6 +508,7 @@ export default function Admin() {
       return;
     }
     setSchedSaving(true);
+    const selectedBrand = brands.find(b => b.id === newSched.brand_id);
     const { error } = await supabase.from("email_schedules").insert({
       brand_id: newSched.brand_id,
       brand_name: newSched.brand_name,
@@ -514,6 +517,8 @@ export default function Admin() {
       send_hour_utc: newSched.send_hour_utc,
       date_range_days: newSched.date_range_days,
       is_active: newSched.is_active,
+      ga4_property_ids: selectedBrand?.ga4PropertyIds ?? null,
+      gsc_site_url: selectedBrand?.gscSiteUrl ?? null,
     });
     setSchedSaving(false);
     if (error) { toast({ title: "Error", description: error.message, variant: "destructive" }); return; }
