@@ -123,6 +123,8 @@ const Index = () => {
     { id: "hubspot",      label: "Emails",         disabled: !activeBrands.some(b => b.hasHubSpot), tooltip: "No HubSpot data for this brand." },
     { id: "hubspot-crm",  label: "HubSpot CRM",    disabled: !activeBrands.some(b => b.hasHubSpot), tooltip: "No HubSpot data for this brand." },
     { id: "summary",      label: "Summary Report", disabled: !activeBrands.some(b => b.hasGA4 || b.hasGSC || b.hasHubSpot), tooltip: "No data sources linked for this brand." },
+    // Admin-only. Not gated on GA4/GSC/HubSpot — the AEO audit crawls the site directly.
+    ...(isAdmin ? [{ id: "seo-aeo", label: "SEO & AEO & GEO", disabled: false, tooltip: undefined as string | undefined }] : []),
   ];
 
   const tabs = allTabs.filter(t => canView(t.id));

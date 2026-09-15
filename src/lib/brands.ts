@@ -24,6 +24,9 @@ export const brands: Brand[] = [
   { id: "amazing-shower-door", name: "Amazing Shower Door", logoUrl: clearbitLogo("amazingshowerdoor.com"), ga4PropertyIds: ["392147256"], hasGA4: true, hasGSC: false, hasHubSpot: false },
   { id: "american-bath-group", name: "American Bath Group", logoUrl: clearbitLogo("americanbathgroup.com"), gscSiteUrl: "https://americanbathgroup.com/", hubspotBusinessUnitId: "0", hasGA4: false, hasGSC: true, hasHubSpot: true },
   { id: "american-whirlpool", name: "American Whirlpool", logoUrl: clearbitLogo("americanwhirlpool.com"), ga4PropertyIds: ["391075012"], gscSiteUrl: "https://americanwhirlpool.com/", hubspotAccount: "secondary", redditLandingPageId: "370024805096", hasGA4: true, hasGSC: true, hasHubSpot: true },
+  // gscSiteUrl is set as the AEO audit target only — GSC itself is not connected yet,
+  // and the HubSpot business unit id is still unknown, so those tabs stay disabled.
+  { id: "arizona-shower-door", name: "Arizona Shower Door", logoUrl: clearbitLogo("arizonashowerdoor.com"), gscSiteUrl: "https://www.arizonashowerdoor.com/", hasGA4: false, hasGSC: false, hasHubSpot: false },
   { id: "aquarius", name: "Aquarius", logoUrl: clearbitLogo("aquariusproducts.com"), ga4PropertyIds: ["368656609"], gscSiteUrl: "https://aquariusproducts.com/", hubspotBusinessUnitId: "1982883", hasGA4: true, hasGSC: true, hasHubSpot: true },
   { id: "aquatic", name: "Aquatic", logoUrl: clearbitLogo("aquaticbath.com"), ga4PropertyIds: ["385631854"], gscSiteUrl: "https://aquaticbath.com/", hubspotBusinessUnitId: "1982884", hasGA4: true, hasGSC: true, hasHubSpot: true },
   { id: "bootz", name: "Bootz", logoUrl: clearbitLogo("bootz.com"), ga4PropertyIds: ["353109505"], gscSiteUrl: "https://bootz.com/", hubspotBusinessUnitId: "1982886", hasGA4: true, hasGSC: true, hasHubSpot: true },

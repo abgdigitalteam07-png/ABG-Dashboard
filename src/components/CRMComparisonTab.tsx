@@ -242,23 +242,23 @@ function downloadPDF(opts: {
   const ML = 13;
   const MR = 13;
 
-  // ── Enterprise color palette (Tesla/analytics dashboard inspired) ───────────
-  const NAVY   = "#0B1E3D";   // deep navy  — header bg, table headers, footer
-  const ACCENT = "#0052CC";   // corp blue  — accent strips, section markers
-  const DARK   = "#172B4D";   // charcoal   — primary body text
-  const GRAY   = "#5E7291";   // steel-gray — secondary / muted text
-  const LGRAY  = "#F4F5F7";   // near-white — card fills, alternating rows
-  const BORDER = "#DDE3ED";   // line color — table borders, separators
-  const GREEN  = "#006644";   // teal-green — positive delta
-  const RED    = "#BF2600";   // brick-red  — negative delta
+  // ── Editorial color palette (charcoal & antique gold, luxury report) ────────
+  const NAVY   = "#1C1B19";   // ink charcoal — header bg, table headers, footer
+  const ACCENT = "#96762C";   // antique gold — accent strips, section markers
+  const DARK   = "#242220";   // near-black   — primary body text
+  const GRAY   = "#8A8377";   // warm taupe   — secondary / muted text
+  const LGRAY  = "#F8F5EE";   // warm ivory   — card fills, alternating rows
+  const BORDER = "#E3DCC9";   // hairline     — table borders, separators
+  const GREEN  = "#1F5C3F";   // deep forest  — positive delta
+  const RED    = "#8C2F26";   // deep wine    — negative delta
   const WHITE  = "#FFFFFF";
   const CW     = PW - ML - MR;  // 182mm usable width
 
   // Per-metric left-strip colors for KPI cards
   const MCOL: Record<string, string> = {
-    totalContacts:    "#0052CC",   // deep corporate blue
-    dealerAssigned:   "#006644",   // deep teal-green
-    dealerUnassigned: "#974F0C",   // deep amber
+    totalContacts:    "#96762C",   // antique gold
+    dealerAssigned:   "#1F5C3F",   // deep forest green
+    dealerUnassigned: "#8B5A2B",   // bronze
   };
 
   const rgb    = (hex: string) => HEX2RGB(hex);
@@ -322,13 +322,13 @@ function downloadPDF(opts: {
   doc.rect(0, 0, PW, 22, "F");
   doc.setFillColor(...rgb(ACCENT));
   doc.rect(0, 0, 5, 22, "F");
-  doc.setFillColor(255, 196, 0);        // gold accent line
+  doc.setFillColor(201, 169, 97);        // gold accent line
   doc.rect(0, 21.4, PW, 0.6, "F");
 
   // company name (small, muted)
   doc.setFont("helvetica", "normal");
   doc.setFontSize(6.5);
-  doc.setTextColor(148, 173, 209);
+  doc.setTextColor(176, 163, 133);
   doc.text("AMERICAN BATH GROUP  |  BRAND PERFORMANCE HUB", ML + 2, 6);
 
   // report title (large, white)
@@ -339,7 +339,7 @@ function downloadPDF(opts: {
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(6.5);
-  doc.setTextColor(148, 173, 209);
+  doc.setTextColor(176, 163, 133);
   doc.text("GENERATED", PW - MR, 6.5, { align: "right" });
   doc.setFont("helvetica", "normal");
   doc.setFontSize(7.5);
@@ -347,21 +347,27 @@ function downloadPDF(opts: {
   doc.text(format(new Date(), "MMM d, yyyy  |  h:mm a"), PW - MR, 12, { align: "right" });
   doc.setFont("helvetica", "normal");
   doc.setFontSize(7);
-  doc.setTextColor(148, 173, 209);
+  doc.setTextColor(176, 163, 133);
   doc.text(`${opts.selectedDays}-day comparison`, PW - MR, 17.5, { align: "right" });
 
   let y = 26;
 
-  // ── 2. PERIOD & BRANDS STRIP (12mm) ──────────────────────────────────────
-  doc.setFillColor(...rgb(WHITE));
-  doc.rect(ML, y, CW, 12, "F");
-  doc.setDrawColor(...rgb(BORDER));
-  doc.setLineWidth(0.3);
-  doc.rect(ML, y, CW, 12, "S");
-
+  // ── 2. PERIOD & BRANDS STRIP (12mm, grows if the brand list wraps) ───────
   const col1 = ML + 5;
   const col2 = ML + 66;
   const col3 = ML + 128;
+  const brandColMaxW = (PW - MR) - col3 - 1;   // keep the brand list inside the strip's right edge
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(8);
+  const brandLines = doc.splitTextToSize(activeBrands.join("  |  "), brandColMaxW);
+  const stripH = brandLines.length > 1 ? 12 + (brandLines.length - 1) * 4 : 12;
+
+  doc.setFillColor(...rgb(WHITE));
+  doc.rect(ML, y, CW, stripH, "F");
+  doc.setDrawColor(...rgb(BORDER));
+  doc.setLineWidth(0.3);
+  doc.rect(ML, y, CW, stripH, "S");
 
   doc.setFont("helvetica", "bold"); doc.setFontSize(6); doc.setTextColor(...rgb(GRAY));
   doc.text("CURRENT PERIOD", col1, y + 4.5);
@@ -369,37 +375,40 @@ function downloadPDF(opts: {
   doc.text(currLabel, col1, y + 9.5);
 
   doc.setDrawColor(...rgb(BORDER)); doc.setLineWidth(0.35);
-  doc.line(col2 - 3, y + 2, col2 - 3, y + 10);
+  doc.line(col2 - 3, y + 2, col2 - 3, y + stripH - 2);
 
   doc.setFont("helvetica", "bold"); doc.setFontSize(6); doc.setTextColor(...rgb(GRAY));
   doc.text("PREVIOUS PERIOD", col2, y + 4.5);
   doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(...rgb(DARK));
   doc.text(prevLabel, col2, y + 9.5);
 
-  doc.line(col3 - 3, y + 2, col3 - 3, y + 10);
+  doc.line(col3 - 3, y + 2, col3 - 3, y + stripH - 2);
 
   doc.setFont("helvetica", "bold"); doc.setFontSize(6); doc.setTextColor(...rgb(GRAY));
   doc.text("BRAND(S)", col3, y + 4.5);
   doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(...rgb(ACCENT));
-  doc.text(activeBrands.join("  |  "), col3, y + 9.5);
+  doc.text(brandLines, col3, y + 9.5);
 
-  y += 16;
+  y += stripH + 4;
 
   // ── Excluded dates note (renders only when exclusions are active) ────────────
   if (opts.excludedDates.length > 0) {
-    doc.setFillColor(...rgb("#FFF7ED"));
-    doc.rect(ML, y, CW, 7, "F");
-    doc.setDrawColor(...rgb("#FB923C"));
-    doc.setLineWidth(0.25);
-    doc.rect(ML, y, CW, 7, "S");
-    doc.setFillColor(...rgb("#EA580C"));
-    doc.rect(ML, y, 3, 7, "F");
     doc.setFont("helvetica", "bold");
     doc.setFontSize(6.5);
-    doc.setTextColor(...rgb("#7C2D12"));
     const excNote = `Excluded from totals: ${opts.excludedDates.join("  |  ")}`;
-    doc.text(excNote, ML + 7, y + 5);
-    y += 11;
+    const excLines = doc.splitTextToSize(excNote, CW - 11);
+    const excH = Math.max(7, excLines.length * 3.4 + 2.4);
+
+    doc.setFillColor(...rgb("#FFF7ED"));
+    doc.rect(ML, y, CW, excH, "F");
+    doc.setDrawColor(...rgb("#FB923C"));
+    doc.setLineWidth(0.25);
+    doc.rect(ML, y, CW, excH, "S");
+    doc.setFillColor(...rgb("#EA580C"));
+    doc.rect(ML, y, 3, excH, "F");
+    doc.setTextColor(...rgb("#7C2D12"));
+    doc.text(excLines, ML + 7, y + 4.6);
+    y += excH + 4;
   }
 
   // ── 3. KEY METRICS CARDS (32mm) ─────────────────────────────────────────────
@@ -543,6 +552,8 @@ function downloadPDF(opts: {
         }
       },
     });
+
+    y = (doc as any).lastAutoTable.finalY + 8;
   }
 
   // ── 6. LEAD SOURCE BREAKDOWN TABLE ──────────────────────────────────────────
@@ -649,7 +660,7 @@ function downloadPDF(opts: {
 
         // Max-value bar (current)
         const currBarW = Math.max(barW * (curr / maxVal), curr > 0 ? 1 : 0);
-        doc.setFillColor(230, 234, 240);
+        doc.setFillColor(232, 225, 208);
         doc.roundedRect(barX, barY2, barW, barH2, 1, 1, "F");
         doc.setFillColor(...HEX2RGB(color));
         doc.roundedRect(barX, barY2, currBarW, barH2, 1, 1, "F");
@@ -682,7 +693,7 @@ function downloadPDF(opts: {
   doc.rect(0, FY, 5, 10, "F");
   doc.setFont("helvetica", "normal");
   doc.setFontSize(6.5);
-  doc.setTextColor(148, 173, 209);
+  doc.setTextColor(176, 163, 133);
   doc.text(
     "American Bath Group  |  CRM Lead Comparison Report  |  Confidential",
     ML + 2, FY + 6.5,
@@ -706,12 +717,12 @@ function downloadPDF(opts: {
       const bColor = BRAND_PALETTE[brand].solid;
       doc.setFillColor(...rgb(bColor));
       doc.rect(0, 0, 5, 22, "F");
-      doc.setFillColor(255, 196, 0);
+      doc.setFillColor(201, 169, 97);
       doc.rect(0, 21.4, PW, 0.6, "F");
 
       doc.setFont("helvetica", "normal");
       doc.setFontSize(6.5);
-      doc.setTextColor(148, 173, 209);
+      doc.setTextColor(176, 163, 133);
       doc.text("AMERICAN BATH GROUP  |  BRAND PERFORMANCE HUB", ML + 2, 6);
 
       doc.setFont("helvetica", "bold");
@@ -721,7 +732,7 @@ function downloadPDF(opts: {
 
       doc.setFont("helvetica", "bold");
       doc.setFontSize(6.5);
-      doc.setTextColor(148, 173, 209);
+      doc.setTextColor(176, 163, 133);
       doc.text("GENERATED", PW - MR, 6.5, { align: "right" });
       doc.setFont("helvetica", "normal");
       doc.setFontSize(7.5);
@@ -729,7 +740,7 @@ function downloadPDF(opts: {
       doc.text(format(new Date(), "MMM d, yyyy  |  h:mm a"), PW - MR, 12, { align: "right" });
       doc.setFont("helvetica", "normal");
       doc.setFontSize(7);
-      doc.setTextColor(148, 173, 209);
+      doc.setTextColor(176, 163, 133);
       doc.text(`${opts.selectedDays}-day comparison`, PW - MR, 17.5, { align: "right" });
     };
 
@@ -772,7 +783,7 @@ function downloadPDF(opts: {
       doc.rect(0, FY, PW, 10, "F");
       doc.setFillColor(...rgb(bColor));
       doc.rect(0, FY, 5, 10, "F");
-      doc.setFont("helvetica", "normal"); doc.setFontSize(6.5); doc.setTextColor(148, 173, 209);
+      doc.setFont("helvetica", "normal"); doc.setFontSize(6.5); doc.setTextColor(176, 163, 133);
       doc.text(`American Bath Group  |  ${brand}  |  Confidential`, ML + 2, FY + 6.5);
       doc.setFont("helvetica", "bold"); doc.setFontSize(7); doc.setTextColor(255, 255, 255);
       doc.text(`Page ${pageNum} of ${totalPages}`, PW - MR, FY + 6.5, { align: "right" });
@@ -891,20 +902,20 @@ function downloadPDF(opts: {
     doc.rect(0, 0, PW, 22, "F");
     doc.setFillColor(...rgb(ACCENT));
     doc.rect(0, 0, 5, 22, "F");
-    doc.setFillColor(255, 196, 0);
+    doc.setFillColor(201, 169, 97);
     doc.rect(0, 21.4, PW, 0.6, "F");
 
-    doc.setFont("helvetica", "normal"); doc.setFontSize(6.5); doc.setTextColor(148, 173, 209);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(6.5); doc.setTextColor(176, 163, 133);
     doc.text("AMERICAN BATH GROUP  |  BRAND PERFORMANCE HUB", ML + 2, 6);
 
     doc.setFont("helvetica", "bold"); doc.setFontSize(13); doc.setTextColor(255, 255, 255);
     doc.text("Top Dealers by Lead Volume", ML + 2, 15.5);
 
-    doc.setFont("helvetica", "bold"); doc.setFontSize(6.5); doc.setTextColor(148, 173, 209);
+    doc.setFont("helvetica", "bold"); doc.setFontSize(6.5); doc.setTextColor(176, 163, 133);
     doc.text("GENERATED", PW - MR, 6.5, { align: "right" });
     doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); doc.setTextColor(255, 255, 255);
     doc.text(format(new Date(), "MMM d, yyyy  |  h:mm a"), PW - MR, 12, { align: "right" });
-    doc.setFont("helvetica", "normal"); doc.setFontSize(7); doc.setTextColor(148, 173, 209);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(7); doc.setTextColor(176, 163, 133);
     doc.text(`${opts.selectedDays}-day window  |  ${allDealerRows.length} dealers  |  ${allDealerRows.reduce((s, d) => s + d.count, 0).toLocaleString()} leads assigned`, PW - MR, 17.5, { align: "right" });
 
     // ── Subtitle strip
@@ -969,7 +980,7 @@ function downloadPDF(opts: {
         doc.rect(0, FY, PW, 10, "F");
         doc.setFillColor(...rgb(ACCENT));
         doc.rect(0, FY, 5, 10, "F");
-        doc.setFont("helvetica", "normal"); doc.setFontSize(6.5); doc.setTextColor(148, 173, 209);
+        doc.setFont("helvetica", "normal"); doc.setFontSize(6.5); doc.setTextColor(176, 163, 133);
         doc.text("American Bath Group  |  Dealer Lead Report  |  Confidential", ML + 2, FY + 6.5);
       },
     });

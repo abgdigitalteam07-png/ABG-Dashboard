@@ -127,9 +127,10 @@ function KpiTile({ label, value, delta, sub, invertDelta, last }: {
   sub?: string; invertDelta?: boolean; last?: boolean;
 }) {
   const good = invertDelta ? (delta ?? 0) <= 0 : (delta ?? 0) >= 0;
+  const valueFontSize = value.length <= 4 ? 28 : value.length <= 5 ? 24 : value.length <= 6 ? 20 : 17;
   return (
-    <div style={{ flex: 1, padding: "16px 18px", borderRight: last ? "none" : `1px solid ${BORDER}` }}>
-      <div style={{ fontSize: 28, fontWeight: 900, fontFamily: FONT, color: BLACK, lineHeight: 1, fontVariantNumeric: "tabular-nums" }}>{value}</div>
+    <div style={{ flex: 1, minWidth: 0, padding: "16px 18px", borderRight: last ? "none" : `1px solid ${BORDER}` }}>
+      <div style={{ fontSize: valueFontSize, fontWeight: 900, fontFamily: FONT, color: BLACK, lineHeight: 1, fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>{value}</div>
       <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.14em", color: MUTED, fontFamily: FONT, marginTop: 7 }}>{label}</div>
       {sub && <div style={{ fontSize: 10, color: MUTED, fontFamily: FONT, marginTop: 2 }}>{sub}</div>}
       {delta != null && (
@@ -253,7 +254,7 @@ export function SummaryPrintView({ brand, dateFrom, dateTo, ga4, gsc, channels, 
                   <XAxis dataKey="date" tick={axisStyle} tickFormatter={(v) => v.slice(5)} tickLine={false} axisLine={false} interval="preserveStartEnd" />
                   <YAxis tick={axisStyle} tickLine={false} axisLine={false} />
                   <Tooltip contentStyle={{ fontSize: 10, fontFamily: FONT, border: `1px solid ${BORDER}`, borderRadius: 4 }} />
-                  <Bar dataKey="value" name="Sessions" fill={RED} radius={[2, 2, 0, 0]} maxBarSize={14} />
+                  <Bar dataKey="value" name="Sessions" fill={RED} radius={[2, 2, 0, 0]} maxBarSize={14} isAnimationActive={false} />
                 </BarChart>
               </div>
             )}
@@ -293,7 +294,7 @@ export function SummaryPrintView({ brand, dateFrom, dateTo, ga4, gsc, channels, 
                 <XAxis dataKey="date" tick={axisStyle} tickFormatter={(v) => v.slice(5)} tickLine={false} axisLine={false} interval="preserveStartEnd" />
                 <YAxis tick={axisStyle} tickLine={false} axisLine={false} />
                 <Tooltip contentStyle={{ fontSize: 10, fontFamily: FONT, border: `1px solid ${BORDER}`, borderRadius: 4 }} />
-                <Area type="monotone" dataKey="impressions" name="Impressions" stroke={RED} strokeWidth={2} fill="url(#imprGrad)" dot={false} activeDot={{ r: 3, strokeWidth: 0, fill: RED }} />
+                <Area type="monotone" dataKey="impressions" name="Impressions" stroke={RED} strokeWidth={2} fill="url(#imprGrad)" dot={false} activeDot={{ r: 3, strokeWidth: 0, fill: RED }} isAnimationActive={false} />
               </AreaChart>
             </div>
           )}

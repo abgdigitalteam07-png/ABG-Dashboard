@@ -14,7 +14,8 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const MAX_SCANS_PER_BRAND_PER_WEEK = 3; // manual re-scans allowed on top of the cron run
+const MAX_SCANS_PER_BRAND_PER_WEEK = 3; // applies to cheap reddit-only refreshes
+const SCAN_COOLDOWN_DAYS = 7;           // rolling window for full/quick scans; mirrors the dashboard countdown
 const MAX_PROMPTS = 10;
 
 interface ScanRequest {
@@ -182,6 +183,12 @@ async function searchRedditViaApify(brandName: string, category?: string, maxWai
   throw new Error("Apify run did not finish within the wait window");
 }
 
+// Same real thread can surface under a different thread_url (www vs bare domain,
+// http vs https) — normalize titles so we can catch that before writing a duplicate row.
+function normTitle(s: string): string {
+  return s.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
 function extractJson<T>(text: string): T {
   const match = text.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
   if (!match) throw new Error("No JSON in model output");
@@ -319,17 +326,44 @@ async function handleRequest(req: Request): Promise<Response> {
     .lt("started_at", new Date(Date.now() - 10 * 60 * 1000).toISOString());
 
   // 1. Rate-limit guard — never blow through API limits silently.
-  const { count: scansThisWeek } = await supabase
-    .from("aeo_scan_log")
-    .select("id", { count: "exact", head: true })
-    .eq("brand_id", brandId)
-    .eq("week_of", weekOf)
-    .neq("status", "failed");
-  if ((scansThisWeek ?? 0) >= MAX_SCANS_PER_BRAND_PER_WEEK) {
-    return new Response(
-      JSON.stringify({ error: `Scan limit reached for this week (${MAX_SCANS_PER_BRAND_PER_WEEK}). Try next week or delete a scan log row.` }),
-      { status: 429, headers: { ...corsHeaders, "content-type": "application/json" } },
-    );
+  //    full/quick are the expensive scans: one per SCAN_COOLDOWN_DAYS per brand, measured
+  //    as a rolling window from the last non-failed scan so it matches the countdown the
+  //    dashboard shows. reddit-only refreshes are cheap and stay on the per-week cap.
+  if (scanType !== "reddit") {
+    const { data: recent } = await supabase
+      .from("aeo_scan_log")
+      .select("started_at")
+      .eq("brand_id", brandId)
+      .neq("status", "failed")
+      .order("started_at", { ascending: false })
+      .limit(1);
+    const lastAt = recent?.[0]?.started_at;
+    if (lastAt) {
+      const nextAllowedMs = new Date(lastAt).getTime() + SCAN_COOLDOWN_DAYS * 86_400_000;
+      if (Date.now() < nextAllowedMs) {
+        const nextAllowedAt = new Date(nextAllowedMs).toISOString();
+        return new Response(
+          JSON.stringify({
+            error: `Scan cooldown active — one scan per ${SCAN_COOLDOWN_DAYS} days per brand. Next scan available ${nextAllowedAt}.`,
+            nextAllowedAt,
+          }),
+          { status: 429, headers: { ...corsHeaders, "content-type": "application/json" } },
+        );
+      }
+    }
+  } else {
+    const { count: scansThisWeek } = await supabase
+      .from("aeo_scan_log")
+      .select("id", { count: "exact", head: true })
+      .eq("brand_id", brandId)
+      .eq("week_of", weekOf)
+      .neq("status", "failed");
+    if ((scansThisWeek ?? 0) >= MAX_SCANS_PER_BRAND_PER_WEEK) {
+      return new Response(
+        JSON.stringify({ error: `Scan limit reached for this week (${MAX_SCANS_PER_BRAND_PER_WEEK}). Try next week or delete a scan log row.` }),
+        { status: 429, headers: { ...corsHeaders, "content-type": "application/json" } },
+      );
+    }
   }
 
   const { data: scanRow } = await supabase
@@ -529,9 +563,21 @@ Reply ONLY with this exact JSON shape (every signal array item is one row — Si
         let classifications: Array<{ brand_mentioned?: boolean; competitors_mentioned?: string[]; sentiment?: string; opportunity?: string; suggested_reply?: string | null; primary_keyword?: string | null; secondary_keywords?: string[] | null }> = [];
         try { classifications = extractJson(classifyText); } catch { /* defaults below */ }
 
+        // Skip inserting a thread whose title already exists for this brand under a
+        // DIFFERENT url — same real thread re-surfaced with a slightly different link
+        // shouldn't create a second row. An exact url match still goes through (that's
+        // just the normal upsert/refresh path).
+        const { data: existingRows } = await supabase
+          .from("reddit_threads").select("thread_url, title").eq("brand_id", brandId);
+        const existingTitles = new Set((existingRows ?? []).map(r => normTitle(r.title)));
+        const existingUrls = new Set((existingRows ?? []).map(r => r.thread_url));
+
         for (let i = 0; i < redditPosts.length; i++) {
           const p = redditPosts[i];
           const cl = classifications[i] ?? {};
+          if (existingTitles.has(normTitle(p.title)) && !existingUrls.has(p.thread_url)) {
+            continue; // same real thread already tracked under a different url
+          }
           await supabase.from("reddit_threads").upsert({
             brand_id: brandId, week_of: weekOf,
             thread_url: p.thread_url,
