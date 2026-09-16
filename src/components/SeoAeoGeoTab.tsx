@@ -1,6 +1,8 @@
 import { Fragment, useRef, useState } from "react";
+import ReactDOM from "react-dom/client";
 import { useQuery } from "@tanstack/react-query";
 import { Brand } from "@/lib/brands";
+import { SeoAeoPrintView } from "@/components/SeoAeoPrintView";
 import { supabase } from "@/integrations/supabase/client";
 import { WaterFillLoader } from "@/components/WaterFillLoader";
 import { toast } from "sonner";
@@ -109,7 +111,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
     queryKey: ["aeo-report", brand.id, week],
     enabled: !!week,
     queryFn: async () => {
-      const [scoreRes, citationsRes, recsRes, scanRes, redditRes, promptResultsRes] = await Promise.all([
+      const [scoreRes, citationsRes, recsRes, scanRes, redditRes, promptResultsRes, visibilityRes] = await Promise.all([
         sb.from("seo_audit_scores").select("*").eq("brand_id", brand.id).eq("week_of", week).maybeSingle(),
         sb.from("aeo_citations").select("*").eq("brand_id", brand.id).eq("week_of", week).order("frequency", { ascending: false }),
         sb.from("aeo_recommendations").select("*").eq("brand_id", brand.id).order("created_at", { ascending: false }),
@@ -118,6 +120,8 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
         sb.from("reddit_threads").select("*").eq("brand_id", brand.id).eq("week_of", week)
           .order("upvotes", { ascending: false }),
         sb.from("aeo_prompt_results").select("cited_urls, aeo_prompts(prompt)").eq("brand_id", brand.id).eq("week_of", week),
+        sb.from("aeo_visibility_snapshots").select("visibility_pct").eq("brand_id", brand.id).eq("week_of", week)
+          .eq("is_own_brand", true).limit(1).maybeSingle(),
       ]);
       if (scoreRes.error) throw scoreRes.error;
       if (citationsRes.error) throw citationsRes.error;
@@ -144,21 +148,53 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
         pageScope: (scanRes.data?.page_scope as PageScope | undefined) ?? null,
         redditThreads: redditRes.data ?? [],
         citingPromptsByUrl,
+        // Not fatal if the visibility snapshot is missing (quick scans don't run prompts).
+        visibilityPct: visibilityRes.data?.visibility_pct != null ? Number(visibilityRes.data.visibility_pct) : null,
       };
     },
   });
 
+  // Exports the dedicated print view (SeoAeoPrintView) rendered off-screen at A4
+  // width — NOT a screenshot of this tab. Screenshotting the live report produced a
+  // headerless PDF with half-empty pages and rows cut through the middle. Mirrors
+  // SummaryTab's export so both PDFs come out as the same document family.
   const handleDownloadPdf = async () => {
-    if (!reportRef.current || !week) return;
+    if (!week) return;
     setExportingPdf(true);
+    let container: HTMLDivElement | null = null;
+    let root: ReturnType<typeof ReactDOM.createRoot> | null = null;
     try {
       const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
         import("html2canvas"),
         import("jspdf"),
       ]);
 
-      const el = reportRef.current;
-      const scale = 2;
+      // Off-screen host — absolute (not fixed) so offsetHeight is the real content
+      // height rather than the viewport's.
+      container = document.createElement("div");
+      container.style.cssText = "position:absolute;top:0;left:-9999px;width:794px;background:#fff;z-index:-1;overflow:visible";
+      document.body.appendChild(container);
+
+      root = ReactDOM.createRoot(container);
+      root.render(
+        <SeoAeoPrintView
+          brand={brand}
+          weekOf={week}
+          score={latestScore ?? null}
+          findings={auditFindings}
+          citations={(data?.citations ?? []) as any}
+          recs={(data?.recs ?? []) as any}
+          visibilityPct={data?.visibilityPct ?? null}
+        />
+      );
+      // Let React paint before measuring.
+      await new Promise(r => setTimeout(r, 600));
+
+      const el = container.firstElementChild as HTMLElement;
+      if (!el) throw new Error("Print view failed to render");
+      // JPEG at 0.85 keeps a multi-page audit in the low single-digit MB instead of
+      // the ~76 MB a full-quality PNG capture produced.
+      const scale = 3;
       const elW = el.offsetWidth;
       const elH = el.offsetHeight;
 
@@ -203,7 +239,7 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
         ctx.drawImage(canvas, 0, srcY, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
 
         if (page > 0) pdf.addPage();
-        pdf.addImage(slice.toDataURL("image/png"), "PNG", 0, 0, pageWmm, sliceH / pxPerMm);
+        pdf.addImage(slice.toDataURL("image/jpeg", 0.94), "JPEG", 0, 0, pageWmm, sliceH / pxPerMm);
 
         srcY = breakY;
         page++;
@@ -215,6 +251,8 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
       console.error("PDF export failed:", err);
       toast.error("PDF export failed — see console for details.");
     } finally {
+      root?.unmount();
+      if (container?.parentNode) container.parentNode.removeChild(container);
       setExportingPdf(false);
     }
   };
