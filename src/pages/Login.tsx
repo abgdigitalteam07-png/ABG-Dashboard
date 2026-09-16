@@ -4,8 +4,17 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { AlertCircle, MailCheck } from "lucide-react";
+import { AlertCircle, MailCheck, ShieldAlert, ExternalLink } from "lucide-react";
 import { HelpButton } from "@/components/HelpButton";
+import { cn } from "@/lib/utils";
+
+// Every domain in allowed_domains is an ABG-family corporate domain, and ABG mail
+// runs through Mimecast — so a held sign-in link is the single most common reason
+// someone reports "I never got the email". The old copy said "if your company uses
+// Mimecast", which let every user assume it didn't apply to them.
+const MIMECAST_HELD_URL = "https://login-us.mimecast.com/m/portal/app/#/advanced/personal-on-hold";
+// Still on this screen after this long means the link almost certainly hasn't landed.
+const MIMECAST_ESCALATE_AFTER_S = 25;
 
 const ABG_LOGO_URL =
   "https://24202603.fs1.hubspotusercontent-na1.net/hubfs/24202603/Swan/website/common/abg-logo-white-horizontal.png";
@@ -16,10 +25,12 @@ export default function Login() {
   const [error, setError] = useState("");
   const [linkSent, setLinkSent] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
+  const [secondsSinceSent, setSecondsSinceSent] = useState(0);
   const navigate = useNavigate();
   const location = useLocation();
   const deactivated = (location.state as any)?.deactivated;
   const sessionExpired = (location.state as any)?.sessionExpired;
+  const mimecastUrgent = secondsSinceSent >= MIMECAST_ESCALATE_AFTER_S;
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -34,6 +45,16 @@ export default function Login() {
     }, 1000);
     return () => clearInterval(timer);
   }, [resendCooldown]);
+
+  // Drives the Mimecast notice escalating from a hint to the main call to action.
+  useEffect(() => {
+    if (!linkSent) {
+      setSecondsSinceSent(0);
+      return;
+    }
+    const timer = setInterval(() => setSecondsSinceSent((s) => s + 1), 1000);
+    return () => clearInterval(timer);
+  }, [linkSent]);
 
   const handleLogin = async () => {
     setError("");
@@ -170,21 +191,52 @@ export default function Login() {
                 </Button>
               )}
 
-              <div className="flex flex-col gap-3 p-3 mt-1 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-sm text-left">
+              <div
+                className={cn(
+                  "w-full flex flex-col gap-3 mt-1 rounded-lg border text-left transition-all",
+                  mimecastUrgent
+                    ? "p-4 bg-amber-100 border-amber-400 text-amber-950 shadow-sm"
+                    : "p-3 bg-amber-50 border-amber-200 text-amber-900 text-sm",
+                )}
+              >
                 <div className="flex items-start gap-2">
-                  <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
-                  <span>
-                    Still nothing after a few minutes? Check your spam folder, or if your
-                    company uses Mimecast, your sign-in email may be held there for review.
-                  </span>
+                  {mimecastUrgent ? (
+                    <ShieldAlert className="h-5 w-5 mt-0.5 shrink-0" />
+                  ) : (
+                    <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                  )}
+                  {mimecastUrgent ? (
+                    <div className="space-y-1">
+                      <p className="font-semibold">Email not here yet? It's held in Mimecast.</p>
+                      <p className="text-sm">
+                        ABG email runs through Mimecast, which holds most sign-in links for
+                        review. This is normal — you just need to release it.
+                      </p>
+                    </div>
+                  ) : (
+                    <span>
+                      Heads up: ABG email runs through Mimecast, so your sign-in link is often
+                      held there instead of reaching your inbox.
+                    </span>
+                  )}
                 </div>
-                <Button variant="outline" className="w-full bg-white" asChild>
-                  <a
-                    href="https://login-us.mimecast.com/m/portal/app/#/advanced/personal-on-hold"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    Check Mimecast held messages
+
+                {mimecastUrgent && (
+                  <ol className="list-decimal pl-5 space-y-1 text-sm marker:font-semibold">
+                    <li>Open your Mimecast held messages below.</li>
+                    <li>Find the sign-in email and click <span className="font-semibold">Release</span>.</li>
+                    <li>Come back to your inbox and click the link.</li>
+                  </ol>
+                )}
+
+                <Button
+                  variant={mimecastUrgent ? "default" : "outline"}
+                  className={cn("w-full gap-2", !mimecastUrgent && "bg-white")}
+                  asChild
+                >
+                  <a href={MIMECAST_HELD_URL} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="h-4 w-4" />
+                    {mimecastUrgent ? "Open Mimecast held messages" : "Check Mimecast held messages"}
                   </a>
                 </Button>
               </div>
