@@ -85,35 +85,40 @@ function SectionHeader({ label, score, note }: { label: string; score?: number |
   );
 }
 
-// Each sub-section is also a legal cut point, not just each top-level section.
-// Without this the slicer can only break between the big SEO/GEO/AEO blocks, which
-// left 30–40% of most pages empty. The white band is the cut zone, and because the
-// label sits after it, a label can never be stranded at the foot of a page.
-function SubLabel({ children }: { children: React.ReactNode }) {
+// Each sub-section is also a legal cut point, not just each top-level section —
+// section-only breaks left 30–40% of most pages empty. The white band is the cut
+// zone, and the label sits after it so a label is never stranded at a page foot.
+//
+// `first` must be set on the first sub-label of a section: without it the slicer
+// could cut between a section heading ("SEO ANALYSIS 5/10") and its own first
+// table, leaving the heading alone at the bottom of a page.
+function SubLabel({ children, first }: { children: React.ReactNode; first?: boolean }) {
   return (
     <>
-      <div data-pb="1" style={{ height: 20, backgroundColor: "#ffffff" }} />
-      <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.12em", color: MUTED, fontFamily: FONT, marginBottom: 6 }}>
+      {!first && <div data-pb="1" style={{ height: 20, backgroundColor: "#ffffff" }} />}
+      <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase" as const, letterSpacing: "0.12em", color: MUTED, fontFamily: FONT, marginTop: first ? 2 : 0, marginBottom: 6 }}>
         {children}
       </div>
     </>
   );
 }
 
-// lineHeight is explicit on purpose: with the default "normal" the inline-block's
-// line box is taller than the glyphs, so the coloured background sat visibly higher
-// than the text it was meant to wrap. 1.35 keeps room for the descender in "Missing".
-function Chip({ text, tone }: { text: string; tone: { fg: string; bg: string } }) {
-  return (
-    <span style={{
-      display: "inline-block", padding: "2px 8px", borderRadius: 4,
-      fontSize: 9, fontWeight: 700, lineHeight: 1.35, fontFamily: FONT,
-      color: tone.fg, backgroundColor: tone.bg, whiteSpace: "nowrap",
-      verticalAlign: "middle",
-    }}>
-      {text}
-    </span>
-  );
+// Status is shown by tinting the whole cell, not by a small pill around the word.
+//
+// This is a rasteriser constraint, not a style preference. html2canvas draws text
+// lower inside a box than the browser does, so any background fitted tightly around a
+// word comes out visibly higher than the word itself. Pills were tried three ways —
+// inline-block with line-height, inline-flex centring, and an inline table cell — and
+// all three reproduced it at print resolution. Tinting the full cell removes the
+// failure mode entirely: the coloured area is far larger than the text, so a baseline
+// error of a pixel or two cannot read as misalignment. Do not reintroduce a pill.
+function statusCell(tone: { fg: string; bg: string }): React.CSSProperties {
+  return {
+    ...td,
+    backgroundColor: tone.bg, color: tone.fg,
+    fontWeight: 700, fontSize: 9.5, letterSpacing: "0.04em",
+    verticalAlign: "middle", textAlign: "center",
+  };
 }
 
 type SignalRow = { signal: string; finding: string; status: string };
@@ -130,7 +135,7 @@ function SignalTable({ rows }: { rows: SignalRow[] }) {
             <tr key={i} style={{ backgroundColor: i % 2 ? MUTED_BG : CARD_BG }}>
               <td style={{ ...td, fontWeight: 700 }}>{r.signal}</td>
               <td style={td}>{r.finding}</td>
-              <td style={td}><Chip text={r.status} tone={statusTone(r.status)} /></td>
+              <td style={statusCell(statusTone(r.status))}>{r.status}</td>
             </tr>
           ))}
         </tbody>
@@ -257,7 +262,7 @@ export function SeoAeoPrintView({
 
       {/* ── SEO ── */}
       <SectionHeader label="SEO Analysis" score={score?.seo_score ?? null} />
-      {!!findings.seo?.technical_on_page?.length && <><SubLabel>Technical On-Page</SubLabel><SignalTable rows={findings.seo.technical_on_page} /></>}
+      {!!findings.seo?.technical_on_page?.length && <><SubLabel first>Technical On-Page</SubLabel><SignalTable rows={findings.seo.technical_on_page} /></>}
       {!!findings.seo?.content_quality?.length && <><SubLabel>Content Quality</SubLabel><SignalTable rows={findings.seo.content_quality} /></>}
       {!!findings.seo?.structured_data?.length && <><SubLabel>Structured Data</SubLabel><SignalTable rows={findings.seo.structured_data} /></>}
 
@@ -265,7 +270,7 @@ export function SeoAeoPrintView({
 
       {/* ── GEO ── */}
       <SectionHeader label="GEO Analysis" score={score?.geo_score ?? null} note="How well AI engines can recognise, trust and cite this brand." />
-      {!!findings.geo?.eeat?.length && <><SubLabel>E-E-A-T Assessment</SubLabel><SignalTable rows={findings.geo.eeat} /></>}
+      {!!findings.geo?.eeat?.length && <><SubLabel first>E-E-A-T Assessment</SubLabel><SignalTable rows={findings.geo.eeat} /></>}
       {!!findings.geo?.content_ai_synthesis?.length && <><SubLabel>Content for AI Synthesis</SubLabel><SignalTable rows={findings.geo.content_ai_synthesis} /></>}
       {!!findings.geo?.technical_geo?.length && <><SubLabel>Technical GEO</SubLabel><SignalTable rows={findings.geo.technical_geo} /></>}
 
@@ -273,7 +278,7 @@ export function SeoAeoPrintView({
 
       {/* ── AEO ── */}
       <SectionHeader label="AEO Analysis" score={score?.aeo_score ?? null} note="Eligibility for direct answers, featured snippets and voice results." />
-      {!!findings.aeo?.featured_snippet?.length && <><SubLabel>Featured Snippet Eligibility</SubLabel><SignalTable rows={findings.aeo.featured_snippet} /></>}
+      {!!findings.aeo?.featured_snippet?.length && <><SubLabel first>Featured Snippet Eligibility</SubLabel><SignalTable rows={findings.aeo.featured_snippet} /></>}
       {!!findings.aeo?.structured_answer_formats?.length && <><SubLabel>Structured Answer Formats</SubLabel><SignalTable rows={findings.aeo.structured_answer_formats} /></>}
       {!!findings.aeo?.voice_search?.length && <><SubLabel>Voice Search Readiness</SubLabel><SignalTable rows={findings.aeo.voice_search} /></>}
 
@@ -290,7 +295,7 @@ export function SeoAeoPrintView({
               <tbody>
                 {priority.map((p, i) => (
                   <tr key={i} style={{ backgroundColor: i % 2 ? MUTED_BG : CARD_BG }}>
-                    <td style={td}><Chip text={p.priority} tone={priorityTone(p.priority)} /></td>
+                    <td style={statusCell(priorityTone(p.priority))}>{p.priority}</td>
                     <td style={{ ...td, fontWeight: 600 }}>{p.issue}</td>
                     <td style={td}>{p.dimension}</td>
                     <td style={td}>{p.effort}</td>
@@ -339,9 +344,7 @@ export function SeoAeoPrintView({
                   <tr key={i} style={{ backgroundColor: i % 2 ? MUTED_BG : CARD_BG }}>
                     <td style={{ ...td, color: RED, fontWeight: 600 }}>{c.domain}</td>
                     <td style={td}>{c.frequency}</td>
-                    <td style={td}>
-                      <Chip text={c.brand_mentioned ? "Yes" : "No"} tone={c.brand_mentioned ? TONE.good : TONE.neutral} />
-                    </td>
+                    <td style={statusCell(c.brand_mentioned ? TONE.good : TONE.neutral)}>{c.brand_mentioned ? "Yes" : "No"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -364,7 +367,7 @@ export function SeoAeoPrintView({
                   <tr key={i} style={{ backgroundColor: i % 2 ? MUTED_BG : CARD_BG }}>
                     <td style={{ ...td, fontWeight: 600 }}>{r.title}</td>
                     <td style={td}>{r.rec_type}</td>
-                    <td style={td}><Chip text={r.priority} tone={priorityTone(r.priority)} /></td>
+                    <td style={statusCell(priorityTone(r.priority))}>{r.priority}</td>
                     <td style={td}>{r.status ?? "New"}</td>
                   </tr>
                 ))}
