@@ -17,8 +17,26 @@ interface TabPerm { can_view: boolean; show_insights: boolean; }
 const brandKey = (email: string) => `abg_last_brand:${email || "anon"}`;
 const tabKey = (email: string) => `abg_last_tab:${email || "anon"}`;
 
+// Shareable-link support: a brand/tab/date-range combo in the URL always wins over
+// whatever's saved locally, so a link one person copies opens to the same view for
+// anyone else — instead of everyone landing on their own last-visited tab.
+const urlParams = new URLSearchParams(window.location.search);
+const urlBrandIds = (urlParams.get("brand") || "").split(",").filter(Boolean);
+const urlTab = urlParams.get("tab");
+const urlFrom = urlParams.get("from");
+const urlTo = urlParams.get("to");
+const parseUrlDate = (s: string | null) => {
+  if (!s) return null;
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+};
+
 const Index = () => {
   const [selectedBrand, setSelectedBrandState] = useState(() => {
+    if (urlBrandIds.length === 1) {
+      const fromUrl = brands.find(b => b.id === urlBrandIds[0]);
+      if (fromUrl) return fromUrl;
+    }
     const savedName = localStorage.getItem("abg_last_brand");
     return (savedName && brands.find(b => b.name === savedName)) || brands.find(b => b.name === "Bootz") || brands[0];
   });
@@ -30,9 +48,12 @@ const Index = () => {
   };
 
   const [brandMode, setBrandMode] = useState<"single" | "multi">(() => {
+    if (urlBrandIds.length > 1) return "multi";
+    if (urlBrandIds.length === 1) return "single";
     return (localStorage.getItem("abg_brand_mode") as "single" | "multi") || "single";
   });
   const [multiBrands, setMultiBrandsState] = useState(() => {
+    if (urlBrandIds.length > 1) return brands.filter(b => urlBrandIds.includes(b.id));
     const ids = (localStorage.getItem("abg_multi_brands") || "").split(",").filter(Boolean);
     return brands.filter(b => ids.includes(b.id));
   });
@@ -47,6 +68,10 @@ const Index = () => {
   const [tabPerms, setTabPerms] = useState<Record<string, TabPerm>>({});
   const [isAdmin, setIsAdmin] = useState(false);
   const welcomeShown = useRef(false);
+  // Same rule as the initial state above: don't let the per-user "last visited"
+  // restore clobber a brand/tab that came in explicitly via a shared link.
+  const urlHadBrand = urlBrandIds.length > 0;
+  const urlHadTab = !!urlTab;
 
   useEffect(() => {
     if (welcomeShown.current) return;
@@ -57,12 +82,16 @@ const Index = () => {
       const email = session.user.email ?? "";
       setUserEmail(email);
 
-      const savedBrandName = localStorage.getItem(brandKey(email));
-      const savedBrand = savedBrandName && brands.find(b => b.name === savedBrandName);
-      if (savedBrand) setSelectedBrandState(savedBrand);
+      if (!urlHadBrand) {
+        const savedBrandName = localStorage.getItem(brandKey(email));
+        const savedBrand = savedBrandName && brands.find(b => b.name === savedBrandName);
+        if (savedBrand) setSelectedBrandState(savedBrand);
+      }
 
-      const savedTab = localStorage.getItem(tabKey(email));
-      if (savedTab) setActiveTabState(savedTab);
+      if (!urlHadTab) {
+        const savedTab = localStorage.getItem(tabKey(email));
+        if (savedTab) setActiveTabState(savedTab);
+      }
 
       const [{ data: profile }, { data: perms }] = await Promise.all([
         supabase.from("user_profiles").select("full_name, role").eq("id", session.user.id).single(),
@@ -80,7 +109,7 @@ const Index = () => {
       }
     });
   }, []);
-  const [activeTab, setActiveTabState] = useState("performance");
+  const [activeTab, setActiveTabState] = useState(urlTab || "performance");
   const setActiveTab = (tab: string) => {
     setActiveTabState(tab);
     localStorage.setItem(tabKey(userEmail), tab);
@@ -89,8 +118,8 @@ const Index = () => {
   const now = new Date();
   const start7 = new Date(now);
   start7.setDate(start7.getDate() - 7);
-  const [dateFrom, setDateFrom] = useState(start7);
-  const [dateTo, setDateTo] = useState(now);
+  const [dateFrom, setDateFrom] = useState(() => parseUrlDate(urlFrom) ?? start7);
+  const [dateTo, setDateTo] = useState(() => parseUrlDate(urlTo) ?? now);
 
   const handleDateChange = useCallback((from: Date, to: Date) => {
     setDateFrom(from);
@@ -116,6 +145,18 @@ const Index = () => {
   const hasLinkedIn = activeBrands.some(b => linkedinBrandNames.includes(b.name));
 
   const canView = (tabId: string) => tabPerms[tabId]?.can_view !== false;
+
+  // Keep the address bar in sync with brand/tab/date-range so the current URL is
+  // always a valid, shareable link to exactly this view — not just a bookmark to
+  // whatever the next viewer happens to have saved locally.
+  useEffect(() => {
+    const params = new URLSearchParams();
+    params.set("brand", isMultiMode ? multiBrands.map(b => b.id).join(",") : selectedBrand.id);
+    params.set("tab", activeTab);
+    params.set("from", dateFrom.toISOString().slice(0, 10));
+    params.set("to", dateTo.toISOString().slice(0, 10));
+    window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
+  }, [selectedBrand.id, activeTab, dateFrom, dateTo, isMultiMode, multiBrands]);
 
   const allTabs = [
     { id: "performance",  label: "Google Analytics & Search Console", disabled: !activeBrands.some(b => b.hasGA4 || b.hasGSC), tooltip: "No GA4/GSC property linked for this brand." },
