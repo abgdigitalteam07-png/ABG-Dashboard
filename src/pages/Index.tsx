@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
 import { brands } from "@/lib/brands";
 import { supabase } from "@/integrations/supabase/client";
 import { DashboardHeader } from "@/components/DashboardHeader";
@@ -68,6 +69,7 @@ const Index = () => {
   const [tabPerms, setTabPerms] = useState<Record<string, TabPerm>>({});
   const [isAdmin, setIsAdmin] = useState(false);
   const welcomeShown = useRef(false);
+  const [, setSearchParams] = useSearchParams();
   // Same rule as the initial state above: don't let the per-user "last visited"
   // restore clobber a brand/tab that came in explicitly via a shared link.
   const urlHadBrand = urlBrandIds.length > 0;
@@ -149,13 +151,19 @@ const Index = () => {
   // Keep the address bar in sync with brand/tab/date-range so the current URL is
   // always a valid, shareable link to exactly this view — not just a bookmark to
   // whatever the next viewer happens to have saved locally.
+  // Goes through the router rather than history.replaceState directly, so the
+  // router's own location can't drift out of sync with what the address bar shows.
+  // replace:true keeps tab clicks out of the back-button history.
+  // setSearchParams is deliberately left out of the deps — it is not guaranteed to
+  // be referentially stable across router versions, and including it risks a loop.
   useEffect(() => {
     const params = new URLSearchParams();
     params.set("brand", isMultiMode ? multiBrands.map(b => b.id).join(",") : selectedBrand.id);
     params.set("tab", activeTab);
     params.set("from", dateFrom.toISOString().slice(0, 10));
     params.set("to", dateTo.toISOString().slice(0, 10));
-    window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
+    setSearchParams(params, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBrand.id, activeTab, dateFrom, dateTo, isMultiMode, multiBrands]);
 
   const allTabs = [
