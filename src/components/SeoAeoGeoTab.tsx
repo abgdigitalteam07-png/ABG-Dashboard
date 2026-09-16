@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Brand } from "@/lib/brands";
 import { supabase } from "@/integrations/supabase/client";
@@ -68,16 +68,8 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
   const [exportingPdf, setExportingPdf] = useState(false);
   const [expandedThreadId, setExpandedThreadId] = useState<string | null>(null);
   const [scanningReddit, setScanningReddit] = useState(false);
-  const [scanningFull, setScanningFull] = useState(false);
-  const [now, setNow] = useState(() => Date.now());
   const reportRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
-
-  // Ticks the full-scan cooldown countdown.
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, []);
 
   const { data: weeks } = useQuery({
     queryKey: ["aeo-weeks", brand.id],
@@ -160,29 +152,6 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
 
   const siteUrl = brand.gscSiteUrl ?? `https://${brand.id.replace(/-/g, "")}.com/`;
 
-  // ── Full-scan cooldown ────────────────────────────────────────────────────
-  // Rolling 7 days since the last scan that wasn't a failure. The edge function
-  // enforces the same window server-side; this only drives the button + countdown,
-  // so a stale tab can't be used to bypass it.
-  const SCAN_COOLDOWN_DAYS = 7;
-  const lastCountedScan = history?.find(h => h.status !== "failed")?.started_at ?? null;
-  const nextScanAllowedAt = lastCountedScan
-    ? new Date(lastCountedScan).getTime() + SCAN_COOLDOWN_DAYS * 86_400_000
-    : null;
-  const cooldownMsLeft = nextScanAllowedAt ? nextScanAllowedAt - now : 0;
-  const scanLocked = cooldownMsLeft > 0;
-
-  const formatCountdown = (ms: number) => {
-    const total = Math.max(0, Math.floor(ms / 1000));
-    const d = Math.floor(total / 86400);
-    const h = Math.floor((total % 86400) / 3600);
-    const m = Math.floor((total % 3600) / 60);
-    const s = total % 60;
-    if (d > 0) return `${d}d ${h}h ${m}m`;
-    if (h > 0) return `${h}h ${m}m ${s}s`;
-    return `${m}m ${s}s`;
-  };
-
   const handleDownloadPdf = async () => {
     if (!reportRef.current || !week) return;
     setExportingPdf(true);
@@ -251,53 +220,6 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
       toast.error("PDF export failed — see console for details.");
     } finally {
       setExportingPdf(false);
-    }
-  };
-
-  // Full scan on demand — site audit + prompts + Reddit + recommendations
-  // (scanType: "full"). Limited to one run per SCAN_COOLDOWN_DAYS per brand; the
-  // edge function enforces the same window, so this is a UX guard, not the gate.
-  const handleRunFullScan = async () => {
-    if (scanLocked || scanningFull) return;
-    setScanningFull(true);
-    try {
-      const { data: res, error } = await supabase.functions.invoke("aeo-scan", {
-        body: {
-          brandId: brand.id, brandName: brand.name, siteUrl, scanType: "full",
-          landingPageId: brand.redditLandingPageId,
-        },
-      });
-      if (error) throw error;
-      if (res?.error) throw new Error(res.error);
-
-      const scanId = res.scanId as string;
-      const scannedWeek = res.weekOf as string;
-      toast.info("Full scan started — the site audit and recommendations take a few minutes…");
-
-      const deadline = Date.now() + 8 * 60_000;
-      while (Date.now() < deadline) {
-        await new Promise(r => setTimeout(r, 5000));
-        const { data: log } = await sb.from("aeo_scan_log").select("status, error").eq("id", scanId).maybeSingle();
-        if (log?.status === "completed") {
-          setSelectedWeek(scannedWeek);
-          await Promise.all([
-            queryClient.invalidateQueries({ queryKey: ["aeo-weeks", brand.id] }),
-            queryClient.invalidateQueries({ queryKey: ["aeo-history", brand.id] }),
-            queryClient.invalidateQueries({ queryKey: ["aeo-report", brand.id, scannedWeek] }),
-          ]);
-          toast.success("Full scan complete — report refreshed.");
-          return;
-        }
-        if (log?.status === "failed") {
-          throw new Error(log.error ?? "Scan failed");
-        }
-      }
-      toast.info("Scan is still running — it will show up here once it finishes.");
-    } catch (err) {
-      console.error("Full scan failed:", err);
-      toast.error(`Full scan failed: ${err instanceof Error ? err.message : String(err)}`);
-    } finally {
-      setScanningFull(false);
     }
   };
 
@@ -377,28 +299,9 @@ export const SeoAeoGeoTab = ({ brand }: Props) => {
           </select>
         )}
         <div style={{ flex: 1 }} />
-        <button
-          onClick={handleRunFullScan}
-          disabled={scanLocked || scanningFull}
-          title={
-            scanLocked
-              ? `Next scan available in ${formatCountdown(cooldownMsLeft)} (one scan per ${SCAN_COOLDOWN_DAYS} days per brand)`
-              : `Run a full audit of ${siteUrl} — takes a few minutes`
-          }
-          style={{
-            border: "1px solid var(--aeo-line)", borderRadius: 8, padding: "8px 16px",
-            background: scanLocked ? "transparent" : "var(--aeo-accent, var(--aeo-card))",
-            color: scanLocked ? "var(--aeo-muted)" : "var(--aeo-ink)",
-            fontWeight: 600, fontSize: 13.5,
-            cursor: scanLocked || scanningFull ? "not-allowed" : "pointer",
-          }}
-        >
-          {scanningFull
-            ? "Scanning…"
-            : scanLocked
-              ? `⏳ Next scan in ${formatCountdown(cooldownMsLeft)}`
-              : "▶ Run full scan"}
-        </button>
+        {/* Full scans are not triggered from the dashboard — they're run from a
+            Claude session or a scheduled Routine, which call the aeo-scan edge
+            function directly. */}
         <button
           onClick={handleDownloadPdf}
           disabled={exportingPdf || !week}
